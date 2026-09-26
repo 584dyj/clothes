@@ -102,9 +102,24 @@ exports.main = async (event, context, consume = consumeTicket) => {
     headers: { 'Content-Type': 'application/json' }, body: { error: '流式对话尚未配置' } }
   let ticket
   try {
-    const body = event && Object.prototype.hasOwnProperty.call(event, 'body') ? event.body : event
-    const input = typeof body === 'string' ? JSON.parse(body) : body
-    ticket = verify(input?.ticket, secret)
+    const parse = value => {
+      if (Buffer.isBuffer(value)) value = value.toString('utf8')
+      return typeof value === 'string' && value ? JSON.parse(value) : value
+    }
+    const input = parse(event)
+    const body = parse(input?.body)
+    const data = parse(input?.data)
+    const rawTicket = input?.ticket ?? body?.ticket ?? data?.ticket
+    const parts = String(rawTicket || '').split('.')
+    console.log('stream-ticket-received', {
+      secretTag: crypto.createHash('sha256').update(secret).digest('hex').slice(0, 12),
+      ticketTag: crypto.createHash('sha256').update(String(rawTicket || '')).digest('hex').slice(0, 12),
+      ticketType: typeof rawTicket,
+      ticketLength: typeof rawTicket === 'string' ? rawTicket.length : 0,
+      payloadLength: parts[0].length,
+      parts: parts.length
+    })
+    ticket = verify(rawTicket, secret)
     const callerOpenId = context.extendedContext?.wechatContext?.openId || context.httpContext?.headers?.['x-wx-openid']
     if (!ticket.openid || ticket.openid !== callerOpenId ||
         !ticket.chatId || !ticket.requestToken || !ticket.request?.messages) throw new Error('流式身份无效')

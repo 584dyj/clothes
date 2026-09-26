@@ -220,7 +220,8 @@ function streamReply(ticket, onDelta) {
       }
       if (buffer.length > 200000) finish(new Error('流式响应过大'))
     }
-    wx.cloud.callHTTPFunction({ name: 'chat-stream', config: { env: 'cloud1-d3gxekd39e66fd769' }, path: '/', method: 'post', data: { ticket }, enableChunked: true,
+    wx.cloud.callHTTPFunction({ name: 'chat-stream', config: { env: 'cloud1-d3gxekd39e66fd769' }, path: '/', method: 'POST',
+      header: { 'Content-Type': 'application/json' }, data: { ticket }, enableChunked: true,
       onHeadersReceived: res => { httpStatus = res.statusCode || 0 },
       onChunkedReceived: res => { if (!settled) receive(res.data) },
       success: res => {
@@ -241,6 +242,7 @@ async function chatSend(payload, onDelta = () => {}) {
     if (typeof wx.cloud.callHTTPFunction !== 'function') throw new Error('当前基础库不支持流式对话，请更新微信')
     const start = await call('chatStart', payload)
     if (start.messages) return { chatId: start.chatId, title: start.title, messages: start.messages }
+    if (typeof start.ticket !== 'string' || !start.ticket) throw new Error('流式凭证签发失败')
     try {
       const proof = await streamReply(start.ticket, payload.mode === 'brandLatest' ? () => {} : onDelta)
       const result = await call('chatFinish', { proof })

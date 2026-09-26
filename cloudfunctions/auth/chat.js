@@ -368,6 +368,13 @@ async function chatStart({ db, openid, event }, env = process.env, search = sear
         messages: [{ role: 'system', content: systemPrompt(inventoryText, brandLatest ? brandPrompt(brand, sources) : '') },
           ...history, { role: 'user', content: text }] }
     }, env.CHAT_STREAM_SECRET)
+    console.log('stream-ticket-issued', {
+      secretTag: sha256(env.CHAT_STREAM_SECRET).slice(0, 12),
+      ticketTag: sha256(ticket).slice(0, 12),
+      ticketLength: ticket.length,
+      payloadLength: ticket.split('.')[0].length,
+      parts: ticket.split('.').length
+    })
     return { success: true, chatId: chat._id, title: chat.title, ticket }
   } catch (e) {
     await releaseBusy(db, recordId, requestToken)

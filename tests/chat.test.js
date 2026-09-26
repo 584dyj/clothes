@@ -130,7 +130,7 @@ test('文字对话经签名凭证流式输出并保存最终回复', async () =>
   }
   try {
     const events = []
-    const rejected = await streamApi.main({ ticket: start.ticket }, {
+    const rejected = await streamApi.main({ data: JSON.stringify({ ticket: start.ticket }) }, {
       extendedContext: { wechatContext: { openId: 'other' } }, sse: () => { throw Error('不应开启流') } }, async () => {})
     assert.equal(rejected.statusCode, 403)
     const dbFailure = await streamApi.main({ ticket: start.ticket }, {

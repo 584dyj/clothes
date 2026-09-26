@@ -19,6 +19,9 @@ test('文字对话按 SSE 分块显示，含跨块 UTF-8 中文', async () => {
     callHTTPFunction: options => {
       assert.equal(options.name, 'chat-stream')
       assert.equal(options.config.env, 'cloud1-d3gxekd39e66fd769')
+      assert.equal(options.method, 'POST')
+      assert.deepEqual(options.header, { 'Content-Type': 'application/json' })
+      assert.deepEqual(options.data, { ticket: 'signed-ticket' })
       assert.equal(options.enableChunked, true)
       const bytes = Buffer.from('event: delta\ndata: {"text":"蓝色"}\n\nevent: delta\ndata: {"text":"衬衫"}\n\nevent: done\ndata: {"proof":"signed-proof"}\n\n')
       const cut = bytes.indexOf(Buffer.from('蓝')) + 1
@@ -59,6 +62,18 @@ test('流式服务返回 400 时保留响应原因并释放会话', async () => 
   const api = require(MODULE_PATH)
   await assert.rejects(api.chatSend({ text: '你好' }), /流式服务返回 400：请求参数无效/)
   assert.deepEqual(actions, ['chatStart', 'chatCancel'])
+})
+
+test('文字流式凭证缺失时停止调用 HTTP 函数', async () => {
+  let called = false
+  global.wx = { cloud: {
+    callFunction: async () => ({ result: { success: true } }),
+    callHTTPFunction: () => { called = true }
+  } }
+  delete require.cache[MODULE_PATH]
+  const api = require(MODULE_PATH)
+  await assert.rejects(api.chatSend({ text: '你好' }), /流式凭证签发失败/)
+  assert.equal(called, false)
 })
 
 test('清理状态兼容旧 profile，并读取新版本待处理状态', async () => {
