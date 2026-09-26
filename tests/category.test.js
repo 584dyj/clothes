@@ -1,0 +1,37 @@
+const test = require('node:test')
+const assert = require('node:assert/strict')
+const { loadPage } = require('./support/page')
+
+test('尺码按钮仅提供 XS 至 XL，忽略旧尺码记忆并保留已有记录', async () => {
+  const page = loadPage('item-edit', {}, { getStorageSync: () => 'XXL' })
+  await page.onLoad({})
+  assert.deepEqual(Array.from(page.data.sizes), ['XS', 'S', 'M', 'L', 'XL'])
+  assert.equal(page.data.size, '')
+  for (const size of ['XS', 'XL', 'XL']) {
+    page.onSizeTap({ currentTarget: { dataset: { value: size } } })
+    assert.equal(page.data.size, size)
+  }
+  assert.equal(page.data.picker.show, false)
+  const remembered = loadPage('item-edit', {}, { getStorageSync: () => 'M' })
+  await remembered.onLoad({})
+  assert.equal(remembered.data.size, 'M')
+  const existing = loadPage('item-edit', { getItem: async () => ({ size: 'XXL' }) })
+  await existing.onLoad({ id: 'old' })
+  assert.equal(existing.data.size, 'XXL')
+})
+
+test('类别按钮回显已有选择，保持单选并清除不适用的配饰类型', async () => {
+  const page = loadPage('item-edit', { getItem: async () => ({ category: '配饰', subcategory: '帽子' }) })
+  await page.onLoad({ id: 'item' })
+  assert.equal(page.data.category, '配饰')
+  const select = value => page.onCategoryTap({ currentTarget: { dataset: { value } } })
+  select('配饰')
+  assert.equal(page.data.subcategory, '帽子')
+  select('上衣')
+  assert.equal(page.data.category, '上衣')
+  assert.equal(page.data.subcategory, '')
+  assert.equal(page.data.subcategoryIndex, -1)
+  select('上衣')
+  assert.equal(page.data.category, '上衣')
+  assert.equal(page.data.picker.show, false)
+})

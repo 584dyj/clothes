@@ -1,0 +1,112 @@
+.page {
+  padding: 24rpx;
+  padding-bottom: 60rpx;
+}
+
+.image-box {
+  width: 420rpx;
+  height: 560rpx; /* 3:4 竖版，居中 */
+  overflow: hidden;
+  margin: 0 auto 24rpx;
+}
+
+.preview {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.image-placeholder {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #9a958c;
+  font-size: 26rpx;
+}
+
+.plus {
+  font-size: 72rpx;
+  margin-bottom: 12rpx;
+}
+
+.form {
+  padding: 8rpx 28rpx;
+  margin-bottom: 32rpx;
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  padding: 28rpx 0;
+  border-bottom: 1rpx solid #efede8;
+}
+
+.field:last-child {
+  border-bottom: none;
+}
+
+.field-column {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.label {
+  width: 160rpx;
+  color: #6b675f;
+  font-size: 28rpx;
+  flex-shrink: 0;
+}
+
+.input {
+  flex: 1;
+  font-size: 28rpx;
+}
+
+.picker-value {
+  font-size: 28rpx;
+}
+
+.placeholder {
+  color: #b3aea5;
+}
+
+.season-row {
+  display: flex;
+  margin-top: 20rpx;
+}
+
+.season-chip {
+  width: 96rpx;
+  height: 64rpx;
+  line-height: 64rpx;
+  text-align: center;
+  border-radius: 32rpx;
+  background: #efede8;
+  color: #6b675f;
+  font-size: 28rpx;
+  margin-right: 20rpx;
+}
+
+.season-active {
+  background: #3a3835;
+  color: #ffffff;
+}
+
+.category-row {
+  flex-wrap: wrap;
+  row-gap: 16rpx;
+}
+
+.textarea {
+  width: 100%;
+  height: 140rpx;
+  margin-top: 16rpx;
+  font-size: 28rpx;
+  box-sizing: border-box;
+}
+
+.save-btn {
+  margin-bottom: 24rpx;
+}

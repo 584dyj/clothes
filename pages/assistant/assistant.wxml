@@ -1,0 +1,62 @@
+<view class="page">
+  <view wx:if="{{loadError}}" class="empty">{{loadError}}<button bindtap="onRetry">重新加载</button></view>
+  <block wx:if="{{!loadError}}">
+    <!-- 会话切换栏 -->
+    <scroll-view scroll-x class="session-bar" enhanced show-scrollbar="{{false}}">
+      <view class="session-inner">
+        <view
+          wx:for="{{sessions}}"
+          wx:key="_id"
+          class="session-chip {{currentId === item._id ? 'session-active' : ''}}"
+          data-id="{{item._id}}"
+          bindtap="onSessionTap"
+          bindlongpress="onSessionLongPress"
+          aria-label="{{item.title}}，双击改名，长按删除会话"
+        >
+          <text class="session-title">{{item.title}}</text>
+        </view>
+        <view class="session-chip {{currentId === '' ? 'session-active' : ''}}" data-id="new" bindtap="onSessionTap">{{currentId ? '＋ 新对话' : messages.length ? '新对话进行中' : '＋ 新对话'}}</view>
+      </view>
+    </scroll-view>
+    <view wx:if="{{loading}}" class="empty">加载中…</view>
+    <block wx:else>
+      <!-- 消息流 -->
+      <scroll-view scroll-y class="chat-scroll" scroll-into-view="{{scrollIntoView}}" scroll-with-animation>
+        <view wx:if="{{messages.length === 0}}" class="chat-empty">
+          <view class="chat-empty-title">我是你的穿搭助手</view>
+          <view class="chat-empty-sub">可以问我搭配建议，也可以拍照让我看看新买的衣服怎么搭</view>
+          <view class="suggestion" data-text="根据我的衣橱推荐一套通勤穿搭" bindtap="onSuggestionTap">根据我的衣橱推荐一套通勤穿搭</view>
+          <view class="suggestion" data-text="我最喜欢的品牌最近推出了什么新款吗？" data-mode="brandLatest" bindtap="onSuggestionTap">我最喜欢的品牌最近推出了什么新款吗？</view>
+        </view>
+        <view wx:for="{{messages}}" wx:key="index" id="msg-{{index}}" class="msg-row {{item.role === 'user' ? 'msg-user' : 'msg-assistant'}}">
+          <view class="bubble">
+            <image wx:if="{{item.imageFileID}}" class="bubble-img" src="{{item.imageFileID}}" mode="aspectFill" data-fileid="{{item.imageFileID}}" bindtap="onPreviewImage" />
+            <text wx:if="{{item.text}}" class="bubble-text">{{item.displayText}}</text>
+            <view wx:if="{{item.sources && item.sources.length}}" class="source-list">
+              <view class="source-heading">搜索来源，点击复制链接</view>
+              <view wx:for="{{item.sources}}" wx:for-item="source" wx:key="url" class="source-item" data-url="{{source.url}}" bindtap="onSourceTap">[{{source.number}}] {{source.title}}</view>
+            </view>
+          </view>
+        </view>
+        <view wx:if="{{sending ? !streaming : false}}" id="msg-thinking" class="msg-row msg-assistant"><view class="bubble bubble-thinking">{{thinkingText}}</view></view>
+        <view wx:if="{{sendError}}" class="send-error">{{sendError}}</view>
+        <view id="msg-end" style="height: 8rpx;"></view>
+      </scroll-view>
+
+      <!-- 输入区 -->
+      <view class="input-bar">
+        <view wx:if="{{imagePath}}" class="image-preview-wrap">
+          <image class="image-preview" src="{{imagePath}}" mode="aspectFill" bindtap="onPreviewSelectedImage" />
+          <view class="image-remove" bindtap="onRemoveImage">×</view>
+        </view>
+        <view class="input-row">
+          <view class="image-btn" bindtap="onChooseImage" role="button" aria-label="添加图片">
+            <image class="image-icon" src="/assets/icons/image.svg" mode="aspectFit" />
+          </view>
+          <input class="chat-input" value="{{input}}" disabled="{{sending}}" bindinput="onInput" confirm-type="send" bindconfirm="onSend" placeholder="问穿搭，或拍照给我看" />
+          <view class="send-btn {{sending || !canSend ? 'send-disabled' : ''}}" bindtap="onSend">发送</view>
+        </view>
+      </view>
+    </block>
+  </block>
+</view>

@@ -1,0 +1,66 @@
+<view class="page" bindtouchstart="onSwipeBackStart" bindtouchend="onSwipeBackEnd">
+  <view wx:if="{{loading}}" class="empty">加载中…</view>
+  <view wx:elif="{{loadError}}" class="empty">{{loadError}}<button bindtap="onRetry">重新加载</button></view>
+
+  <view class="form card" wx:if="{{!loading && !loadError}}">
+    <view class="field">
+      <text class="label">日期</text>
+      <view class="picker-value" data-target="date" bindtap="openPicker">{{date}}</view>
+    </view>
+    <view class="field">
+      <text class="label">穿搭</text>
+      <view class="picker-value {{outfitName ? '' : 'placeholder'}}" data-target="outfit" bindtap="openPicker">
+        {{outfitName || '可选，选穿搭自动带出单品'}}
+      </view>
+    </view>
+    <view class="field field-column">
+      <text class="label">备注</text>
+      <textarea class="textarea" placeholder="{{_focus.note ? '' : '穿着感受、天气等'}}" value="{{note}}" data-field="note" bindinput="onNoteInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+    </view>
+  </view>
+
+  <!-- 选择衣物：分类切换条 + 多选网格 -->
+  <scroll-view wx:if="{{!loading && !loadError}}" scroll-x class="cat-bar" enhanced show-scrollbar="{{false}}">
+    <view class="cat-bar-inner">
+      <view
+        wx:for="{{categories}}"
+        wx:key="*this"
+        class="cat-chip {{activeCategory === item ? 'cat-chip-active' : ''}}"
+        data-value="{{item}}"
+        bindtap="onCategoryTap"
+      >{{item}}</view>
+    </view>
+  </scroll-view>
+  <view wx:if="{{!loading && !loadError}}" class="section-title">穿过的衣物（已选 {{selectedIds.length}} 件）</view>
+  <block wx:if="{{!loading && !loadError}}">
+    <view wx:if="{{items.length === 0}}" class="empty">衣橱里还没有衣物，请先去「衣物」页添加</view>
+    <view wx:elif="{{viewItems.length === 0}}" class="empty">{{activeCategory === '已选' ? '还没有选中任何衣物' : '该分类下还没有衣物'}}</view>
+    <view wx:else class="grid">
+      <view
+        wx:for="{{viewItems}}"
+        wx:key="_id"
+        class="pick-card {{item.selected ? 'pick-selected' : ''}}"
+        data-id="{{item._id}}"
+        bindtap="onItemToggle"
+      >
+        <image wx:if="{{item.imageFileID}}" class="pick-image" src="{{item.imageFileID}}" mode="aspectFill" />
+        <view wx:else class="pick-image pick-placeholder">无图</view>
+        <view class="pick-name">{{item.name}}</view>
+        <view wx:if="{{item.selected}}" class="check">✓</view>
+      </view>
+    </view>
+
+    <button class="btn-primary save-btn" bindtap="onSave" disabled="{{saving || !ready}}">保存</button>
+    <button wx:if="{{id}}" class="btn-danger delete-btn" bindtap="onDelete" disabled="{{saving || !ready}}">删除</button>
+  </block>
+
+  <wheel-picker
+    show="{{picker.show}}"
+    title="{{picker.title}}"
+    columns="{{picker.columns}}"
+    values="{{picker.values}}"
+    bind:confirm="onPickerConfirm"
+    bind:cancel="onPickerCancel"
+    bind:columnchange="onPickerColumnChange"
+  />
+</view>

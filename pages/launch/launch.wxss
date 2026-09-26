@@ -1,0 +1,27 @@
+.launch-page {
+  min-height: 100vh;
+  background: #f6f4f0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.logo {
+  width: 240rpx;
+  height: 240rpx;
+  border-radius: 50%;
+}
+
+.app-name {
+  margin-top: 16rpx;
+  font-size: 40rpx;
+  font-weight: 700;
+  color: #3a3835;
+}
+
+.loading {
+  margin-top: 24rpx;
+  font-size: 24rpx;
+  color: #9a958c;
+}

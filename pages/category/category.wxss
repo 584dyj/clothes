@@ -1,0 +1,88 @@
+.page {
+  padding: 24rpx;
+  padding-bottom: 280rpx; /* 给底部悬浮栏（季节筛选 + 排序两行）留位 */
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
+/* 底部栏（季节筛选 + 排序）固定在底部，方便单手操作 */
+.bottom-bar {
+  position: fixed;
+  left: 24rpx;
+  right: 24rpx;
+  bottom: 24rpx;
+  bottom: calc(24rpx + constant(safe-area-inset-bottom));
+  bottom: calc(24rpx + env(safe-area-inset-bottom));
+  z-index: 10;
+}
+
+.season-bar,
+.sort-bar {
+  display: flex;
+  padding: 8rpx;
+  box-shadow: 0 6rpx 20rpx rgba(58, 56, 53, 0.15);
+}
+
+.season-bar {
+  margin-bottom: 16rpx;
+}
+
+.sort-item {
+  flex: 1;
+  text-align: center;
+  padding: 14rpx 0;
+  font-size: 26rpx;
+  color: #6b675f;
+  border-radius: 12rpx;
+}
+
+.sort-active {
+  background: #3a3835;
+  color: #ffffff;
+}
+
+.grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.item-card {
+  width: 48%;
+  margin-bottom: 24rpx;
+  overflow: hidden;
+}
+
+.item-image {
+  width: 100%;
+  height: 450rpx; /* 3:4 竖版 */
+  display: block;
+}
+
+.item-image-placeholder {
+  background: #efede8;
+  color: #9a958c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26rpx;
+}
+
+.item-info {
+  padding: 16rpx 20rpx 20rpx;
+}
+
+.item-name {
+  font-size: 28rpx;
+  font-weight: 500;
+  margin-bottom: 10rpx;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.price-tag {
+  background: #3a3835;
+  color: #ffffff;
+}

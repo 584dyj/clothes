@@ -1,0 +1,15 @@
+<view wx:if="{{show}}" class="wp">
+  <view class="wp-mask" bindtap="onCancel"></view>
+  <view class="wp-sheet">
+    <view class="wp-bar">
+      <view class="wp-btn" bindtap="onCancel">取消</view>
+      <view class="wp-title">{{title}}</view>
+      <view class="wp-btn wp-confirm" bindtap="onConfirm">确定</view>
+    </view>
+    <picker-view class="wp-wheel" value="{{innerValues}}" bindchange="onChange" indicator-style="height: 80rpx;">
+      <picker-view-column wx:for="{{columns}}" wx:key="index" wx:for-item="col">
+        <view class="wp-item" wx:for="{{col}}" wx:key="*this" wx:for-item="opt">{{opt}}</view>
+      </picker-view-column>
+    </picker-view>
+  </view>
+</view>

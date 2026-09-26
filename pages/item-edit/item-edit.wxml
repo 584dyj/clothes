@@ -1,0 +1,113 @@
+<view class="page" bindtouchstart="onSwipeBackStart" bindtouchend="onSwipeBackEnd">
+  <view wx:if="{{loading}}" class="empty">加载中…</view>
+  <view wx:elif="{{loadError}}" class="empty">{{loadError}}<button bindtap="onRetry">重新加载</button></view>
+  <!-- 图片 -->
+  <view class="image-box card" bindtap="onChooseImage">
+    <image
+      wx:if="{{imagePath || imageFileID}}"
+      class="preview"
+      src="{{imagePath || imageFileID}}"
+      mode="aspectFill"
+    />
+    <view wx:else class="image-placeholder">
+      <view class="plus">+</view>
+      <view>拍照或从相册选择</view>
+    </view>
+  </view>
+
+  <!-- 表单 -->
+  <view class="form card">
+    <view class="field">
+      <text class="label">名称</text>
+      <input class="input" placeholder="{{_focus.name ? '' : '如：白色T恤'}}" value="{{name}}" data-field="name" bindinput="onNameInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+    </view>
+
+    <view class="field field-column">
+      <text class="label">类别</text>
+      <view class="season-row category-row">
+        <view wx:for="{{categories}}" wx:key="*this"
+          class="season-chip {{category === item ? 'season-active' : ''}}"
+          data-value="{{item}}" bindtap="onCategoryTap"
+        >{{item}}</view>
+      </view>
+    </view>
+
+    <view class="field" wx:if="{{category === '配饰'}}">
+      <text class="label">配饰类型</text>
+      <view class="picker-value {{subcategory ? '' : 'placeholder'}}" data-target="subcategory" bindtap="openPicker">
+        {{subcategory || '请选择配饰类型'}}
+      </view>
+    </view>
+
+    <view class="field field-column">
+      <text class="label">尺码</text>
+      <view class="season-row category-row">
+        <view wx:for="{{sizes}}" wx:key="*this"
+          class="season-chip {{size === item ? 'season-active' : ''}}"
+          data-value="{{item}}" bindtap="onSizeTap"
+        >{{item}}</view>
+      </view>
+      <text wx:if="{{size && size !== 'XS' && size !== 'S' && size !== 'M' && size !== 'L' && size !== 'XL'}}" class="placeholder">原尺码：{{size}}</text>
+    </view>
+
+    <view class="field field-column">
+      <text class="label">适合季节</text>
+      <view class="season-row">
+        <view
+          wx:for="{{seasonStates}}"
+          wx:key="value"
+          class="season-chip {{item.active ? 'season-active' : ''}}"
+          data-value="{{item.value}}"
+          bindtap="onSeasonTap"
+        >{{item.value}}</view>
+      </view>
+    </view>
+
+    <view class="field">
+      <text class="label">颜色</text>
+      <view class="picker-value {{color || colorCustom ? '' : 'placeholder'}}" data-target="color" bindtap="openPicker">
+        {{colorCustom ? '其他' : (color || '请选择颜色')}}
+      </view>
+    </view>
+
+    <view class="field" wx:if="{{colorCustom}}">
+      <text class="label">自定义颜色</text>
+      <input class="input" placeholder="{{_focus.color ? '' : '输入颜色名称'}}" value="{{color}}" data-field="color" bindinput="onColorInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+    </view>
+
+    <view class="field">
+      <text class="label">品牌</text>
+      <input class="input" placeholder="{{_focus.brand ? '' : '如：优衣库（可选）'}}" value="{{brand}}" data-field="brand" bindinput="onBrandInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+    </view>
+
+    <view class="field">
+      <text class="label">价格</text>
+      <input class="input" type="digit" placeholder="{{_focus.price ? '' : '可选，单位：元'}}" value="{{price}}" data-field="price" bindinput="onPriceInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+    </view>
+
+    <view class="field">
+      <text class="label">购买日期</text>
+      <view class="picker-value {{purchaseDate ? '' : 'placeholder'}}" data-target="date" bindtap="openPicker">
+        {{purchaseDate || '可选'}}
+      </view>
+    </view>
+
+    <view class="field field-column">
+      <text class="label">备注</text>
+      <textarea class="textarea" placeholder="{{_focus.note ? '' : '材质、购买渠道等'}}" value="{{note}}" data-field="note" bindinput="onNoteInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+    </view>
+  </view>
+
+  <button class="btn-primary save-btn" bindtap="onSave" disabled="{{saving || !ready}}">保存</button>
+  <button wx:if="{{id}}" class="btn-danger delete-btn" bindtap="onDelete" disabled="{{saving || !ready}}">删除</button>
+
+  <wheel-picker
+    show="{{picker.show}}"
+    title="{{picker.title}}"
+    columns="{{picker.columns}}"
+    values="{{picker.values}}"
+    bind:confirm="onPickerConfirm"
+    bind:cancel="onPickerCancel"
+    bind:columnchange="onPickerColumnChange"
+  />
+</view>

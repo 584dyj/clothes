@@ -1,0 +1,144 @@
+.page {
+  padding: 24rpx;
+}
+
+.overview {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 24rpx;
+}
+
+.overview-card {
+  width: 31%;
+  padding: 32rpx 0;
+  text-align: center;
+}
+
+.overview-num {
+  font-size: 40rpx;
+  font-weight: 600;
+  margin-bottom: 8rpx;
+}
+
+.overview-label {
+  font-size: 24rpx;
+  color: #9a958c;
+}
+
+.section {
+  padding: 28rpx;
+  margin-bottom: 24rpx;
+}
+
+/* 总花费区 */
+.spent-total {
+  text-align: center;
+  padding-bottom: 24rpx;
+  margin-bottom: 16rpx;
+  border-bottom: 1rpx solid #efede8;
+}
+
+.spent-num {
+  font-size: 48rpx;
+  font-weight: 600;
+  margin-bottom: 8rpx;
+}
+
+.spent-label {
+  font-size: 24rpx;
+  color: #9a958c;
+}
+
+.spent-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 12rpx 8rpx;
+  font-size: 26rpx;
+  color: #6b675f;
+}
+
+.spent-value {
+  color: #3a3835;
+  font-weight: 500;
+}
+
+.section-title {
+  font-size: 30rpx;
+  font-weight: 500;
+  margin-bottom: 24rpx;
+}
+
+.bar-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20rpx;
+}
+
+.bar-label {
+  width: 100rpx;
+  font-size: 26rpx;
+  color: #6b675f;
+  flex-shrink: 0;
+}
+
+.bar-track {
+  flex: 1;
+}
+
+.bar-count {
+  width: 170rpx;
+  text-align: right;
+  font-size: 24rpx;
+  color: #6b675f;
+  flex-shrink: 0;
+}
+
+.brand-label {
+  width: 180rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.brand-count {
+  width: 80rpx;
+}
+
+.season-grid {
+  display: flex;
+}
+
+.season-cell {
+  flex: 1;
+  text-align: center;
+  padding: 20rpx 0;
+}
+
+.season-num {
+  font-size: 40rpx;
+  font-weight: 600;
+  margin-bottom: 8rpx;
+}
+
+.season-name {
+  font-size: 26rpx;
+  color: #9a958c;
+}
+
+.subsection-title {
+  font-size: 26rpx;
+  color: #9a958c;
+  margin: 20rpx 0 8rpx;
+}
+
+.idle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14rpx 0;
+  border-bottom: 1rpx solid #efede8;
+}
+
+.idle-row:last-child {
+  border-bottom: none;
+}

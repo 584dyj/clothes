@@ -1,0 +1,66 @@
+.wp {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 100;
+}
+
+.wp-mask {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.wp-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #ffffff;
+  border-radius: 24rpx 24rpx 0 0;
+  padding-bottom: constant(safe-area-inset-bottom);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.wp-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24rpx 32rpx;
+  border-bottom: 1rpx solid #efede8;
+}
+
+.wp-title {
+  font-size: 32rpx;
+  font-weight: 500;
+  color: #3a3835;
+}
+
+.wp-btn {
+  font-size: 30rpx;
+  color: #9a958c;
+  padding: 8rpx 16rpx;
+}
+
+.wp-confirm {
+  color: #3a3835;
+  font-weight: 600;
+}
+
+.wp-wheel {
+  height: 480rpx;
+}
+
+/* 滚轮选项字体在这里调 */
+.wp-item {
+  height: 80rpx;
+  line-height: 80rpx;
+  text-align: center;
+  font-size: 38rpx;
+  color: #3a3835;
+}

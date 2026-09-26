@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "记一笔",
+  "usingComponents": {
+    "wheel-picker": "/components/wheel-picker/wheel-picker"
+  }
+}

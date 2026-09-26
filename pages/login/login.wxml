@@ -1,0 +1,31 @@
+<view class="login-page">
+
+  <image class="logo" src="/assets/icons/logo.svg" mode="aspectFit" />
+  <view class="app-name">我的可楼斯</view>
+  <view class="app-sub">记录衣物与穿搭，登录后开始使用</view>
+
+  <!-- 模式切换：滑块随选中项滑动 -->
+  <view class="tabs">
+    <view class="tab-slider {{mode === 'register' ? 'slider-right' : ''}}"></view>
+    <view class="tab {{mode === 'login' ? 'active' : ''}}" data-mode="login" bindtap="switchMode">登录</view>
+    <view class="tab {{mode === 'register' ? 'active' : ''}}" data-mode="register" bindtap="switchMode">注册</view>
+  </view>
+
+  <!-- 登录 -->
+  <view class="form {{fading ? 'form-fade-out' : ''}}" wx:if="{{mode === 'login'}}">
+    <input class="input" placeholder="{{_focus.username ? '' : '账号'}}" value="{{username}}" data-field="username" bindinput="onInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+    <input class="input" password placeholder="{{_focus.password ? '' : '密码'}}" value="{{password}}" data-field="password" bindinput="onInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+    <button class="btn-primary submit" bindtap="onSubmit" disabled="{{submitting}}">登 录</button>
+    <view class="hint">已绑定微信的账号，打开会自动登录</view>
+  </view>
+
+  <!-- 注册 -->
+  <view class="form {{fading ? 'form-fade-out' : ''}}" wx:else>
+    <input class="input" placeholder="{{_focus.registerCode ? '' : '注册码'}}" value="{{registerCode}}" data-field="registerCode" bindinput="onInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+    <input class="input" placeholder="{{_focus.username ? '' : '账号（2-20 个字符）'}}" value="{{username}}" data-field="username" bindinput="onInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+    <input class="input" password placeholder="{{_focus.password ? '' : '密码（至少 6 位）'}}" value="{{password}}" data-field="password" bindinput="onInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+    <input class="input" password placeholder="{{_focus.confirm ? '' : '确认密码'}}" value="{{confirm}}" data-field="confirm" bindinput="onInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+    <button class="btn-primary submit" bindtap="onSubmit" disabled="{{submitting}}">注 册</button>
+  </view>
+
+</view>

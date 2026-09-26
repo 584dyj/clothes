@@ -1,0 +1,182 @@
+.page {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 24rpx 24rpx 60rpx;
+}
+
+.profile-card {
+  padding: 40rpx 28rpx 34rpx;
+  text-align: center;
+  margin-bottom: 24rpx;
+}
+
+/* 头像：外层 view 定 160×160 正圆容器，image 固定正方形 + 圆角；
+   button 作为透明绝对定位点击层，其默认样式（内边距/行高/背景）不影响视觉。
+   image 用固定宽高而非百分比，避免 aspectFill 按固有比例撑成椭圆。 */
+.avatar-wrap {
+  position: relative;
+  width: 160rpx;
+  height: 160rpx;
+  margin: 0 auto;
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+.avatar {
+  display: block;
+  width: 160rpx;
+  height: 160rpx;
+  border-radius: 50%;
+}
+
+.avatar-placeholder {
+  background: #3a3835;
+  color: #ffffff;
+  font-size: 64rpx;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  line-height: 1;
+}
+
+.avatar-button {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 160rpx;
+  height: 160rpx;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  opacity: 0; /* 透明但可点击 */
+  line-height: 1;
+}
+
+.avatar-button::after {
+  border: none;
+}
+
+.profile-name {
+  margin-top: 22rpx;
+  font-size: 36rpx;
+  font-weight: 600;
+}
+
+.avatar-hint {
+  margin-top: 8rpx;
+  color: #9a958c;
+  font-size: 22rpx;
+}
+
+.account-card {
+  padding: 4rpx 28rpx;
+  margin-bottom: 32rpx;
+}
+
+.info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 92rpx;
+  border-bottom: 1rpx solid #efede8;
+}
+
+.info-row:last-child {
+  border-bottom: none;
+}
+
+.info-label {
+  color: #6b675f;
+  font-size: 27rpx;
+}
+
+.info-value {
+  max-width: 400rpx;
+  color: #3a3835;
+  font-size: 28rpx;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.code-value {
+  font-family: monospace;
+  letter-spacing: 1rpx;
+}
+
+.section-title {
+  margin: 0 8rpx 18rpx;
+  color: #6b675f;
+  font-size: 28rpx;
+}
+
+.insight-row {
+  display: flex;
+  justify-content: space-between;
+}
+
+.insight-card {
+  width: 48%;
+  overflow: hidden;
+}
+
+.insight-image {
+  width: 100%;
+  height: 260rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.insight-placeholder {
+  background: #efede8;
+  color: #9a958c;
+  font-size: 64rpx;
+  font-weight: 600;
+}
+
+.brand-placeholder {
+  background: #3a3835;
+  color: #ffffff;
+  font-size: 40rpx; /* 品牌首字徽章，比占位 ¥ 小一号 */
+}
+
+.insight-body {
+  padding: 18rpx 20rpx 22rpx;
+}
+
+.insight-label {
+  color: #9a958c;
+  font-size: 22rpx;
+  margin-bottom: 8rpx;
+}
+
+.insight-name {
+  font-size: 28rpx;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.insight-meta {
+  margin-top: 8rpx;
+  color: #6b675f;
+  font-size: 24rpx;
+}
+
+.logout-btn {
+  width: 100%;
+  margin-top: 56rpx;
+}
+
+.cleanup-hint {
+  margin-top: 16rpx;
+  color: #6b675f;
+  font-size: 24rpx;
+  text-align: center;
+}

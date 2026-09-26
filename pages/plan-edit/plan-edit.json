@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "安排穿搭",
+  "usingComponents": {
+    "wheel-picker": "/components/wheel-picker/wheel-picker"
+  }
+}

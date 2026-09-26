@@ -1,0 +1,141 @@
+.page {
+  padding: 24rpx;
+  padding-bottom: 60rpx;
+}
+
+.form {
+  padding: 8rpx 28rpx;
+  margin-bottom: 32rpx;
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  padding: 28rpx 0;
+  border-bottom: 1rpx solid #efede8;
+}
+
+.field:last-child {
+  border-bottom: none;
+}
+
+.field-column {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.label {
+  width: 160rpx;
+  color: #6b675f;
+  font-size: 28rpx;
+  flex-shrink: 0;
+}
+
+.picker-value {
+  font-size: 28rpx;
+}
+
+.placeholder {
+  color: #b3aea5;
+}
+
+.textarea {
+  width: 100%;
+  height: 140rpx;
+  margin-top: 16rpx;
+  font-size: 28rpx;
+  box-sizing: border-box;
+}
+
+.section-title {
+  font-size: 28rpx;
+  color: #6b675f;
+  margin: 8rpx 8rpx 20rpx;
+}
+
+/* 分类切换条：横向滚动，单选 */
+.cat-bar {
+  white-space: nowrap;
+  margin-bottom: 20rpx;
+}
+
+.cat-bar-inner {
+  display: inline-flex;
+}
+
+.cat-chip {
+  display: inline-block;
+  padding: 10rpx 28rpx;
+  margin-right: 16rpx;
+  border-radius: 32rpx;
+  background: #ffffff;
+  color: #6b675f;
+  font-size: 26rpx;
+}
+
+.cat-chip-active {
+  background: #3a3835;
+  color: #ffffff;
+}
+
+.grid {
+  display: flex;
+  flex-wrap: wrap;
+  margin-bottom: 32rpx;
+}
+
+.pick-card {
+  position: relative;
+  width: 31%;
+  margin: 0 1.1% 20rpx;
+  border-radius: 12rpx;
+  overflow: hidden;
+  background: #ffffff;
+  border: 4rpx solid transparent;
+  box-sizing: border-box;
+}
+
+.pick-selected {
+  border-color: #3a3835;
+}
+
+.pick-image {
+  width: 100%;
+  height: 290rpx; /* 3:4 竖版 */
+  display: block;
+}
+
+.pick-placeholder {
+  background: #efede8;
+  color: #9a958c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24rpx;
+}
+
+.pick-name {
+  padding: 10rpx 14rpx;
+  font-size: 24rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.check {
+  position: absolute;
+  top: 8rpx;
+  right: 8rpx;
+  width: 40rpx;
+  height: 40rpx;
+  border-radius: 50%;
+  background: #3a3835;
+  color: #ffffff;
+  font-size: 26rpx;
+  line-height: 40rpx;
+  text-align: center;
+}
+
+.save-btn {
+  margin-bottom: 24rpx;
+}

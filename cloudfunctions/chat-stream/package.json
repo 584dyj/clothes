@@ -1,0 +1,10 @@
+{
+  "name": "chat-stream",
+  "version": "1.0.0",
+  "main": "index.js",
+  "private": true,
+  "dependencies": {
+    "@cloudbase/functions-framework": "1.18.2",
+    "@cloudbase/node-sdk": "3.18.3"
+  }
+}

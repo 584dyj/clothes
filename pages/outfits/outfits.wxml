@@ -1,0 +1,62 @@
+<view class="page">
+  <view wx:if="{{loadError}}" class="empty">{{loadError}}<button bindtap="onRetry">重新加载</button></view>
+  <block wx:if="{{!loadError}}">
+  <view wx:if="{{loading}}" class="empty">加载中…</view>
+  <view wx:elif="{{left.length === 0 && right.length === 0}}" class="empty">
+    还没有穿搭记录，点右下角 + 搭配一套吧
+  </view>
+
+  <view wx:else class="waterfall">
+    <!-- 左列 -->
+    <view class="wf-column">
+      <view
+        wx:for="{{left}}"
+        wx:key="_id"
+        class="wf-card card"
+        data-id="{{item._id}}"
+        bindtap="onOutfitTap"
+      >
+        <!-- 3:4 封面：优先穿搭照片，否则单品缩略图，最后占位 -->
+        <view class="wf-cover">
+          <image wx:if="{{item.coverFileID}}" class="wf-cover-img" src="{{item.coverFileID}}" mode="aspectFill" />
+          <view wx:else class="wf-cover-placeholder">无图</view>
+        </view>
+        <view class="wf-body">
+          <view class="wf-name">{{item.name}}</view>
+          <view class="wf-tags">
+            <text class="tag" wx:if="{{item.occasion}}">{{item.occasion}}</text>
+            <text class="tag">{{item.count}} 件</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 右列 -->
+    <view class="wf-column">
+      <view
+        wx:for="{{right}}"
+        wx:key="_id"
+        class="wf-card card"
+        data-id="{{item._id}}"
+        bindtap="onOutfitTap"
+      >
+        <view class="wf-cover">
+          <image wx:if="{{item.coverFileID}}" class="wf-cover-img" src="{{item.coverFileID}}" mode="aspectFill" />
+          <view wx:else class="wf-cover-placeholder">无图</view>
+        </view>
+        <view class="wf-body">
+          <view class="wf-name">{{item.name}}</view>
+          <view class="wf-tags">
+            <text class="tag" wx:if="{{item.occasion}}">{{item.occasion}}</text>
+            <text class="tag">{{item.count}} 件</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{hasMore}}" class="wf-loading">上拉加载更多</view>
+
+  <view class="fab" bindtap="onAddTap">+</view>
+  </block>
+</view>

@@ -1,0 +1,20 @@
+<view wx:if="{{show}}" class="mp">
+  <view class="mp-mask" bindtap="onCancel"></view>
+  <view class="mp-sheet">
+    <view class="mp-bar">
+      <view class="mp-btn" bindtap="onCancel">取消</view>
+      <view class="mp-title">{{title}}</view>
+      <view class="mp-btn mp-confirm" bindtap="onConfirm">确定</view>
+    </view>
+    <view class="mp-options">
+      <view
+        wx:for="{{list}}"
+        wx:key="value"
+        class="mp-opt {{item.active ? 'mp-opt-active' : ''}}"
+        data-value="{{item.value}}"
+        bindtap="onToggle"
+      >{{item.value}}</view>
+    </view>
+    <view class="mp-hint">可多选，全部不选即不过滤</view>
+  </view>
+</view>

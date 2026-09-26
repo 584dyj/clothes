@@ -1,0 +1,70 @@
+<view class="page">
+  <view wx:if="{{loadError}}" class="empty">{{loadError}}<button bindtap="onRetry">重新加载</button></view>
+  <block wx:if="{{!loadError}}">
+  <view wx:if="{{loading}}" class="empty">加载中…</view>
+
+  <block wx:else>
+    <view class="content">
+      <view class="profile-card card">
+        <!-- 圆形容器由外层 view 控制，button 仅作透明点击层，避免 button 默认样式干扰 -->
+        <view class="avatar-wrap">
+          <image wx:if="{{avatarFileID}}" class="avatar" src="{{avatarFileID}}" mode="aspectFill" />
+          <view wx:else class="avatar avatar-placeholder">{{avatarText}}</view>
+          <button
+            class="avatar-button"
+            open-type="chooseAvatar"
+            bindchooseavatar="onChooseAvatar"
+            disabled="{{avatarSaving}}"
+          ></button>
+        </view>
+        <view class="profile-name">{{username}}</view>
+        <view class="avatar-hint">点击头像更换</view>
+      </view>
+
+      <view class="account-card card">
+        <view class="info-row">
+          <text class="info-label">用户名</text>
+          <text class="info-value">{{username}}</text>
+        </view>
+        <view class="info-row">
+          <text class="info-label">使用的注册码</text>
+          <text class="info-value code-value">{{registerCode}}</text>
+        </view>
+      </view>
+
+      <view class="section-title">衣橱偏好</view>
+      <view class="insight-row">
+        <view class="insight-card card">
+          <image
+            wx:if="{{mostExpensive && mostExpensive.imageFileID}}"
+            class="insight-image"
+            src="{{mostExpensive.imageFileID}}"
+            mode="aspectFill"
+          />
+          <view wx:else class="insight-image insight-placeholder">¥</view>
+          <view class="insight-body">
+            <view class="insight-label">最贵的衣服</view>
+            <view class="insight-name">{{mostExpensive ? mostExpensive.name : '暂无衣物'}}</view>
+            <view wx:if="{{mostExpensive}}" class="insight-meta">¥{{mostExpensive.price}}</view>
+          </view>
+        </view>
+
+        <view class="insight-card card">
+          <view class="insight-image insight-placeholder brand-placeholder">{{favoriteBrand ? favoriteBrand.initial : 'B'}}</view>
+          <view class="insight-body">
+            <view class="insight-label">最喜欢的品牌</view>
+            <view class="insight-name">{{favoriteBrand ? favoriteBrand.name : '暂无品牌'}}</view>
+            <view wx:if="{{favoriteBrand}}" class="insight-meta">{{favoriteBrand.count}} 件衣物</view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <block wx:if="{{pendingCleanup}}">
+      <button class="btn-danger logout-btn" bindtap="onRetryCleanup" loading="{{cleaning}}" disabled="{{cleaning}}">重试清理</button>
+      <view class="cleanup-hint">部分旧图片或穿搭引用尚未清理，不影响正常使用</view>
+    </block>
+    <button class="btn-danger logout-btn" bindtap="onLogout" disabled="{{loggingOut}}">退出登录</button>
+  </block>
+  </block>
+</view>

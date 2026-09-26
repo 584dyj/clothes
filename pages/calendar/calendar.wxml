@@ -1,0 +1,116 @@
+<view class="page" bindtouchstart="onSwipeBackStart" bindtouchend="onSwipeBackEnd">
+  <view wx:if="{{loadError}}" class="empty">{{loadError}}<button bindtap="onRetry">重新加载</button></view>
+  <block wx:if="{{!loadError}}">
+  <view wx:if="{{loading}}" class="empty">加载中…</view>
+
+  <block wx:else>
+    <view class="calendar-note">开销按衣物购买日期和账本记录统计；计划/实穿为穿搭安排与打卡。</view>
+    <view wx:if="{{undatedTotal > 0}}" class="calendar-note">未填有效日期的 ¥{{undatedTotal}} 未计入月历。</view>
+
+    <!-- 开销分段 -->
+    <view class="segment-row">
+      <view
+        wx:for="{{segments}}"
+        wx:key="value"
+        class="segment-chip {{segment === item.value ? 'segment-active' : ''}}"
+        data-value="{{item.value}}"
+        bindtap="onSegmentTap"
+      >{{item.label}}</view>
+    </view>
+
+    <!-- 汇总区 -->
+    <view class="summary card">
+      <view class="summary-item">
+        <view class="summary-num">¥{{monthTotal}}</view>
+        <view class="summary-label">{{title}}开销</view>
+      </view>
+      <view class="summary-divider"></view>
+      <view class="summary-item">
+        <view class="summary-num">¥{{yearTotal}}</view>
+        <view class="summary-label">{{year}}年开销</view>
+      </view>
+    </view>
+
+    <!-- 今日消费 -->
+    <view class="today-row">
+      <text class="today-label">{{todayLabel}}消费</text>
+      <text class="today-amount">¥{{todayTotal}}</text>
+    </view>
+
+    <!-- 月份切换：点标题弹出年月滚轮，快速切换 -->
+    <view class="month-nav">
+      <button class="nav-btn" disabled="{{!canPrev}}" bindtap="onPrevMonth" aria-label="上个月">‹</button>
+      <view class="nav-title" bindtap="openPicker">{{title}} ▾</view>
+      <button class="nav-btn" disabled="{{!canNext}}" bindtap="onNextMonth" aria-label="下个月">›</button>
+    </view>
+
+    <!-- 日历：flex 栅格，7 列换行 -->
+    <view class="calendar card">
+      <view class="week-row">
+        <view wx:for="{{weekLabels}}" wx:key="*this" class="week-cell">{{item}}</view>
+      </view>
+      <view class="day-grid">
+        <view
+          wx:for="{{cells}}"
+          wx:key="index"
+          class="day-cell {{item.day === 0 ? 'day-empty' : ''}} {{item.date === selectedDate ? 'day-selected' : ''}}"
+          data-date="{{item.date}}" bindtap="onDayTap" role="button" aria-label="{{item.date}}消费{{item.total}}元"
+        >
+          <block wx:if="{{item.day > 0}}">
+            <view class="day-num {{item.isToday ? 'day-today' : ''}}">{{item.day}}</view>
+            <view wx:if="{{item.total > 0}}" class="day-amount">¥{{item.total}}</view>
+            <view wx:elif="{{item.isToday}}" class="day-amount today-zero">¥0</view>
+            <view class="day-marks">
+              <view wx:if="{{item.hasPlan}}" class="mark-dot mark-plan"></view>
+              <view wx:if="{{item.hasWorn}}" class="mark-dot mark-worn"></view>
+            </view>
+          </block>
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <view wx:if="{{!loading}}" class="card day-details">
+    <view class="details-head">
+      <view class="section-title">{{selectedDate}} · ¥{{selectedTotal}}</view>
+      <view class="details-actions">
+        <button class="mini-btn" bindtap="onAddExpense" wx:if="{{segment !== 'clothes'}}">记一笔</button>
+        <button class="mini-btn" bindtap="onAddPlan">安排穿搭</button>
+        <button class="mini-btn" bindtap="onAddWear">记录穿着</button>
+      </view>
+    </view>
+
+    <!-- 开销（按分段口径） -->
+    <view wx:if="{{dayItems.length > 0}}" class="details-section">
+      <view class="details-subtitle">衣物</view>
+      <button wx:for="{{dayItems}}" wx:key="_id" class="day-item" data-id="{{item._id}}" bindtap="onItemTap">{{item.name}} · ¥{{item.price}} ›</button>
+    </view>
+    <view wx:if="{{dayExpenses.length > 0}}" class="details-section">
+      <view class="details-subtitle">账本</view>
+      <button wx:for="{{dayExpenses}}" wx:key="_id" class="day-item expense-item" data-id="{{item._id}}" bindtap="onExpenseTap">[账本] {{item.category}}{{item.note ? ' · ' + item.note : ''}} · ¥{{item.amount}} ›</button>
+    </view>
+
+    <!-- 计划与实穿 -->
+    <view wx:if="{{dayPlans.length > 0}}" class="details-section">
+      <view class="details-subtitle">计划穿搭</view>
+      <button wx:for="{{dayPlans}}" wx:key="_id" class="day-item plan-item" data-id="{{item._id}}" bindtap="onPlanTap"><image class="day-item-icon" src="/assets/icons/plan.svg" mode="aspectFit" /> {{item.outfitName}}{{item.note ? ' · ' + item.note : ''}} ›</button>
+    </view>
+    <view wx:if="{{dayWears.length > 0}}" class="details-section">
+      <view class="details-subtitle">实际穿着</view>
+      <button wx:for="{{dayWears}}" wx:key="_id" class="day-item wear-item" data-id="{{item._id}}" bindtap="onWearTap"><image class="day-item-icon" src="/assets/icons/wear.svg" mode="aspectFit" /> {{item.outfitName || item.itemCount + ' 件单品'}}{{item.note ? ' · ' + item.note : ''}} ›</button>
+    </view>
+
+    <view wx:if="{{dayItems.length === 0 && dayExpenses.length === 0 && dayPlans.length === 0 && dayWears.length === 0}}" class="calendar-note">当天没有记录</view>
+  </view>
+
+  <!-- 年月快速选择滚轮 -->
+  <wheel-picker
+    show="{{picker.show}}"
+    title="{{picker.title}}"
+    columns="{{picker.columns}}"
+    values="{{picker.values}}"
+    bind:confirm="onPickerConfirm"
+    bind:cancel="onPickerCancel"
+  />
+  </block>
+</view>

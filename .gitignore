@@ -1,0 +1,9 @@
+﻿node_modules/
+**/node_modules/
+**/tmp-logs/
+.claude/
+project.private.config.json
+邀请码.txt
+.env
+.env.*
+*.log

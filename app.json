@@ -1,0 +1,64 @@
+{
+  "pages": [
+    "pages/launch/launch",
+    "pages/wardrobe/wardrobe",
+    "pages/assistant/assistant",
+    "pages/outfits/outfits",
+    "pages/stats/stats",
+    "pages/profile/profile",
+    "pages/calendar/calendar",
+    "pages/category/category",
+    "pages/item-edit/item-edit",
+    "pages/expense-edit/expense-edit",
+    "pages/outfit-edit/outfit-edit",
+    "pages/plan-edit/plan-edit",
+    "pages/wear-edit/wear-edit",
+    "pages/login/login"
+  ],
+  "window": {
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTitleText": "我的可楼斯",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f6f4f0"
+  },
+  "tabBar": {
+    "color": "#9a958c",
+    "selectedColor": "#3a3835",
+    "backgroundColor": "#ffffff",
+    "list": [
+      {
+        "pagePath": "pages/wardrobe/wardrobe",
+        "text": "衣物",
+        "iconPath": "assets/tabs/wardrobe.png",
+        "selectedIconPath": "assets/tabs/wardrobe-active.png"
+      },
+      {
+        "pagePath": "pages/assistant/assistant",
+        "text": "AI助手",
+        "iconPath": "assets/tabs/assistant.png",
+        "selectedIconPath": "assets/tabs/assistant-active.png"
+      },
+      {
+        "pagePath": "pages/outfits/outfits",
+        "text": "穿搭",
+        "iconPath": "assets/tabs/outfits.png",
+        "selectedIconPath": "assets/tabs/outfits-active.png"
+      },
+      {
+        "pagePath": "pages/stats/stats",
+        "text": "统计",
+        "iconPath": "assets/tabs/stats.png",
+        "selectedIconPath": "assets/tabs/stats-active.png"
+      },
+      {
+        "pagePath": "pages/profile/profile",
+        "text": "我的",
+        "iconPath": "assets/tabs/profile.png",
+        "selectedIconPath": "assets/tabs/profile-active.png"
+      }
+    ]
+  },
+  "style": "v2",
+  "lazyCodeLoading": "requiredComponents",
+  "sitemapLocation": "sitemap.json"
+}

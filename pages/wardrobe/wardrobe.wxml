@@ -1,0 +1,119 @@
+<view class="page">
+  <view wx:if="{{loadError}}" class="empty">{{loadError}}<button bindtap="onRetry">重新加载</button></view>
+  <block wx:if="{{!loadError}}">
+  <!-- 搜索框 -->
+  <view class="search-bar card">
+    <input
+      class="search-input"
+      placeholder="{{_focus.keyword ? '' : '搜索衣物名称'}}"
+      value="{{keyword}}"
+      data-field="keyword"
+      bindinput="onSearchInput"
+      bindfocus="onFieldFocus"
+      bindblur="onFieldBlur"
+    />
+  </view>
+
+  <!-- 筛选栏：等间隔占满一行，均可多选 -->
+  <view class="filter-row">
+    <view
+      wx:for="{{seasonChips}}"
+      wx:key="value"
+      class="chip {{item.active ? 'chip-active' : ''}}"
+      data-value="{{item.value}}"
+      bindtap="onSeasonTap"
+    >{{item.value}}</view>
+    <view class="chip {{filterCategories.length ? 'chip-active' : ''}}" data-target="category" bindtap="openPicker">{{filterCategories.length === 0 ? '类型' : (filterCategories.length > 1 ? filterCategories[0] + '等' + filterCategories.length : filterCategories[0])}}</view>
+    <view class="chip {{filterColors.length ? 'chip-active' : ''}}" data-target="color" bindtap="openPicker">{{filterColors.length === 0 ? '颜色' : (filterColors.length > 1 ? filterColors[0] + '等' + filterColors.length : filterColors[0])}}</view>
+    <view class="chip {{filterBrands.length ? 'chip-active' : ''}}" data-target="brand" bindtap="openPicker">{{filterBrands.length === 0 ? '品牌' : (filterBrands.length > 1 ? filterBrands[0] + '等' + filterBrands.length : filterBrands[0])}}</view>
+  </view>
+
+  <!-- 分组模式：按类别分行，每行最近 5 件 + 更多；空分类显示占位 -->
+  <block wx:if="{{mode === 'group'}}">
+    <view wx:if="{{loading}}" class="empty">加载中…</view>
+    <block wx:else>
+      <view wx:for="{{sections}}" wx:key="category" class="section">
+        <view class="section-header" data-category="{{item.category}}" bindtap="onMoreTap">
+          <text class="section-title">{{item.category}}</text>
+          <text wx:if="{{item.total > 0}}" class="section-more">全部 {{item.total}} 件 ›</text>
+        </view>
+        <view wx:if="{{item.total === 0}}" class="empty-row">还无此类衣物</view>
+        <scroll-view wx:else scroll-x class="section-row" enhanced show-scrollbar="{{false}}">
+        <view class="row-inner">
+          <view
+            wx:for="{{item.list}}"
+            wx:for-item="cloth"
+            wx:key="_id"
+            class="mini-card card"
+            data-id="{{cloth._id}}"
+            bindtap="onItemTap"
+          >
+            <image
+              wx:if="{{cloth.imageFileID}}"
+              class="mini-image"
+              src="{{cloth.imageFileID}}"
+              mode="aspectFill"
+            />
+            <view wx:else class="mini-image mini-placeholder">无图</view>
+            <view class="mini-name">{{cloth.name}}</view>
+          </view>
+          <view
+            wx:if="{{item.total > 5}}"
+            class="mini-card more-card"
+            data-category="{{item.category}}"
+            bindtap="onMoreTap"
+          >
+            <view class="more-text">更多 ›</view>
+          </view>
+        </view>
+        </scroll-view>
+      </view>
+    </block>
+  </block>
+
+  <!-- 筛选模式：平铺结果 -->
+  <block wx:else>
+    <view wx:if="{{loading}}" class="empty">加载中…</view>
+    <view wx:elif="{{filtered.length === 0}}" class="empty">
+      {{items.length === 0 ? '衣橱还是空的，点右下角 + 添加第一件衣物吧' : '没有符合条件的衣物'}}
+    </view>
+    <view wx:else class="grid">
+      <view
+        wx:for="{{filtered}}"
+        wx:key="_id"
+        class="item-card card"
+        data-id="{{item._id}}"
+        bindtap="onItemTap"
+      >
+        <image
+          wx:if="{{item.imageFileID}}"
+          class="item-image"
+          src="{{item.imageFileID}}"
+          mode="aspectFill"
+        />
+        <view wx:else class="item-image item-image-placeholder">无图</view>
+        <view class="item-info">
+          <view class="item-name">{{item.name}}</view>
+          <view>
+            <text class="tag">{{item.subcategory || item.category}}</text>
+            <text class="tag" wx:if="{{item.size}}">{{item.size}}</text>
+            <text class="tag" wx:if="{{item.color}}">{{item.color}}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <!-- 添加按钮 -->
+  <view class="fab" bindtap="onAddTap">+</view>
+
+  <multi-picker
+    show="{{multiPicker.show}}"
+    title="{{multiPicker.title}}"
+    options="{{multiPicker.options}}"
+    selected="{{multiPicker.selected}}"
+    bind:confirm="onMultiConfirm"
+    bind:cancel="onMultiCancel"
+  />
+  </block>
+</view>

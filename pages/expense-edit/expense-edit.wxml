@@ -1,0 +1,55 @@
+<view class="page" bindtouchstart="onSwipeBackStart" bindtouchend="onSwipeBackEnd">
+  <view wx:if="{{loading}}" class="empty">加载中…</view>
+  <view wx:elif="{{loadError}}" class="empty">{{loadError}}<button bindtap="onRetry">重新加载</button></view>
+
+  <view class="form card" wx:if="{{!loading && !loadError}}">
+    <view class="field field-column">
+      <text class="label">分类</text>
+      <view class="season-row category-row">
+        <view wx:for="{{categories}}" wx:key="*this"
+          class="season-chip {{category === item ? 'season-active' : ''}}"
+          data-value="{{item}}" bindtap="onCategoryTap"
+        >{{item}}</view>
+      </view>
+    </view>
+
+    <view class="field">
+      <text class="label">金额</text>
+      <input class="input" type="digit" placeholder="{{_focus.amount ? '' : '单位：元'}}" value="{{amount}}" data-field="amount" bindinput="onAmountInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+    </view>
+
+    <view class="field">
+      <text class="label">日期</text>
+      <view class="picker-value {{date ? '' : 'placeholder'}}" data-target="date" bindtap="openPicker">
+        {{date || '请选择日期'}}
+      </view>
+    </view>
+
+    <view class="field">
+      <text class="label">关联衣物</text>
+      <view class="picker-value {{itemName ? '' : 'placeholder'}}" data-target="item" bindtap="openPicker">
+        {{itemName || '可选'}}
+      </view>
+    </view>
+
+    <view class="field field-column">
+      <text class="label">备注</text>
+      <textarea class="textarea" placeholder="{{_focus.note ? '' : '如：干洗、改裤脚'}}" value="{{note}}" data-field="note" bindinput="onNoteInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+    </view>
+  </view>
+
+  <block wx:if="{{!loading && !loadError}}">
+    <button class="btn-primary save-btn" bindtap="onSave" disabled="{{saving || !ready}}">保存</button>
+    <button wx:if="{{id}}" class="btn-danger delete-btn" bindtap="onDelete" disabled="{{saving || !ready}}">删除</button>
+  </block>
+
+  <wheel-picker
+    show="{{picker.show}}"
+    title="{{picker.title}}"
+    columns="{{picker.columns}}"
+    values="{{picker.values}}"
+    bind:confirm="onPickerConfirm"
+    bind:cancel="onPickerCancel"
+    bind:columnchange="onPickerColumnChange"
+  />
+</view>

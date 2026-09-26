@@ -1,0 +1,5 @@
+<view class="launch-page">
+  <image class="logo" src="/assets/launch-logo.jpg" mode="aspectFill" />
+  <view class="app-name">我的可楼斯</view>
+  <view class="loading">加载中…</view>
+</view>

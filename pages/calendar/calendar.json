@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "开销月历",
+  "usingComponents": {
+    "wheel-picker": "/components/wheel-picker/wheel-picker"
+  },
+  "enablePullDownRefresh": true
+}

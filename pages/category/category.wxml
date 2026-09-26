@@ -1,0 +1,67 @@
+<view class="page" bindtouchstart="onSwipeBackStart" bindtouchend="onSwipeBackEnd">
+  <view wx:if="{{loadError}}" class="empty">{{loadError}}<button bindtap="onRetry">重新加载</button></view>
+  <block wx:if="{{!loadError}}">
+  <!-- 底部固定栏：季节筛选（仅上衣/下装/连衣裙）/ 类型筛选（仅配饰）+ 排序 -->
+  <view class="bottom-bar">
+    <view wx:if="{{showSeasonFilter}}" class="season-bar card">
+      <view
+        wx:for="{{seasonChips}}"
+        wx:key="value"
+        class="sort-item {{item.active ? 'sort-active' : ''}}"
+        data-value="{{item.value}}"
+        bindtap="onSeasonTap"
+      >{{item.value}}</view>
+    </view>
+    <view wx:if="{{showSubFilter}}" class="season-bar card">
+      <view
+        wx:for="{{subChips}}"
+        wx:key="value"
+        class="sort-item {{item.active ? 'sort-active' : ''}}"
+        data-value="{{item.value}}"
+        bindtap="onSubTap"
+      >{{item.value}}</view>
+    </view>
+    <view class="sort-bar card">
+      <view
+        class="sort-item {{sortKey === 'time' ? 'sort-active' : ''}}"
+        data-key="time"
+        bindtap="onSortTap"
+      >添加时间 {{timeMark}}</view>
+      <view
+        class="sort-item {{sortKey === 'price' ? 'sort-active' : ''}}"
+        data-key="price"
+        bindtap="onSortTap"
+      >金额 {{priceMark}}</view>
+    </view>
+  </view>
+
+  <view wx:if="{{loading}}" class="empty">加载中…</view>
+  <view wx:elif="{{items.length === 0}}" class="empty">{{filterSeasons.length || filterSubs.length ? '没有符合筛选条件的衣物' : '该类别下还没有衣物'}}</view>
+  <view wx:else class="grid">
+    <view
+      wx:for="{{items}}"
+      wx:key="_id"
+      class="item-card card"
+      data-id="{{item._id}}"
+      bindtap="onItemTap"
+    >
+      <image
+        wx:if="{{item.imageFileID}}"
+        class="item-image"
+        src="{{item.imageFileID}}"
+        mode="aspectFill"
+      />
+      <view wx:else class="item-image item-image-placeholder">无图</view>
+      <view class="item-info">
+        <view class="item-name">{{item.name}}</view>
+        <view>
+          <text class="tag" wx:if="{{item.subcategory}}">{{item.subcategory}}</text>
+          <text class="tag" wx:if="{{item.size}}">{{item.size}}</text>
+          <text class="tag" wx:if="{{item.color}}">{{item.color}}</text>
+          <text class="tag price-tag" wx:if="{{item.price > 0}}">¥{{item.price}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+  </block>
+</view>

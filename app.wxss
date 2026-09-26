@@ -1,0 +1,44 @@
+page {
+  background: #f6f4f0;
+  color: #3a3835;
+  font-size: 28rpx;
+  font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+}
+
+.card {
+  background: #ffffff;
+  border-radius: 16rpx;
+  box-shadow: 0 2rpx 12rpx rgba(58, 56, 53, 0.06);
+}
+
+.btn-primary {
+  background: #3a3835;
+  color: #ffffff;
+  border-radius: 44rpx;
+  font-size: 30rpx;
+}
+
+.btn-danger {
+  background: #ffffff;
+  color: #c0504d;
+  border: 1rpx solid #c0504d;
+  border-radius: 44rpx;
+  font-size: 30rpx;
+}
+
+.empty {
+  text-align: center;
+  color: #9a958c;
+  padding: 120rpx 0;
+  font-size: 28rpx;
+}
+
+.tag {
+  display: inline-block;
+  padding: 4rpx 16rpx;
+  border-radius: 20rpx;
+  background: #efede8;
+  color: #6b675f;
+  font-size: 22rpx;
+  margin-right: 12rpx;
+}

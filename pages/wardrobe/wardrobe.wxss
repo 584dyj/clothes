@@ -1,0 +1,187 @@
+.page {
+  padding: 24rpx;
+  padding-bottom: 160rpx;
+}
+
+.search-bar {
+  padding: 8rpx 28rpx;
+  margin-bottom: 20rpx;
+}
+
+.search-input {
+  height: 72rpx;
+  font-size: 28rpx;
+}
+
+.filter-row {
+  display: flex;
+  margin-bottom: 16rpx;
+}
+
+.filter-row .chip {
+  flex: 1;
+  text-align: center;
+  padding: 10rpx 0;
+  margin-right: 12rpx;
+}
+
+.filter-row .chip:last-child {
+  margin-right: 0;
+}
+
+.chip {
+  display: inline-block;
+  padding: 10rpx 28rpx;
+  margin-right: 16rpx;
+  border-radius: 32rpx;
+  background: #ffffff;
+  color: #6b675f;
+  font-size: 26rpx;
+}
+
+.chip-active {
+  background: #3a3835;
+  color: #ffffff;
+}
+
+/* 分组模式 */
+.section {
+  margin-bottom: 28rpx;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8rpx 4rpx 16rpx;
+}
+
+.section-title {
+  font-size: 30rpx;
+  font-weight: 600;
+}
+
+.section-more {
+  font-size: 24rpx;
+  color: #9a958c;
+}
+
+.empty-row {
+  background: #efede8;
+  border-radius: 16rpx;
+  color: #9a958c;
+  font-size: 26rpx;
+  text-align: center;
+  padding: 44rpx 0;
+}
+
+.section-row {
+  white-space: nowrap;
+}
+
+.row-inner {
+  display: inline-flex;
+}
+
+.mini-card {
+  display: inline-block;
+  width: 200rpx;
+  margin-right: 16rpx;
+  overflow: hidden;
+  vertical-align: top;
+}
+
+.mini-image {
+  width: 200rpx;
+  height: 266rpx; /* 3:4 竖版 */
+  display: block;
+}
+
+.mini-placeholder {
+  background: #efede8;
+  color: #9a958c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24rpx;
+}
+
+.mini-name {
+  font-size: 24rpx;
+  padding: 12rpx 16rpx 16rpx;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.more-card {
+  height: 334rpx; /* 与竖版小卡片等高 */
+  background: #efede8;
+}
+
+.more-text {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9a958c;
+  font-size: 26rpx;
+}
+
+/* 筛选模式 */
+.grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.item-card {
+  width: 48%;
+  margin-bottom: 24rpx;
+  overflow: hidden;
+}
+
+.item-image {
+  width: 100%;
+  height: 450rpx; /* 3:4 竖版 */
+  display: block;
+}
+
+.item-image-placeholder {
+  background: #efede8;
+  color: #9a958c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26rpx;
+}
+
+.item-info {
+  padding: 16rpx 20rpx 20rpx;
+}
+
+.item-name {
+  font-size: 28rpx;
+  font-weight: 500;
+  margin-bottom: 10rpx;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fab {
+  position: fixed;
+  right: 40rpx;
+  bottom: 60rpx;
+  width: 100rpx;
+  height: 100rpx;
+  border-radius: 50%;
+  background: #3a3835;
+  color: #ffffff;
+  font-size: 60rpx;
+  line-height: 96rpx;
+  text-align: center;
+  box-shadow: 0 6rpx 20rpx rgba(58, 56, 53, 0.3);
+}

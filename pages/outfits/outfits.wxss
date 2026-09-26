@@ -1,0 +1,91 @@
+.page {
+  padding: 24rpx 24rpx 160rpx;
+}
+
+/* 双列瀑布流 */
+.waterfall {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start; /* 两列各自高度，不错位对齐 */
+}
+
+.wf-column {
+  width: 48.5%;
+}
+
+.wf-card {
+  margin-bottom: 20rpx;
+  overflow: hidden;
+}
+
+/* 3:4 封面：用 padding-top 比例撑出高度，兼容各种屏幕宽度 */
+.wf-cover {
+  position: relative;
+  width: 100%;
+  padding-top: 133.33%; /* 3:4 */
+  background: #efede8;
+}
+
+.wf-cover-img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.wf-cover-placeholder {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9a958c;
+  font-size: 26rpx;
+}
+
+.wf-body {
+  padding: 16rpx 18rpx 20rpx;
+}
+
+.wf-name {
+  font-size: 28rpx;
+  font-weight: 500;
+  margin-bottom: 12rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2; /* 名称最多两行 */
+}
+
+.wf-tags {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.wf-loading {
+  text-align: center;
+  color: #9a958c;
+  font-size: 24rpx;
+  padding: 16rpx 0 8rpx;
+}
+
+.fab {
+  position: fixed;
+  right: 40rpx;
+  bottom: 60rpx;
+  width: 100rpx;
+  height: 100rpx;
+  border-radius: 50%;
+  background: #3a3835;
+  color: #ffffff;
+  font-size: 60rpx;
+  line-height: 96rpx;
+  text-align: center;
+  box-shadow: 0 6rpx 20rpx rgba(58, 56, 53, 0.3);
+}
