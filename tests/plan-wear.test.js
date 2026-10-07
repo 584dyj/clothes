@@ -4,22 +4,29 @@ const { loadPage } = require('./support/page')
 
 // ---------- calendar 月历：分段 + 计划/实穿 ----------
 
+// 月历打开的是当前月份，夹具日期须落在当月，避免跨月后断言失效
+const thisMonth = day => {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
 test('月历分段切换与计划实穿标记、明细', async () => {
+  const day20 = thisMonth(20)
   const page = loadPage('calendar', {
-    listItems: async () => [{ _id: 'i1', name: '衬衫', price: 100, purchaseDate: '2026-09-20' }],
-    listExpenses: async () => [{ _id: 'e1', category: '洗护', amount: 50, date: '2026-09-20' }],
-    listPlans: async () => [{ _id: 'p1', date: '2026-09-20', outfitId: 'f1', note: '' }],
-    listWearRecords: async () => [{ _id: 'w1', date: '2026-09-20', itemIds: ['i1'], outfitId: '' }],
+    listItems: async () => [{ _id: 'i1', name: '衬衫', price: 100, purchaseDate: day20 }],
+    listExpenses: async () => [{ _id: 'e1', category: '洗护', amount: 50, date: day20 }],
+    listPlans: async () => [{ _id: 'p1', date: day20, outfitId: 'f1', note: '' }],
+    listWearRecords: async () => [{ _id: 'w1', date: day20, itemIds: ['i1'], outfitId: '' }],
     listOutfits: async () => [{ _id: 'f1', name: '通勤' }]
   })
   page.onLoad()
   await page.loadData()
   assert.equal(page.data.monthTotal, 150) // 全部 = 衣物 + 账本
-  const cell = page.data.cells.find(row => row.date === '2026-09-20')
+  const cell = page.data.cells.find(row => row.date === day20)
   assert.equal(cell.hasPlan, true)
   assert.equal(cell.hasWorn, true)
 
-  page.onDayTap({ currentTarget: { dataset: { date: '2026-09-20' } } })
+  page.onDayTap({ currentTarget: { dataset: { date: day20 } } })
   assert.equal(page.data.dayPlans[0].outfitName, '通勤')
   assert.equal(page.data.dayWears[0].itemCount, 1)
   assert.equal(page.data.selectedTotal, 150)

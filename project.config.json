@@ -50,6 +50,10 @@
         "value": ".claude"
       },
       {
+        "type": "folder",
+        "value": ".codegraph"
+      },
+      {
         "type": "file",
         "value": "邀请码.txt"
       },

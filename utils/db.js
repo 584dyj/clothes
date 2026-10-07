@@ -244,7 +244,7 @@ async function chatSend(payload, onDelta = () => {}) {
     if (start.messages) return { chatId: start.chatId, title: start.title, messages: start.messages }
     if (typeof start.ticket !== 'string' || !start.ticket) throw new Error('流式凭证签发失败')
     try {
-      const proof = await streamReply(start.ticket, payload.mode === 'brandLatest' ? () => {} : onDelta)
+      const proof = await streamReply(start.ticket, onDelta)
       const result = await call('chatFinish', { proof })
       return { chatId: result.chatId, title: result.title, messages: result.messages }
     } catch (e) {
@@ -258,10 +258,11 @@ async function chatSend(payload, onDelta = () => {}) {
 }
 const chatDelete = id => call('chatDelete', { chatId: id })
 const chatRename = (id, title) => call('chatRename', { chatId: id, title })
+const purchaseAssess = candidate => call('purchaseAssess', { candidate }).then(result => result.assessment)
 
 module.exports = { chooseImage, uploadImage, removeImage, retryCleanup, cleanupStatus, clearCache,
   listItems, getItem, addItem, updateItem, deleteItem, listOutfits, listOutfitsPage, getOutfit, addOutfit, updateOutfit, deleteOutfit,
   listExpenses, addExpense, updateExpense, deleteExpense,
   listWearRecords, addWearRecord, updateWearRecord, deleteWearRecord,
   listPlans, addPlan, updatePlan, deletePlan,
-  chatList, chatGet, chatSend, chatDelete, chatRename }
+  chatList, chatGet, chatSend, chatDelete, chatRename, purchaseAssess }

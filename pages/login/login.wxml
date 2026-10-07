@@ -1,6 +1,6 @@
 <view class="login-page">
 
-  <image class="logo" src="/assets/icons/logo.svg" mode="aspectFit" />
+  <image class="logo" src="/assets/launch-logo.jpg" mode="aspectFill" />
   <view class="app-name">我的可楼斯</view>
   <view class="app-sub">记录衣物与穿搭，登录后开始使用</view>
 

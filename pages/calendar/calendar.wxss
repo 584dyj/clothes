@@ -211,8 +211,8 @@
 .day-item { text-align: left; font-size: 28rpx; margin-top: 12rpx; }
 .day-item-icon { width: 30rpx; height: 30rpx; margin-right: 10rpx; vertical-align: -6rpx; }
 .details-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; }
-.details-actions { display: flex; }
-.mini-btn { font-size: 24rpx; color: #3a3835; background: #efede8; border-radius: 28rpx; line-height: 56rpx; padding: 0 20rpx; margin: 0 0 0 12rpx; }
+.details-actions { display: flex; gap: 12rpx; width: 100%; margin-top: 16rpx; }
+.mini-btn { flex: 1; min-width: 0; font-size: 24rpx; color: #3a3835; background: #efede8; border-radius: 28rpx; line-height: 56rpx; padding: 0; margin: 0; }
 .details-section { margin-top: 16rpx; }
 .details-subtitle { font-size: 24rpx; color: #9a958c; margin-top: 8rpx; }
 .expense-item { color: #6b675f; }

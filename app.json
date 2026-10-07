@@ -34,7 +34,7 @@
       },
       {
         "pagePath": "pages/assistant/assistant",
-        "text": "AI助手",
+        "text": "穿搭助手",
         "iconPath": "assets/tabs/assistant.png",
         "selectedIconPath": "assets/tabs/assistant-active.png"
       },

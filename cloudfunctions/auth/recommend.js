@@ -191,4 +191,4 @@ async function handle({ db, openid, user, event }, request = requestCompletion, 
   }
 }
 
-module.exports = { handle, cleanResult, requestCompletion, loadItems, inventory, getInventory, STYLING_RULES }
+module.exports = { handle, cleanResult, requestCompletion, loadItems, inventory, findGaps, getInventory, STYLING_RULES }

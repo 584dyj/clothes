@@ -2,6 +2,7 @@
 **/node_modules/
 **/tmp-logs/
 .claude/
+.codegraph/
 project.private.config.json
 邀请码.txt
 .env

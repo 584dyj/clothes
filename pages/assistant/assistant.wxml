@@ -1,62 +1,141 @@
 <view class="page">
   <view wx:if="{{loadError}}" class="empty">{{loadError}}<button bindtap="onRetry">重新加载</button></view>
   <block wx:if="{{!loadError}}">
-    <!-- 会话切换栏 -->
-    <scroll-view scroll-x class="session-bar" enhanced show-scrollbar="{{false}}">
-      <view class="session-inner">
-        <view
-          wx:for="{{sessions}}"
-          wx:key="_id"
-          class="session-chip {{currentId === item._id ? 'session-active' : ''}}"
-          data-id="{{item._id}}"
-          bindtap="onSessionTap"
-          bindlongpress="onSessionLongPress"
-          aria-label="{{item.title}}，双击改名，长按删除会话"
-        >
-          <text class="session-title">{{item.title}}</text>
+    <view class="mode-switch" role="tablist" aria-label="助手功能">
+      <view class="mode-option {{activeMode === 'outfit' ? 'mode-active' : ''}}" data-mode="outfit" bindtap="onModeTap" role="tab" aria-selected="{{activeMode === 'outfit'}}">穿搭推荐</view>
+      <view class="mode-option {{activeMode === 'purchase' ? 'mode-active' : ''}}" data-mode="purchase" bindtap="onModeTap" role="tab" aria-selected="{{activeMode === 'purchase'}}">购买评估</view>
+    </view>
+
+    <block wx:if="{{activeMode === 'outfit'}}">
+      <scroll-view scroll-x class="session-bar" enhanced show-scrollbar="{{false}}">
+        <view class="session-inner">
+          <view wx:for="{{visibleSessions}}" wx:key="_id" class="session-chip {{currentId === item._id ? 'session-active' : ''}}"
+            data-id="{{item._id}}" bindtap="onSessionTap" bindlongpress="onSessionLongPress"
+            aria-label="{{item.title}}，双击改名，长按删除会话">
+            <text class="session-title">{{item.title}}</text>
+          </view>
+          <view class="session-chip {{currentId === '' ? 'session-active' : ''}}" data-id="new" bindtap="onSessionTap">{{currentId ? '＋ 新对话' : messages.length ? '新对话进行中' : '＋ 新对话'}}</view>
         </view>
-        <view class="session-chip {{currentId === '' ? 'session-active' : ''}}" data-id="new" bindtap="onSessionTap">{{currentId ? '＋ 新对话' : messages.length ? '新对话进行中' : '＋ 新对话'}}</view>
-      </view>
-    </scroll-view>
+      </scroll-view>
+    </block>
+
     <view wx:if="{{loading}}" class="empty">加载中…</view>
     <block wx:else>
-      <!-- 消息流 -->
-      <scroll-view scroll-y class="chat-scroll" scroll-into-view="{{scrollIntoView}}" scroll-with-animation>
-        <view wx:if="{{messages.length === 0}}" class="chat-empty">
-          <view class="chat-empty-title">我是你的穿搭助手</view>
-          <view class="chat-empty-sub">可以问我搭配建议，也可以拍照让我看看新买的衣服怎么搭</view>
-          <view class="suggestion" data-text="根据我的衣橱推荐一套通勤穿搭" bindtap="onSuggestionTap">根据我的衣橱推荐一套通勤穿搭</view>
-          <view class="suggestion" data-text="我最喜欢的品牌最近推出了什么新款吗？" data-mode="brandLatest" bindtap="onSuggestionTap">我最喜欢的品牌最近推出了什么新款吗？</view>
-        </view>
-        <view wx:for="{{messages}}" wx:key="index" id="msg-{{index}}" class="msg-row {{item.role === 'user' ? 'msg-user' : 'msg-assistant'}}">
-          <view class="bubble">
-            <image wx:if="{{item.imageFileID}}" class="bubble-img" src="{{item.imageFileID}}" mode="aspectFill" data-fileid="{{item.imageFileID}}" bindtap="onPreviewImage" />
-            <text wx:if="{{item.text}}" class="bubble-text">{{item.displayText}}</text>
-            <view wx:if="{{item.sources && item.sources.length}}" class="source-list">
-              <view class="source-heading">搜索来源，点击复制链接</view>
-              <view wx:for="{{item.sources}}" wx:for-item="source" wx:key="url" class="source-item" data-url="{{source.url}}" bindtap="onSourceTap">[{{source.number}}] {{source.title}}</view>
+      <scroll-view wx:if="{{activeMode === 'purchase'}}" scroll-y class="purchase-scroll">
+        <view wx:if="{{!purchaseResult}}" class="purchase-card">
+          <view class="purchase-title">这件衣服值得买吗？</view>
+          <view class="purchase-sub">根据衣橱重复度、搭配空间和当月开销给出评估</view>
+
+          <view class="field-label">名称 <text class="field-optional">选填</text></view>
+          <input class="purchase-input" value="{{purchaseForm.name}}" maxlength="60" data-field="name" bindinput="onPurchaseFieldInput" placeholder="例如：蓝色牛仔外套" />
+
+          <view class="field-label">分类</view>
+          <view class="choice-row">
+            <view wx:for="{{categories}}" wx:key="*this" class="choice {{purchaseForm.category === item ? 'choice-active' : ''}}" data-value="{{item}}" bindtap="onPurchaseCategoryTap">{{item}}</view>
+          </view>
+
+          <block wx:if="{{purchaseForm.category === '配饰'}}">
+            <view class="field-label">配饰类型</view>
+            <view class="choice-row">
+              <view wx:for="{{accessoryTypes}}" wx:key="*this" class="choice {{purchaseForm.subcategory === item ? 'choice-active' : ''}}" data-value="{{item}}" bindtap="onPurchaseSubcategoryTap">{{item}}</view>
+            </view>
+          </block>
+
+          <view class="field-label">适合季节</view>
+          <view class="choice-row">
+            <view wx:for="{{seasonOptions}}" wx:key="value" class="choice {{item.selected ? 'choice-active' : ''}}" data-value="{{item.value}}" bindtap="onPurchaseSeasonTap">{{item.value}}</view>
+          </view>
+
+          <view class="purchase-grid">
+            <view class="purchase-grid-item">
+              <view class="field-label">颜色</view>
+              <picker range="{{colors}}" bindchange="onPurchaseColorChange">
+                <view class="purchase-picker {{purchaseForm.color ? '' : 'purchase-placeholder'}}">{{purchaseForm.color || '请选择'}}</view>
+              </picker>
+            </view>
+            <view class="purchase-grid-item">
+              <view class="field-label">价格</view>
+              <input class="purchase-input" type="digit" value="{{purchaseForm.price}}" data-field="price" bindinput="onPurchaseFieldInput" placeholder="元" />
             </view>
           </view>
+
+          <view class="purchase-grid">
+            <view class="purchase-grid-item">
+              <view class="field-label">主要场合 <text class="field-optional">选填</text></view>
+              <picker range="{{occasions}}" bindchange="onPurchaseOccasionChange">
+                <view class="purchase-picker {{purchaseForm.occasion ? '' : 'purchase-placeholder'}}">{{purchaseForm.occasion || '请选择'}}</view>
+              </picker>
+            </view>
+            <view class="purchase-grid-item">
+              <view class="field-label">月预算 <text class="field-optional">选填</text></view>
+              <input class="purchase-input" type="digit" value="{{purchaseForm.monthlyBudget}}" data-field="monthlyBudget" bindinput="onPurchaseFieldInput" placeholder="元" />
+            </view>
+          </view>
+
+          <view class="field-label">备注 <text class="field-optional">选填</text></view>
+          <textarea class="purchase-textarea" value="{{purchaseForm.note}}" maxlength="200" data-field="note" bindinput="onPurchaseFieldInput" placeholder="版型、材质或购买顾虑" />
+          <view wx:if="{{purchaseError}}" class="purchase-error">{{purchaseError}}</view>
+          <view class="purchase-submit {{purchaseAssessing ? 'send-disabled' : ''}}" bindtap="onPurchaseSubmit" role="button">{{purchaseAssessing ? '正在评估…' : '开始评估'}}</view>
         </view>
-        <view wx:if="{{sending ? !streaming : false}}" id="msg-thinking" class="msg-row msg-assistant"><view class="bubble bubble-thinking">{{thinkingText}}</view></view>
-        <view wx:if="{{sendError}}" class="send-error">{{sendError}}</view>
-        <view id="msg-end" style="height: 8rpx;"></view>
+
+        <view wx:else class="purchase-card result-card">
+          <view class="verdict verdict-{{purchaseResult.verdict.code}}">{{purchaseResult.verdict.label}}</view>
+          <view wx:if="{{purchaseResult.modelAdvice}}" class="model-advice">
+            <view class="model-summary">{{purchaseResult.modelAdvice.summary}}</view>
+            <view class="model-advice-text">{{purchaseResult.modelAdvice.advice}}</view>
+          </view>
+          <view class="result-reason" wx:for="{{purchaseResult.reasons}}" wx:key="*this">{{index + 1}}. {{item}}</view>
+          <view class="result-metrics">
+            <view><text>重复风险</text><text>{{purchaseResult.duplicateRisk.label}}</text></view>
+            <view wx:if="{{purchaseResult.matchCount !== null}}"><text>可搭配衣物</text><text>{{purchaseResult.matchCount}} 件</text></view>
+            <view><text>本月已开销</text><text>¥{{purchaseResult.spending.monthSpent}}</text></view>
+            <view><text>购买后开销</text><text>¥{{purchaseResult.spending.afterPurchase}}</text></view>
+          </view>
+          <view wx:if="{{purchaseResult.similarItems.length}}" class="similar-block">
+            <view class="field-label">相似衣物</view>
+            <view class="similar-item" wx:for="{{purchaseResult.similarItems}}" wx:key="id">
+              <text>{{item.name}} · {{item.color}}</text><text>近 90 天 {{item.wearCount90}} 次</text>
+            </view>
+          </view>
+          <view wx:if="{{purchaseResult.truncated}}" class="purchase-note">衣橱超过 120 件，缺口判断已关闭，避免误判。</view>
+          <view wx:if="{{purchaseError}}" class="purchase-error">{{purchaseError}}</view>
+          <view class="purchase-submit" bindtap="onPurchaseEdit" role="button">修改条件</view>
+        </view>
+        <view class="purchase-bottom-space"></view>
       </scroll-view>
 
-      <!-- 输入区 -->
-      <view class="input-bar">
-        <view wx:if="{{imagePath}}" class="image-preview-wrap">
-          <image class="image-preview" src="{{imagePath}}" mode="aspectFill" bindtap="onPreviewSelectedImage" />
-          <view class="image-remove" bindtap="onRemoveImage">×</view>
-        </view>
-        <view class="input-row">
-          <view class="image-btn" bindtap="onChooseImage" role="button" aria-label="添加图片">
-            <image class="image-icon" src="/assets/icons/image.svg" mode="aspectFit" />
+      <block wx:else>
+        <scroll-view scroll-y class="chat-scroll" scroll-into-view="{{scrollIntoView}}" scroll-with-animation>
+          <view wx:if="{{messages.length === 0}}" class="chat-empty">
+            <view class="chat-empty-title">我是你的穿搭助手</view>
+            <view class="chat-empty-sub">可以问我搭配建议，也可以拍照让我看看新买的衣服怎么搭</view>
+            <view class="suggestion" data-text="根据我的衣橱推荐一套通勤穿搭" bindtap="onSuggestionTap">根据我的衣橱推荐一套通勤穿搭</view>
           </view>
-          <input class="chat-input" value="{{input}}" disabled="{{sending}}" bindinput="onInput" confirm-type="send" bindconfirm="onSend" placeholder="问穿搭，或拍照给我看" />
-          <view class="send-btn {{sending || !canSend ? 'send-disabled' : ''}}" bindtap="onSend">发送</view>
+          <view wx:for="{{messages}}" wx:key="index" id="msg-{{index}}" class="msg-row {{item.role === 'user' ? 'msg-user' : 'msg-assistant'}}">
+            <view class="bubble">
+              <image wx:if="{{item.imageFileID}}" class="bubble-img" src="{{item.imageFileID}}" mode="aspectFill" data-fileid="{{item.imageFileID}}" bindtap="onPreviewImage" />
+              <text wx:if="{{item.text}}" class="bubble-text">{{item.displayText}}</text>
+            </view>
+          </view>
+          <view wx:if="{{awaitingReply && !streaming}}" id="msg-thinking" class="msg-row msg-assistant"><view class="bubble bubble-thinking">{{thinkingText}}</view></view>
+          <view wx:if="{{sendError}}" class="send-error">{{sendError}}</view>
+          <view id="msg-end" style="height: 8rpx;"></view>
+        </scroll-view>
+
+        <view class="input-bar">
+          <view wx:if="{{imagePath}}" class="image-preview-wrap">
+            <image class="image-preview" src="{{imagePath}}" mode="aspectFill" bindtap="onPreviewSelectedImage" />
+            <view class="image-remove" bindtap="onRemoveImage">×</view>
+          </view>
+          <view class="input-row">
+            <view class="image-btn" bindtap="onChooseImage" role="button" aria-label="添加图片">
+              <image class="image-icon" src="/assets/icons/image.svg" mode="aspectFit" />
+            </view>
+            <input class="chat-input" value="{{input}}" disabled="{{sending}}" bindinput="onInput" confirm-type="send" bindconfirm="onSend" placeholder="问穿搭，或拍照给我看" />
+            <view class="send-btn {{sending || !canSend ? 'send-disabled' : ''}}" bindtap="onSend">发送</view>
+          </view>
         </view>
-      </view>
+      </block>
     </block>
   </block>
 </view>

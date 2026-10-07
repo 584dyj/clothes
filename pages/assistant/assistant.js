@@ -1,7 +1,11 @@
 const db = require('../../utils/db')
 const auth = require('../../utils/auth')
+const app = getApp()
 
-// 对话式 AI 助手（tab 页）：会话存 ai_chats，支持文字提问与拍照搭配。
+// 穿搭助手（tab 页）：穿搭会话存 ai_chats，购买评估只读取现有数据，不保存评估记录。
+// 上次查看的会话持久化到本地存储，页面被系统重建后 onShow 自动恢复。
+const VIEW_KEY = 'assistantView'
+
 Page({
   async onShow() {
     if (!await auth.ensureLogin()) {
@@ -24,7 +28,19 @@ Page({
   onUnload() { this.clearSessionTap() },
 
   data: {
+    activeMode: 'outfit',
+    categories: app.globalData.categories,
+    accessoryTypes: app.globalData.accessoryTypes,
+    seasons: app.globalData.seasons,
+    seasonOptions: app.globalData.seasons.map(value => ({ value, selected: false })),
+    colors: app.globalData.colors,
+    occasions: app.globalData.occasions,
+    purchaseForm: { name: '', category: '', subcategory: '', color: '', seasons: [], occasion: '', price: '', monthlyBudget: '', note: '' },
+    purchaseAssessing: false,
+    purchaseError: '',
+    purchaseResult: null,
     sessions: [],
+    visibleSessions: [],
     currentId: '',
     title: '新会话',
     messages: [],
@@ -33,6 +49,7 @@ Page({
     canSend: false,
     sending: false,
     streaming: false,
+    awaitingReply: false,
     thinkingText: '思考中…',
     sendError: '',
     loading: true,
@@ -41,29 +58,70 @@ Page({
     renamingSaving: false
   },
 
+  // 服务端已过滤旧品牌搜索会话，这里只维护穿搭会话列表。
+  applySessions(sessions, extra = {}) {
+    this.setData({ sessions, visibleSessions: sessions, ...extra })
+  },
+
+  onModeTap(e) {
+    const mode = e.currentTarget.dataset.mode
+    if (!['outfit', 'purchase'].includes(mode) || mode === this.data.activeMode) return
+    if (mode === 'purchase') {
+      this.onNewSession()
+      this.applySessions(this.data.sessions, { activeMode: mode })
+      return
+    }
+    this.applySessions(this.data.sessions, { activeMode: 'outfit' })
+  },
+
+  saveView(id) {
+    wx.setStorageSync(VIEW_KEY, id ? { currentId: id } : '')
+  },
+
   async loadSessions() {
     this.setData({ loadError: '' })
     try {
       const sessions = await db.chatList()
-      this.setData({ sessions, loading: false })
+      this.applySessions(sessions, { loading: false })
       if (this.data.currentId && !this.data.sending) {
         await this.loadChat(this.data.currentId)
-      } else if (!sessions.length && !this.data.sending) {
-        this.setData({ title: '新会话', messages: [] })
+      } else if (!this.data.sending) {
+        // 页面重建后恢复上次查看的会话；已删除的会话清掉失效记录
+        const saved = wx.getStorageSync(VIEW_KEY)
+        const savedId = saved && saved.currentId
+        const session = savedId && sessions.find(item => item._id === savedId)
+        if (session) {
+          this.applySessions(sessions, { activeMode: 'outfit' })
+          await this.loadChat(savedId)
+        } else {
+          if (savedId) this.saveView('')
+          if (!sessions.length) this.setData({ title: '新会话', messages: [] })
+        }
       }
+      // 等待回复中切回页面：滚动位置可能在 tab 切换后异常，强制滚到最新消息
+      if (this.data.awaitingReply && this.data.messages.length) this.setData({ scrollIntoView: 'msg-end' })
     } catch (e) {
       console.error(e)
-      this.setData({ loading: false, loadError: '会话加载失败，请重试' })
+      // 已有对话内容时不用错误页整体替换，避免刷新失败弄丢当前视图
+      if (this.data.messages.length || this.data.currentId) {
+        wx.showToast({ title: '会话列表刷新失败', icon: 'none' })
+        this.setData({ loading: false })
+      } else {
+        this.setData({ loading: false, loadError: '会话加载失败，请重试' })
+      }
     }
   },
 
   async loadChat(id) {
+    this.detachPendingSend()
     try {
       const chat = await db.chatGet(id)
+      this.saveView(id)
       this.setData({
         currentId: id,
         title: chat.title,
         messages: chat.messages.map(message => ({ ...message, displayText: message.text || '' })),
+        awaitingReply: false,
         sendError: chat.messages.length && chat.messages[chat.messages.length - 1].role === 'user'
           ? '这条提问尚未收到回复。请稍后刷新；若持续如此，请检查 auth 云函数日志。' : '',
         scrollIntoView: chat.messages.length ? 'msg-' + (chat.messages.length - 1) : ''
@@ -81,7 +139,7 @@ Page({
   },
 
   onSessionTap(e) {
-    if (this.data.sending || this.data.renamingSaving) return
+    if (this.data.renamingSaving) return
     const id = e.currentTarget.dataset.id
     if (id === 'new') return this.onNewSession()
     const now = Date.now()
@@ -92,17 +150,23 @@ Page({
     this._sessionTapTimer = setTimeout(() => {
       this._sessionTapTimer = null
       this._lastSessionTap = null
-      if (id === this.data.currentId || this.data.sending || this.data.renamingSaving) return
+      if (id === this.data.currentId || this.data.renamingSaving) return
       this.setData({ messages: [] })
       this.loadChat(id)
     }, 400)
   },
 
+  // 新会话/切换会话不打断后台生成：序号递增后，在途回复完成时只刷新列表、不覆盖当前视图。
+  detachPendingSend() {
+    this._sendSeq = (this._sendSeq || 0) + 1
+  },
+
   onNewSession() {
-    if (this.data.sending) return
+    this.detachPendingSend()
+    this.saveView('')
     this.clearSessionTap()
     this.setData({ currentId: '', title: '新会话', messages: [], input: '', imagePath: '', canSend: false, sendError: '',
-      scrollIntoView: '' })
+      awaitingReply: false, scrollIntoView: '' })
   },
 
   onRenameSession(id) {
@@ -125,8 +189,8 @@ Page({
         this.setData({ renamingSaving: true })
         try {
           await db.chatRename(id, title)
-          this.setData({ sessions: this.data.sessions.map(item => item._id === id ? { ...item, title } : item),
-            title: this.data.currentId === id ? title : this.data.title })
+          this.applySessions(this.data.sessions.map(item => item._id === id ? { ...item, title } : item),
+            { title: this.data.currentId === id ? title : this.data.title })
         } catch (e) {
           console.error(e)
           wx.showToast({ title: e.message || '改名失败', icon: 'none' })
@@ -152,8 +216,7 @@ Page({
         if (!res.confirm) return
         try {
           await db.chatDelete(id)
-          const sessions = this.data.sessions.filter(session => session._id !== id)
-          this.setData({ sessions })
+          this.applySessions(this.data.sessions.filter(session => session._id !== id))
           if (this.data.currentId === id) this.onNewSession()
         } catch (e) {
           console.error(e)
@@ -203,69 +266,134 @@ Page({
     if (this.data.imagePath) wx.previewImage({ current: this.data.imagePath, urls: [this.data.imagePath] })
   },
 
-  onSourceTap(e) {
-    const url = e.currentTarget.dataset.url
-    if (url) wx.setClipboardData({ data: url })
-  },
-
   onRemoveImage() {
     this.setData({ imagePath: '', canSend: !!this.data.input.trim() })
   },
 
-  async onSend(suggestion, mode = '') {
+  onPurchaseFieldInput(e) {
+    this.setData({ [`purchaseForm.${e.currentTarget.dataset.field}`]: e.detail.value, purchaseError: '' })
+  },
+
+  onPurchaseCategoryTap(e) {
+    const category = e.currentTarget.dataset.value
+    this.setData({ 'purchaseForm.category': category,
+      'purchaseForm.subcategory': category === '配饰' ? this.data.purchaseForm.subcategory : '', purchaseError: '' })
+  },
+
+  onPurchaseSubcategoryTap(e) {
+    this.setData({ 'purchaseForm.subcategory': e.currentTarget.dataset.value, purchaseError: '' })
+  },
+
+  onPurchaseSeasonTap(e) {
+    const value = e.currentTarget.dataset.value
+    const selected = this.data.purchaseForm.seasons
+    const seasons = selected.includes(value) ? selected.filter(item => item !== value) : [...selected, value]
+    this.setData({ 'purchaseForm.seasons': seasons,
+      seasonOptions: this.data.seasonOptions.map(item => ({ ...item, selected: seasons.includes(item.value) })), purchaseError: '' })
+  },
+
+  onPurchaseColorChange(e) {
+    this.setData({ 'purchaseForm.color': this.data.colors[Number(e.detail.value)] || '', purchaseError: '' })
+  },
+
+  onPurchaseOccasionChange(e) {
+    this.setData({ 'purchaseForm.occasion': this.data.occasions[Number(e.detail.value)] || '', purchaseError: '' })
+  },
+
+  async onPurchaseSubmit() {
+    if (this.data.purchaseAssessing) return
+    const form = this.data.purchaseForm
+    let error = ''
+    if (!form.category) error = '请选择分类'
+    else if (form.category === '配饰' && !form.subcategory) error = '请选择配饰类型'
+    else if (!form.color) error = '请选择颜色'
+    else if (!form.seasons.length) error = '请至少选择一个季节'
+    else if (!Number.isFinite(Number(form.price)) || Number(form.price) <= 0) error = '请输入有效价格'
+    if (error) {
+      this.setData({ purchaseError: error })
+      return
+    }
+    this.setData({ purchaseAssessing: true, purchaseError: '' })
+    try {
+      this.setData({ purchaseResult: await db.purchaseAssess(form) })
+    } catch (e) {
+      console.error(e)
+      this.setData({ purchaseError: e.message || '评估失败，请重试' })
+    } finally { this.setData({ purchaseAssessing: false }) }
+  },
+
+  onPurchaseEdit() {
+    this.setData({ purchaseResult: null, purchaseError: '' })
+  },
+
+  async onSend(suggestion) {
     const fromSuggestion = typeof suggestion === 'string'
     const text = (fromSuggestion ? suggestion : this.data.input).trim()
     const { imagePath, sending } = this.data
     if (sending || (!text && !imagePath)) return
+    // 发送期间允许切模式/看其他会话/切 tab：序号不变说明用户仍在原视图，变了则只做后台收尾。
+    const seq = (this._sendSeq = (this._sendSeq || 0) + 1)
+    const inView = () => this._sendSeq === seq
     const previousMessages = this.data.messages
     const pendingMessages = [...previousMessages, { role: 'user', text, displayText: text, imageFileID: imagePath }]
-    this.setData({ sending: true, streaming: false, thinkingText: mode === 'brandLatest' ? '正在检索并核对新品…' : '思考中…',
+    this.setData({ sending: true, streaming: false, awaitingReply: true, thinkingText: '思考中…',
       sendError: '', input: '', canSend: false, messages: pendingMessages, scrollIntoView: 'msg-thinking' })
     try {
       let fileID = ''
       if (imagePath) fileID = await db.uploadImage(imagePath)
       let streamed = '', lastRender = 0
-      const result = await db.chatSend({ chatId: this.data.currentId || '', text, imageFileID: fileID, mode }, delta => {
+      const result = await db.chatSend({ chatId: this.data.currentId || '', text, imageFileID: fileID }, delta => {
+        if (!inView()) return
         streamed += delta
         if (Date.now() - lastRender < 80) return
         lastRender = Date.now()
         this.setData({ streaming: true, messages: [...pendingMessages, { role: 'assistant', text: streamed, displayText: streamed }],
           scrollIntoView: 'msg-' + pendingMessages.length })
       })
-      const messages = result.messages.map(message => ({ ...message, displayText: message.text || '' }))
-      this.setData({
-        currentId: result.chatId,
-        title: result.title,
-        messages,
-        input: '',
-        imagePath: '',
-        canSend: false,
-        scrollIntoView: messages.length ? 'msg-' + (messages.length - 1) : ''
-      })
-      // 刷新会话列表，让新会话/新标题及时出现；失败不影响本次回复
+      if (inView()) {
+        const messages = result.messages.map(message => ({ ...message, displayText: message.text || '' }))
+        this.saveView(result.chatId)
+        this.setData({
+          currentId: result.chatId,
+          title: result.title,
+          messages,
+          input: '',
+          imagePath: '',
+          canSend: false,
+          scrollIntoView: messages.length ? 'msg-' + (messages.length - 1) : ''
+        })
+      }
+      // 刷新会话列表，让新会话/新标题及时出现（含后台完成的会话）；失败不影响本次回复
       try {
-        this.setData({ sessions: await db.chatList() })
+        this.applySessions(await db.chatList())
       } catch (e) { console.error(e) }
     } catch (e) {
       console.error(e)
-      const failedMessages = pendingMessages
-      const failedPatch = { messages: failedMessages, scrollIntoView: failedMessages.length ? 'msg-' + (failedMessages.length - 1) : '',
-        input: fromSuggestion ? '' : text, canSend: fromSuggestion ? !!imagePath : !!text || !!imagePath,
-        sendError: e.message || '发送失败，请重试' }
-      if (e.chatId) {
-        failedPatch.currentId = e.chatId
-        failedPatch.title = e.chatTitle || this.data.title
+      if (inView()) {
+        const failedMessages = pendingMessages
+        const failedPatch = { messages: failedMessages, scrollIntoView: failedMessages.length ? 'msg-' + (failedMessages.length - 1) : '',
+          input: fromSuggestion ? '' : text, canSend: fromSuggestion ? !!imagePath : !!text || !!imagePath,
+          sendError: e.message || '发送失败，请重试' }
+        if (e.chatId) {
+          failedPatch.currentId = e.chatId
+          failedPatch.title = e.chatTitle || this.data.title
+        }
+        this.setData(failedPatch)
+        wx.showToast({ title: e.message || '发送失败', icon: 'none' })
+      } else {
+        // 用户已离开原会话：回复虽失败，用户消息已存云端，刷新列表保留入口
+        try {
+          this.applySessions(await db.chatList())
+        } catch (refreshError) { console.error(refreshError) }
       }
-      this.setData(failedPatch)
-      wx.showToast({ title: e.message || '发送失败', icon: 'none' })
     } finally {
-      this.setData({ sending: false, streaming: false })
+      this.setData({ sending: false, streaming: false, awaitingReply: false })
     }
   },
 
   onSuggestionTap(e) {
     if (this.data.sending) return
     if (this.data.currentId) this.onNewSession()
-    return this.onSend(e.currentTarget.dataset.text, e.currentTarget.dataset.mode || '')
+    return this.onSend(e.currentTarget.dataset.text)
   }
 })

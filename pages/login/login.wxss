@@ -8,8 +8,10 @@
 }
 
 .logo {
-  font-size: 96rpx;
-  text-align: center;
+  width: 160rpx;
+  height: 160rpx;
+  border-radius: 50%;
+  align-self: center;
 }
 
 .app-name {

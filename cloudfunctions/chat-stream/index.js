@@ -110,15 +110,6 @@ exports.main = async (event, context, consume = consumeTicket) => {
     const body = parse(input?.body)
     const data = parse(input?.data)
     const rawTicket = input?.ticket ?? body?.ticket ?? data?.ticket
-    const parts = String(rawTicket || '').split('.')
-    console.log('stream-ticket-received', {
-      secretTag: crypto.createHash('sha256').update(secret).digest('hex').slice(0, 12),
-      ticketTag: crypto.createHash('sha256').update(String(rawTicket || '')).digest('hex').slice(0, 12),
-      ticketType: typeof rawTicket,
-      ticketLength: typeof rawTicket === 'string' ? rawTicket.length : 0,
-      payloadLength: parts[0].length,
-      parts: parts.length
-    })
     ticket = verify(rawTicket, secret)
     const callerOpenId = context.extendedContext?.wechatContext?.openId || context.httpContext?.headers?.['x-wx-openid']
     if (!ticket.openid || ticket.openid !== callerOpenId ||
@@ -140,7 +131,7 @@ exports.main = async (event, context, consume = consumeTicket) => {
       if (!sse.closed) sse.send({ event: 'delta', data: JSON.stringify({ text: delta }) })
     }, req => sse.on('close', () => req.destroy(new Error('流式连接已关闭'))))
     const proof = sign({ openid: ticket.openid, chatId: ticket.chatId, requestToken: ticket.requestToken,
-      replyText, brand: ticket.brand, sources: ticket.sources, expiresAt: Date.now() + 60000 }, secret)
+      replyText, expiresAt: Date.now() + 60000 }, secret)
     if (!sse.closed) sse.end({ event: 'done', data: JSON.stringify({ proof }) })
   } catch (e) {
     console.error('流式 AI 调用失败', e)

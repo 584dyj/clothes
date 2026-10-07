@@ -23,6 +23,7 @@ const path = require('path')
 const revision = crypto.createHash('sha256')
   .update(fs.readFileSync(__filename)).update(fs.readFileSync(path.join(__dirname, 'data.js')))
   .update(fs.readFileSync(path.join(__dirname, 'recommend.js')))
+  .update(fs.readFileSync(path.join(__dirname, 'purchase.js')))
   .update(fs.readFileSync(path.join(__dirname, 'chat.js')))
   .update(fs.readFileSync(path.join(__dirname, 'ai-http.js')))
   .digest('hex').slice(0, 12)
@@ -31,6 +32,7 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
 const dataApi = require('./data')
 const recommendation = require('./recommend')
+const purchase = require('./purchase')
 const chatApi = require('./chat')
 const { readDoc } = dataApi
 const USERS = 'users'
@@ -246,6 +248,12 @@ async function main(event = {}) {
     const user = await getBoundUser(openid)
     if (!user || user.autoLoginEnabled === false) throw new Error('登录状态已失效')
     return recommendation.handle({ db, openid, user, event })
+  }
+
+  if (action === 'purchaseAssess') {
+    const user = await getBoundUser(openid)
+    if (!user || user.autoLoginEnabled === false) throw new Error('登录状态已失效')
+    return purchase.handle({ db, openid, event })
   }
 
   if (action === 'chatList' || action === 'chatGet' || action === 'chatSend' || action === 'chatDelete' || action === 'chatRename' ||

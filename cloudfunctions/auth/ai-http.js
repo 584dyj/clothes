@@ -2,7 +2,7 @@ const https = require('https')
 
 // 推荐与照片对话的一次性请求；普通文字对话由 chat-stream HTTP 云函数接收 SSE。
 // json: 要求 JSON 输出（response_format）；disableThinking: 发送 thinking.disabled。
-function requestChat({ base, key, model, messages, json = false, disableThinking = false, maxTokens = 800 }) {
+function requestChat({ base, key, model, messages, json = false, disableThinking = false, maxTokens = 800, timeoutMs = 20000 }) {
   return new Promise((resolve, reject) => {
     let url
     try {
@@ -42,8 +42,8 @@ function requestChat({ base, key, model, messages, json = false, disableThinking
         try { finish(null, JSON.parse(output)) } catch (e) { finish(new Error('AI 服务响应无效')) }
       })
     })
-    timer = setTimeout(() => req.destroy(new Error('AI 服务超时，请重试')), 20000)
-    req.setTimeout(20000, () => req.destroy(new Error('AI 服务超时，请重试')))
+    timer = setTimeout(() => req.destroy(new Error('AI 服务超时，请重试')), timeoutMs)
+    req.setTimeout(timeoutMs, () => req.destroy(new Error('AI 服务超时，请重试')))
     req.on('error', finish)
     req.end(body)
   })

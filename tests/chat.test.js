@@ -6,7 +6,6 @@ const chatApi = require('../cloudfunctions/auth/chat')
 const streamApi = require('../cloudfunctions/chat-stream')
 const https = require('node:https')
 const { EventEmitter } = require('node:events')
-const crypto = require('node:crypto')
 
 const env = { AI_API_BASE: 'https://api.deepseek.com', AI_API_KEY: 'test-key', AI_MODEL: 'deepseek-flash' }
 const user = () => ({ _id: 'user', openid: 'openid-1', username: 'alice', autoLoginEnabled: true })
@@ -46,7 +45,6 @@ test('对话发送新建会话，带衣橱画像并保存多轮上下文', async
   assert.equal(second.messages.at(-1).role, 'assistant')
   assert.equal(cloud.records.ai_chats[0].messages.length, 4)
 })
-
 test('对话携带图片时校验票据并转 base64 发送，历史消息只传文本', async () => {
   const cloud = loadCloud({ users: [user()], upload_tickets: [ticket()] })
   let captured
@@ -153,59 +151,6 @@ test('文字对话经签名凭证流式输出并保存最终回复', async () =>
     if (oldKey === undefined) delete process.env.AI_API_KEY; else process.env.AI_API_KEY = oldKey
     if (oldSecret === undefined) delete process.env.CHAT_STREAM_SECRET; else process.env.CHAT_STREAM_SECRET = oldSecret
   }
-})
-
-test('品牌模板通过流式通道生成后仍先核对新品证据', async () => {
-  const cloud = loadCloud({ users: [user()], clothes: [{ ...item('own', '上衣'), brand: 'Favorite' }] })
-  const secret = 'test-stream-secret-at-least-32-bytes'
-  const date = new Date(Date.now() - 10 * 86400000).toISOString().slice(0, 10)
-  const evidence = `Favorite launches New shirt on ${date}`
-  const source = { number: 1, title: 'Favorite', content: evidence, url: 'https://example.com/new' }
-  const start = await chatApi.handle({ db: cloud.db, cloud, openid: 'openid-1',
-    event: { action: 'chatStart', text: '我最喜欢的品牌最近推出了什么新款吗？', mode: 'brandLatest' } },
-  undefined, { ...env, DASHSCOPE_API_KEY: 'search', CHAT_STREAM_SECRET: secret }, async () => [source])
-  assert.equal(start.title, '品牌上新与搭配')
-  const ticket = streamApi.verify(start.ticket, secret)
-  assert.equal(ticket.request.json, true)
-  const payload = Buffer.from(JSON.stringify({ openid: 'openid-1', chatId: start.chatId,
-    requestToken: ticket.requestToken, brand: ticket.brand, sources: ticket.sources,
-    replyText: JSON.stringify({ products: [{ name: 'New shirt', date, dateEvidence: evidence, source: 1 }],
-      wardrobeAdvice: '选浅色上衣搭配现有衣物。' }), expiresAt: Date.now() + 60000 })).toString('base64url')
-  const proof = payload + '.' + crypto.createHmac('sha256', secret).update(payload).digest('hex')
-  const result = await chatApi.handle({ db: cloud.db, cloud, openid: 'openid-1',
-    event: { action: 'chatFinish', proof } }, undefined, { ...env, CHAT_STREAM_SECRET: secret })
-  assert.match(result.messages.at(-1).text, /New shirt/)
-  assert.equal(result.messages.at(-1).sources.length, 1)
-  assert.equal(cloud.records.ai_chats[0].messages.at(-1).sources, undefined)
-})
-
-test('手动输入具体品牌新品问题会自动联网搜索', async () => {
-  const cloud = loadCloud({ users: [user()], clothes: [] })
-  const seen = []
-  const secret = 'test-stream-secret-at-least-32-bytes'
-  const start = await chatApi.handle({ db: cloud.db, cloud, openid: 'openid-1',
-    event: { action: 'chatStart', text: '塔卡沙最近推出了什么新品吗？' } }, undefined,
-  { ...env, CHAT_STREAM_SECRET: secret, DASHSCOPE_API_KEY: 'search' }, async (brand, key) => {
-    seen.push({ brand, key })
-    return [{ number: 1, title: 'TYAKASHA', url: 'https://example.com/new', content: 'TYAKASHA new release' }]
-  })
-  assert.deepEqual(seen, [{ brand: '塔卡沙', key: 'search' }])
-  assert.equal(start.title, '品牌上新与搭配')
-  const ticket = streamApi.verify(start.ticket, secret)
-  assert.equal(ticket.request.json, true)
-  assert.equal(ticket.brand.name, '塔卡沙')
-  assert.equal(ticket.brand.fromQuestion, true)
-})
-
-test('品牌搜索密钥缺失时流式入口直接给出原因并释放生成锁', async () => {
-  const cloud = loadCloud({ users: [user()], clothes: [{ ...item('own', '上衣'), brand: 'Favorite' }] })
-  const result = await chatApi.handle({ db: cloud.db, cloud, openid: 'openid-1',
-    event: { action: 'chatStart', text: '我最喜欢的品牌最近推出了什么新款吗？', mode: 'brandLatest' } },
-  undefined, { ...env, CHAT_STREAM_SECRET: 'test-stream-secret-at-least-32-bytes' },
-  async () => { throw Error('缺少密钥时不应联网') })
-  assert.match(result.messages.at(-1).text, /未配置 DASHSCOPE_API_KEY/)
-  assert.equal(result.ticket, undefined)
-  assert.equal(cloud.records.auth_attempts[0].busyUntil, null)
 })
 
 test('对话历史截断到保留上限，超出 20 条丢弃最旧', async () => {
@@ -316,12 +261,11 @@ test('助手页发送带图片时先上传再交给云函数', async () => {
 })
 
 test('助手拍照、图片预览和长按删除入口', async () => {
-  const sources = [], previews = [], deleted = [], copied = []
+  const sources = [], previews = [], deleted = []
   const page = loadPage('assistant', {
     chooseImage: async source => { sources.push(source[0]); return '/tmp/camera.jpg' },
     chatDelete: async id => { deleted.push(id) }
-  }, { previewImage: options => previews.push(options), setClipboardData: options => copied.push(options.data),
-    showModal: options => options.success({ confirm: true }) })
+  }, { previewImage: options => previews.push(options), showModal: options => options.success({ confirm: true }) })
   page.setData({ sessions: [{ _id: 'c1', title: '穿搭' }], currentId: 'c1' })
   await page.onTakePhoto()
   assert.deepEqual(sources, ['camera'])
@@ -329,8 +273,6 @@ test('助手拍照、图片预览和长按删除入口', async () => {
   assert.equal(previews[0].current, '/tmp/camera.jpg')
   page.onPreviewImage({ currentTarget: { dataset: { fileid: 'cloud://env/wardrobe/a.jpg' } } })
   assert.equal(previews[1].current, 'cloud://env/wardrobe/a.jpg')
-  page.onSourceTap({ currentTarget: { dataset: { url: 'https://example.com/new' } } })
-  assert.deepEqual(copied, ['https://example.com/new'])
   page.onSessionLongPress({ currentTarget: { dataset: { id: 'c1' } } })
   await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(deleted, ['c1'])
@@ -361,16 +303,15 @@ test('点击模板立即显示用户消息与等待状态，输入框保持空�
     chatSend: payload => { sent = payload; return new Promise(resolve => { complete = resolve }) },
     chatList: async () => []
   })
-  const pending = page.onSuggestionTap({ currentTarget: { dataset: { text: '我最喜欢的品牌最近推出了什么新款吗？', mode: 'brandLatest' } } })
+  const pending = page.onSuggestionTap({ currentTarget: { dataset: { text: '根据我的衣橱推荐一套通勤穿搭' } } })
   assert.equal(page.data.input, '')
   assert.equal(page.data.sending, true)
   assert.equal(page.data.currentId, '')
   assert.equal(page.data.messages[0].role, 'user')
-  assert.equal(page.data.messages[0].text, '我最喜欢的品牌最近推出了什么新款吗？')
+  assert.equal(page.data.messages[0].text, '根据我的衣橱推荐一套通勤穿搭')
   assert.equal(page.data.messages[0].displayText, page.data.messages[0].text)
   assert.equal(page.data.scrollIntoView, 'msg-thinking')
-  assert.equal(sent.text, '我最喜欢的品牌最近推出了什么新款吗？')
-  assert.equal(sent.mode, 'brandLatest')
+  assert.equal(sent.text, '根据我的衣橱推荐一套通勤穿搭')
   await page.loadSessions()
   assert.equal(page.data.messages[0].text, sent.text)
   complete({ chatId: 'c1', title: '通勤', messages: [{ role: 'user', text: sent.text }] })
@@ -378,15 +319,190 @@ test('点击模板立即显示用户消息与等待状态，输入框保持空�
   assert.equal(page.data.input, '')
 })
 
-test('发送失败后在对话区保留可见错误原因', async () => {
-  const error = new Error('云函数未配置搜索密钥')
-  error.chatId = 'failed-chat'
-  error.chatTitle = '品牌上新与搭配'
-  const page = loadPage('assistant', { chatSend: async () => { throw error } }, { showToast() {} })
-  await page.onSuggestionTap({ currentTarget: { dataset: { text: '我最喜欢的品牌最近推出了什么新款吗？', mode: 'brandLatest' } } })
-  assert.match(page.data.sendError, /未配置搜索密钥/)
+test('助手顶部显示购买评估入口', () => {
+  const page = loadPage('assistant')
+  assert.equal(page.data.activeMode, 'outfit')
+  page.onModeTap({ currentTarget: { dataset: { mode: 'purchase' } } })
+  assert.equal(page.data.activeMode, 'purchase')
+
+  const fs = require('node:fs'), path = require('node:path')
+  const markup = fs.readFileSync(path.join(__dirname, '../pages/assistant/assistant.wxml'), 'utf8')
+  assert.match(markup, /穿搭推荐/)
+  assert.match(markup, /购买评估/)
+  assert.doesNotMatch(markup, /新品查询/)
+})
+
+test('会话列表隐藏旧品牌搜索记录，新会话仍标记为 outfit', async () => {
+  const brandChats = Array.from({ length: 50 }, (_, index) => ({
+    _id: `brand-${index}`, _openid: 'openid-1', title: '旧品牌会话', kind: 'brand',
+    updatedAt: new Date(2026, 0, 2), messages: []
+  }))
+  const cloud = loadCloud({ users: [user()], ai_chats: [
+    { _id: 'legacy', _openid: 'openid-1', title: '旧会话', updatedAt: new Date(2026, 0, 1), messages: [] },
+    ...brandChats
+  ] })
+  const ctx = { db: cloud.db, cloud, openid: 'openid-1' }
+  const outfit = await chatApi.handle({ ...ctx, event: { action: 'chatSend', text: '通勤怎么穿？' } }, async () => reply('穿衬衫。'), env)
+  assert.equal(cloud.records.ai_chats.find(c => c._id === outfit.chatId).kind, 'outfit')
+  const list = await chatApi.handle({ ...ctx, event: { action: 'chatList' } })
+  assert.deepEqual(list.chats.map(chat => chat._id).sort(), ['legacy', outfit.chatId].sort())
+  assert.equal(list.chats.some(chat => Object.hasOwn(chat, 'kind')), false)
+})
+
+test('购买评估模式隐藏会话栏，返回穿搭后恢复会话列表', async () => {
+  const sessions = [
+    { _id: 'o1', title: '通勤穿搭' },
+    { _id: 'old', title: '旧会话' }
+  ]
+  const page = loadPage('assistant', { chatList: async () => sessions })
+  await page.onShow()
+  assert.deepEqual(page.data.visibleSessions.map(s => s._id), ['o1', 'old'])
+  page.onModeTap({ currentTarget: { dataset: { mode: 'purchase' } } })
+  assert.equal(page.data.activeMode, 'purchase')
+  page.onModeTap({ currentTarget: { dataset: { mode: 'outfit' } } })
+  assert.deepEqual(page.data.visibleSessions.map(s => s._id), ['o1', 'old'])
+  const fs = require('node:fs'), path = require('node:path')
+  const markup = fs.readFileSync(path.join(__dirname, '../pages/assistant/assistant.wxml'), 'utf8')
+  assert.match(markup, /wx:for="\{\{visibleSessions\}\}"/)
+  assert.doesNotMatch(markup, /session-bar[^>]*wx:if/)
+})
+
+test('等待回复时可切模式/看其他会话，后台完成不覆盖当前视图', async () => {
+  let complete, listCalls = 0
+  const history = [{ _id: 'c1', title: '旧会话', kind: 'outfit' }]
+  const page = loadPage('assistant', {
+    chatList: async () => listCalls++ === 0 ? history : [{ _id: 'new-1', title: '约会穿搭', kind: 'outfit' }, ...history],
+    chatGet: async () => ({ title: '旧会话', messages: [{ role: 'user', text: 'old' }, { role: 'assistant', text: '旧的回复' }] }),
+    chatSend: payload => new Promise(resolve => {
+      complete = () => resolve({ chatId: 'new-1', title: '约会穿搭',
+        messages: [{ role: 'user', text: payload.text }, { role: 'assistant', text: '新回复' }] })
+    })
+  }, { testSetTimeout: setTimeout, testClearTimeout: clearTimeout })
+  await page.onShow()
+  page.onNewSession()
+  page.onInput({ detail: { value: '约会穿什么' } })
+  const pending = page.onSend()
+  assert.equal(page.data.sending, true)
+  assert.equal(page.data.awaitingReply, true)
+
+  // 发送中切到购买评估：不被拦截，视图清空，等待气泡消失
+  page.onModeTap({ currentTarget: { dataset: { mode: 'purchase' } } })
+  assert.equal(page.data.activeMode, 'purchase')
+  assert.equal(page.data.messages.length, 0)
+  assert.equal(page.data.awaitingReply, false)
+
+  // 后台完成：不覆盖当前视图，但会话列表已刷新
+  complete()
+  await pending
+  assert.equal(page.data.activeMode, 'purchase')
+  assert.equal(page.data.messages.length, 0)
+  assert.equal(page.data.currentId, '')
   assert.equal(page.data.sending, false)
-  assert.equal(page.data.messages[0].text, '我最喜欢的品牌最近推出了什么新款吗？')
+  page.onModeTap({ currentTarget: { dataset: { mode: 'outfit' } } })
+  assert.deepEqual(page.data.visibleSessions.map(s => s._id), ['new-1', 'c1'])
+
+  // 发送中查看其他会话：同样不被拦截，完成后不串视图
+  listCalls = 0
+  page.onInput({ detail: { value: '通勤呢' } })
+  const second = page.onSend()
+  assert.equal(page.data.awaitingReply, true)
+  page.onSessionTap({ currentTarget: { dataset: { id: 'c1' } } })
+  await new Promise(resolve => setTimeout(resolve, 450))
+  assert.equal(page.data.currentId, 'c1')
+  assert.equal(page.data.messages.length, 2)
+  assert.equal(page.data.messages[1].text, '旧的回复')
+  complete()
+  await second
+  assert.equal(page.data.currentId, 'c1')
+  assert.equal(page.data.messages[1].text, '旧的回复')
+})
+
+test('切走再切回时对话内容保持显示，不等待重新加载', async () => {
+  let getCalls = 0
+  const page = loadPage('assistant', {
+    chatList: async () => [{ _id: 'c1', title: '旧会话', kind: 'outfit' }],
+    chatGet: async () => { getCalls++; return { title: '旧会话', messages: [{ role: 'user', text: 'hi' }, { role: 'assistant', text: 'hello' }] } }
+  }, { testSetTimeout: setTimeout, testClearTimeout: clearTimeout })
+  await page.onShow()
+  page.onSessionTap({ currentTarget: { dataset: { id: 'c1' } } })
+  await new Promise(resolve => setTimeout(resolve, 450))
+  assert.equal(page.data.messages.length, 2)
+  // 切走再切回：重新拉取会话期间已有气泡应保持显示
+  page.onHide()
+  const showing = page.onShow()
+  assert.equal(page.data.messages.length, 2)
+  await showing
+  assert.equal(page.data.messages.length, 2)
+  assert.equal(getCalls, 2)
+})
+
+test('等待回复中切走再切回，待回复气泡保留', async () => {
+  let complete
+  const page = loadPage('assistant', {
+    chatList: async () => [],
+    chatSend: () => new Promise(resolve => { complete = () => resolve({ chatId: 'n1', title: 't', messages: [{ role: 'user', text: 'hi' }, { role: 'assistant', text: 'ok' }] }) })
+  })
+  await page.onShow()
+  page.onInput({ detail: { value: 'hi' } })
+  const pending = page.onSend()
+  assert.equal(page.data.awaitingReply, true)
+  page.onHide()
+  await page.onShow()
+  assert.equal(page.data.messages.length, 1)
+  assert.equal(page.data.messages[0].role, 'user')
+  assert.equal(page.data.awaitingReply, true)
+  // 切回时强制滚到最新消息，规避滚动位置异常导致的气泡不可见
+  assert.equal(page.data.scrollIntoView, 'msg-end')
+  complete()
+  await pending
+  assert.equal(page.data.messages.length, 2)
+})
+
+test('页面重建后清掉已失效的会话记录', async () => {
+  const storage = { assistantView: { currentId: 'b1' } }
+  const page = loadPage('assistant', {
+    chatList: async () => [],
+    chatGet: async () => { throw Error('不应读取已失效会话') }
+  }, {
+    getStorageSync: key => storage[key],
+    setStorageSync: (key, value) => { storage[key] = value }
+  })
+  await page.onShow()
+  assert.equal(page.data.activeMode, 'outfit')
+  assert.equal(page.data.currentId, '')
+  assert.equal(page.data.messages.length, 0)
+  assert.equal(page.data.visibleSessions.length, 0)
+  assert.equal(storage.assistantView, '')
+})
+
+test('会话列表刷新失败时保留当前对话不清屏', async () => {
+  let fails = false
+  const page = loadPage('assistant', {
+    chatList: async () => {
+      if (fails) throw Error('offline')
+      return [{ _id: 'c1', title: '旧会话', kind: 'outfit' }]
+    },
+    chatGet: async () => ({ title: '旧会话', messages: [{ role: 'user', text: 'hi' }, { role: 'assistant', text: 'hello' }] })
+  }, { testSetTimeout: setTimeout, testClearTimeout: clearTimeout })
+  await page.onShow()
+  page.onSessionTap({ currentTarget: { dataset: { id: 'c1' } } })
+  await new Promise(resolve => setTimeout(resolve, 450))
+  assert.equal(page.data.messages.length, 2)
+  fails = true
+  await page.onShow()
+  assert.equal(page.data.loadError, '')
+  assert.equal(page.data.messages.length, 2)
+})
+
+test('发送失败后在对话区保留可见错误原因', async () => {
+  const error = new Error('AI 服务暂不可用')
+  error.chatId = 'failed-chat'
+  error.chatTitle = '通勤穿搭'
+  const page = loadPage('assistant', { chatSend: async () => { throw error } }, { showToast() {} })
+  await page.onSuggestionTap({ currentTarget: { dataset: { text: '通勤怎么搭配？' } } })
+  assert.match(page.data.sendError, /AI 服务暂不可用/)
+  assert.equal(page.data.sending, false)
+  assert.equal(page.data.messages[0].text, '通勤怎么搭配？')
   assert.equal(page.data.currentId, 'failed-chat')
   const fs = require('node:fs'), path = require('node:path')
   const markup = fs.readFileSync(path.join(__dirname, '../pages/assistant/assistant.wxml'), 'utf8')
@@ -395,9 +511,9 @@ test('发送失败后在对话区保留可见错误原因', async () => {
 })
 
 test('重新打开仅有用户消息的会话时说明回复尚未完成', async () => {
-  const page = loadPage('assistant', { chatGet: async () => ({ title: '品牌上新', messages: [{ role: 'user', text: '查找新品' }] }) })
+  const page = loadPage('assistant', { chatGet: async () => ({ title: '通勤穿搭', messages: [{ role: 'user', text: '怎么搭配' }] }) })
   await page.loadChat('c1')
-  assert.equal(page.data.messages[0].displayText, '查找新品')
+  assert.equal(page.data.messages[0].displayText, '怎么搭配')
   assert.match(page.data.sendError, /尚未收到回复/)
 })
 
@@ -432,154 +548,12 @@ test('双击同一会话弹窗改名，单击仍切换会话', async () => {
   assert.doesNotMatch(markup, /session-rename|rename-bar/)
 })
 
-test('品牌模板以当前账号全部衣物统计最喜欢品牌，并临时返回搜索来源', async () => {
-  const clothes = Array.from({ length: 120 }, (_, index) => ({ ...item(`item-${index}`, '上衣'), brand: `Brand-${index}` }))
-  clothes.push(...Array.from({ length: 5 }, (_, index) => ({ ...item(`favorite-${index}`, '下装'), brand: 'Favorite' })))
-  clothes.push({ ...item('foreign', '上衣'), _openid: 'openid-2', brand: 'Other' })
-  const cloud = loadCloud({ users: [user()], clothes })
-  let searchBrand
-  const date = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)
-  const evidence = `Favorite launches New shirt on ${date}`
-  const sources = [{ number: 1, title: 'Favorite New Arrivals', url: 'https://example.com/new', content: evidence }]
-  const result = await chatApi.handle({ db: cloud.db, cloud, openid: 'openid-1',
-    event: { action: 'chatSend', text: '我最喜欢的品牌最近推出了什么新款吗？', mode: 'brandLatest' } },
-  async args => {
-    assert.equal(args.json, true)
-    assert.match(args.messages[0].content, /Favorite/)
-    assert.match(args.messages[0].content, /当前账号全部衣物中件数最多/)
-    assert.match(args.messages[0].content, /example.com\/new/)
-    assert.doesNotMatch(args.messages[0].content, /Other/)
-    return reply(JSON.stringify({ products: [{ name: 'New shirt', date, dateEvidence: evidence, source: 1 }],
-      wardrobeAdvice: '建议留意浅色上衣，搭配现有长裤。' }))
-  }, { ...env, DASHSCOPE_API_KEY: 'search-key' }, async (brand, key) => {
-    searchBrand = brand
-    assert.equal(key, 'search-key')
-    return sources
-  })
-  assert.equal(searchBrand, 'Favorite')
-  assert.equal(result.title, '品牌上新与搭配')
-  assert.match(result.messages[1].text, /New shirt/)
-  assert.match(result.messages[1].text, /衣橱建议/)
-  assert.deepEqual(result.messages[1].sources, sources)
-  assert.equal(cloud.records.ai_chats[0].messages[1].sources, undefined)
-})
-
-test('品牌未填写或联网未配置时不捏造最新款', async () => {
-  const empty = loadCloud({ users: [user()], clothes: [item('no-brand', '上衣')] })
-  const ctx = cloud => ({ db: cloud.db, cloud, openid: 'openid-1',
-    event: { action: 'chatSend', text: '我最喜欢的品牌最近推出了什么新款吗？', mode: 'brandLatest' } })
-  const noBrand = await chatApi.handle(ctx(empty), async () => { throw Error('不应调用模型') }, env,
-    async () => { throw Error('不应搜索') })
-  assert.match(noBrand.messages[1].text, /还没有填写品牌/)
-
-  const cloud = loadCloud({ users: [user()], clothes: [{ ...item('own', '上衣'), brand: 'Favorite' }] })
-  const noSearch = await chatApi.handle(ctx(cloud), async () => { throw Error('无搜索结果时不应调用模型') },
-    env, async () => { throw Error('不应搜索') })
-  assert.match(noSearch.messages[1].text, /无法核实该品牌最近推出的具体新品/)
-  assert.match(noSearch.messages[1].text, /现有蓝色衬衫/)
-  assert.equal(noSearch.messages[1].sources, undefined)
-})
-
-test('品牌页面只有更新日期时说明证据不足，不展示具体新品', async () => {
-  const cloud = loadCloud({ users: [user()], clothes: [{ ...item('own', '上衣'), brand: 'Favorite' }] })
-  const date = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)
-  const evidence = `Page updated on ${date}`
-  const result = await chatApi.handle({ db: cloud.db, cloud, openid: 'openid-1',
-    event: { action: 'chatSend', text: '我最喜欢的品牌最近推出了什么新款吗？', mode: 'brandLatest' } },
-  async () => reply(JSON.stringify({ products: [{ name: 'New shirt', date, dateEvidence: evidence, source: 1 }],
-  wardrobeAdvice: '可考虑浅色上衣配现有蓝色衬衫。' })), { ...env, DASHSCOPE_API_KEY: 'search-key' },
-  async () => [{ number: 1, title: 'Favorite New shirt', url: 'https://example.com/item', content: evidence }])
-  assert.match(result.messages[1].text, /未找到同时具备具体商品名和近一年发售日期的证据/)
-  assert.doesNotMatch(result.messages[1].text, /New shirt/)
-  assert.equal(result.messages[1].sources, undefined)
-})
-
-test('模型返回无效 JSON 类型时说明无法核实新品', async () => {
-  const cloud = loadCloud({ users: [user()], clothes: [{ ...item('own', '上衣'), brand: 'Favorite' }] })
-  const result = await chatApi.handle({ db: cloud.db, cloud, openid: 'openid-1',
-    event: { action: 'chatSend', text: '我最喜欢的品牌最近推出了什么新款吗？', mode: 'brandLatest' } },
-  async () => reply('null'), { ...env, DASHSCOPE_API_KEY: 'search-key' },
-  async () => [{ number: 1, title: 'Favorite clothing', url: 'https://example.com/new', content: 'Favorite new clothes' }])
-  assert.match(result.messages[1].text, /模型未能解析新品资料/)
-  assert.equal(result.messages[1].sources, undefined)
-})
-
-test('搜索结果属于其他品牌时说明品牌匹配失败', async () => {
-  const cloud = loadCloud({ users: [user()], clothes: [{ ...item('own', '上衣'), brand: 'Favorite' }] })
-  const result = await chatApi.handle({ db: cloud.db, cloud, openid: 'openid-1',
-    event: { action: 'chatSend', text: '我最喜欢的品牌最近推出了什么新款吗？', mode: 'brandLatest' } },
-  async () => { throw Error('品牌不匹配时不应调用模型') },
-  { ...env, DASHSCOPE_API_KEY: 'search-key' },
-  async () => [{ number: 1, title: 'Another Brand', url: 'https://example.com/new', content: 'Another Brand launches a jacket.' }])
-  assert.match(result.messages[1].text, /无法确认与该品牌相关/)
-  assert.equal(result.messages[1].sources, undefined)
-})
-
-test('塔卡沙的英文来源和日文发售日期可核对具体新品', async () => {
-  const cloud = loadCloud({ users: [user()], clothes: [{ ...item('own', '上衣'), brand: '塔卡沙' }] })
-  const day = new Date(Date.now() - 30 * 86400000)
-  const date = day.toISOString().slice(0, 10)
-  const evidence = `TYAKASHA コラボレーションアイテムを ${day.getUTCFullYear()} 年 ${day.getUTCMonth() + 1} 月 ${day.getUTCDate()} 日より先行発売いたします`
-  const result = await chatApi.handle({ db: cloud.db, cloud, openid: 'openid-1',
-    event: { action: 'chatSend', text: '我最喜欢的品牌最近推出了什么新款吗？', mode: 'brandLatest' } },
-  async () => reply(JSON.stringify({ products: [{ name: 'コンパクトラグランT', date, dateEvidence: evidence, source: 1 }],
-    wardrobeAdvice: '可关注彩色上衣，与已有蓝色衬衫配色。' })), { ...env, DASHSCOPE_API_KEY: 'search-key' },
-  async () => [{ number: 1, title: 'TYAKASHA new collection', url: 'https://example.jp/new',
-    content: `${evidence}。商品名：コンパクトラグランT` }])
-  assert.match(result.messages[1].text, /コンパクトラグランT/)
-  assert.equal(result.messages[1].sources.length, 1)
-})
-
-test('搜索失败时向用户说明具体原因', async () => {
-  const cloud = loadCloud({ users: [user()], clothes: [{ ...item('own', '上衣'), brand: 'Favorite' }] })
-  const result = await chatApi.handle({ db: cloud.db, cloud, openid: 'openid-1',
-    event: { action: 'chatSend', text: '我最喜欢的品牌最近推出了什么新款吗？', mode: 'brandLatest' } },
-  async () => { throw Error('搜索失败时不应调用模型') }, { ...env, DASHSCOPE_API_KEY: 'bad-key' },
-  async () => { throw new Error('搜索密钥无效或没有访问权限') })
-  assert.match(result.messages[1].text, /搜索密钥无效或没有访问权限/)
-})
-
-test('品牌搜索读取网页正文片段并过滤无效来源', async () => {
-  const original = https.request
-  let captured
-  https.request = (url, options, callback) => {
-    captured = { url: String(url), options }
-    const req = new EventEmitter()
-    req.setTimeout = () => {}
-    req.end = body => {
-      captured.body = JSON.parse(body)
-      const res = new EventEmitter()
-      res.statusCode = 200
-      res.setEncoding = () => {}
-      callback(res)
-      process.nextTick(() => {
-        res.emit('data', JSON.stringify({ output: { search_info: { search_results: [
-          { title: '<b>New jacket</b>', url: 'https://brand.example/new', snippet: 'Brand launches New jacket on 2026-09-20' },
-          { title: 'Duplicate', url: 'https://brand.example/new', snippet: 'Duplicate' },
-          { title: 'Unsafe', url: 'http://brand.example/old', snippet: 'Old' }
-        ] } } }))
-        res.emit('end')
-      })
-    }
-    return req
-  }
-  try {
-    const settings = { DASHSCOPE_API_BASE: 'https://dashscope.test', DASHSCOPE_SEARCH_MODEL: 'qwen-plus' }
-    const sources = await chatApi.searchBrandNewArrivals('Favorite', 'secret-search-key', settings)
-    assert.equal(captured.url, 'https://dashscope.test/api/v1/services/aigc/text-generation/generation')
-    assert.equal(captured.options.headers.Authorization, 'Bearer secret-search-key')
-    assert.equal(captured.body.model, 'qwen-plus')
-    assert.equal(captured.body.parameters.enable_search, true)
-    assert.equal(captured.body.parameters.search_options.enable_source, true)
-    assert.equal(captured.body.parameters.search_options.freshness, 365)
-    assert.equal(sources.length, 1)
-    assert.equal(sources[0].title, 'New jacket')
-    assert.match(sources[0].content, /Brand launches New jacket/)
-    await chatApi.searchBrandNewArrivals('塔卡沙', 'secret-search-key', settings)
-    assert.match(captured.body.input.messages[0].content, /TYAKASHA/)
-    await chatApi.searchBrandNewArrivals('太平鸟', 'secret-search-key', settings)
-    assert.match(captured.body.input.messages[0].content, /太平鸟/)
-  } finally { https.request = original }
+test('品牌会话入口隐藏，输入栏只属于穿搭推荐', () => {
+  const fs = require('node:fs'), path = require('node:path')
+  const markup = fs.readFileSync(path.join(__dirname, '../pages/assistant/assistant.wxml'), 'utf8')
+  assert.match(markup, /activeMode === 'purchase'/)
+  assert.match(markup, /class="input-bar"/)
+  assert.doesNotMatch(markup, /继续追问这个品牌|data-mode="brand"/)
 })
 
 test('相机权限被拒时提供打开设置入口', async () => {

@@ -10,11 +10,6 @@ const base = (process.env.AI_API_BASE || 'https://api.deepseek.com').replace(/\/
 const model = process.env.AI_MODEL || 'deepseek-flash'
 const key = process.env.AI_API_KEY
 
-if (!key) {
-  console.error('未设置 AI_API_KEY。请先导出密钥，例如：\n  AI_API_KEY=sk-xxx node tools/verify-ai.js [--image]')
-  process.exit(1)
-}
-
 function request(path, body) {
   return new Promise((resolve, reject) => {
     const req = https.request(base + path, {
@@ -38,6 +33,10 @@ function request(path, body) {
 }
 
 async function main() {
+  if (!key) {
+    console.error('未设置 AI_API_KEY。请先导出密钥，例如：\n  AI_API_KEY=sk-xxx node tools/verify-ai.js [--image]')
+    process.exit(1)
+  }
   const withImage = process.argv.includes('--image')
   console.log('目标:', base, ' 模型:', model)
 

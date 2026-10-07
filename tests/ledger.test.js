@@ -85,11 +85,18 @@ test('关联衣物滚轮可选择与不关联', async () => {
 
 // ---------- calendar 月历合并账本 ----------
 
+// 月历测试用当月日期，避免跨月后断言失效
+const thisMonth = day => {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
 test('月历合计并入账本开销，日明细分衣物与账本', async () => {
   const navigations = []
+  const day20 = thisMonth(20)
   const page = loadPage('calendar', {
-    listItems: async () => [{ _id: 'item-1', name: '白衬衫', price: 100, purchaseDate: '2026-09-20' }, { _id: 'item-2', name: '旧衣', price: 50, purchaseDate: '' }],
-    listExpenses: async () => expenses,
+    listItems: async () => [{ _id: 'item-1', name: '白衬衫', price: 100, purchaseDate: day20 }, { _id: 'item-2', name: '旧衣', price: 50, purchaseDate: '' }],
+    listExpenses: async () => expenses.map(e => ({ ...e, date: day20 })),
     listPlans: async () => [],
     listWearRecords: async () => [],
     listOutfits: async () => []
@@ -101,13 +108,13 @@ test('月历合计并入账本开销，日明细分衣物与账本', async () =>
   assert.equal(page.data.yearTotal, 200)
   assert.equal(page.data.undatedTotal, 50)
 
-  page.onDayTap({ currentTarget: { dataset: { date: '2026-09-20' } } })
+  page.onDayTap({ currentTarget: { dataset: { date: day20 } } })
   assert.equal(page.data.dayItems.length, 1)
   assert.equal(page.data.dayExpenses.length, 2)
   assert.equal(page.data.selectedTotal, 200)
 
   page.onAddExpense()
-  assert.equal(navigations[0], '/pages/expense-edit/expense-edit?date=2026-09-20')
+  assert.equal(navigations[0], `/pages/expense-edit/expense-edit?date=${day20}`)
   page.onExpenseTap({ currentTarget: { dataset: { id: 'exp-1' } } })
   assert.equal(navigations[1], '/pages/expense-edit/expense-edit?id=exp-1')
 })
