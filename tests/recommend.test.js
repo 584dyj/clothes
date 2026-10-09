@@ -133,17 +133,97 @@ test('衣橱画像命中缓存，衣物写入后按版本重建', async () => {
   const first = await recommendation.getInventory(cloud.db, 'openid-1')
   assert.equal(first.items.length, 1)
   assert.equal(cloud.records.ai_cache.length, 1)
+  assert.equal(cloud.records.ai_cache[0].strategyVersion, 2)
   const reads = () => cloud.calls.filter(call => call.collection === 'clothes' && call.operation === 'get').length
   const count = reads()
   assert.deepEqual((await recommendation.getInventory(cloud.db, 'openid-1')).items, first.items)
   assert.equal(reads(), count)
+  delete cloud.records.ai_cache[0].strategyVersion
+  cloud.records.ai_cache[0].items = [{ id: '旧缓存' }]
+  assert.deepEqual((await recommendation.getInventory(cloud.db, 'openid-1')).items, first.items)
+  assert.equal(reads(), count + 1)
   const newItem = { name: '黑针织衫', category: '上衣', subcategory: '', size: '', color: '黑色', brand: '',
     purchaseDate: '', note: '', imageFileID: '', seasons: ['冬'], price: 99 }
   assert.equal((await cloud.main({ action: 'data', operation: 'add', collection: 'clothes', data: newItem })).success, true)
   assert.equal(cloud.records.wardrobe_meta[0].version, 1)
   const refreshed = await recommendation.getInventory(cloud.db, 'openid-1')
   assert.equal(refreshed.items.length, 2)
-  assert.equal(reads(), count + 1)
+  assert.equal(reads(), count + 2)
   assert.equal(cloud.records.ai_cache[0].clothesVersion, 1)
+})
+
+test('空衣橱画像缓存不命中，并可自愈遗漏版本递增的旧数据', async () => {
+  const cloud = loadCloud()
+  const reads = () => cloud.calls.filter(call => call.collection === 'clothes' && call.operation === 'get').length
+
+  assert.deepEqual((await recommendation.getInventory(cloud.db, 'openid-1')).items, [])
+  assert.equal(reads(), 1)
+  assert.deepEqual((await recommendation.getInventory(cloud.db, 'openid-1')).items, [])
+  assert.equal(reads(), 2)
+
+  cloud.records.clothes.push(item('late', 'openid-1', '迟到的衬衫', '上衣', ['春秋']))
+  const recovered = await recommendation.getInventory(cloud.db, 'openid-1')
+  assert.deepEqual(recovered.items.map(row => row.id), ['late'])
+  assert.equal(reads(), 3)
+  assert.deepEqual(cloud.records.ai_cache[0].items.map(row => row.id), ['late'])
+})
+
+test('超过 120 件时保留最近 60 件，其余按近 90 天穿着频次选择', async () => {
+  const now = Date.now()
+  const today = new Date(now + 8 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const clothes = Array.from({ length: 130 }, (_, index) => ({
+    ...item(`item-${index}`, 'openid-1', `衣物${index}`, '上衣', ['春秋']),
+    createdAt: new Date(now - index * 1000)
+  }))
+  clothes[127].createdAt = new Date(now - 124500)
+  clothes.push({ ...item('foreign', 'openid-2', '他人衣物', '上衣', ['春秋']), createdAt: new Date(now) })
+  const wear_records = [
+    { _id: 'w1', _openid: 'openid-1', date: today, itemIds: ['item-125', 'item-126', 'missing', 'foreign'] },
+    { _id: 'w2', _openid: 'openid-1', date: today, itemIds: ['item-125', 'item-127'] },
+    { _id: 'w3', _openid: 'openid-1', date: '2022-01-01', itemIds: ['item-129'] },
+    { _id: 'w4', _openid: 'openid-2', date: today, itemIds: ['item-128'] }
+  ]
+  const result = await recommendation.loadItems(loadCloud({ clothes, wear_records }).db, 'openid-1')
+  assert.deepEqual(result.items.slice(0, 60).map(row => row._id), Array.from({ length: 60 }, (_, index) => `item-${index}`))
+  assert.deepEqual(result.items.slice(60, 63).map(row => row._id), ['item-125', 'item-127', 'item-126'])
+  assert.equal(result.items.length, 120)
+  assert.equal(result.items.some(row => ['missing', 'foreign', 'item-128', 'item-129'].includes(row._id)), false)
+  assert.equal(result.truncated, true)
+  assert.equal(result.wearTruncated, false)
+})
+
+test('穿着画像最多读取最近 500 条并标记截断', async () => {
+  const now = Date.now()
+  const today = new Date(now + 8 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const clothes = Array.from({ length: 121 }, (_, index) => ({
+    ...item(`item-${index}`, 'openid-1', `衣物${index}`, '上衣', ['春秋']),
+    createdAt: new Date(now - index * 1000)
+  }))
+  const wear_records = Array.from({ length: 501 }, (_, index) => ({
+    _id: `wear-${index}`, _openid: 'openid-1', date: today, itemIds: ['item-120'], createdAt: new Date(now - index)
+  }))
+  const cloud = loadCloud({ clothes, wear_records })
+  const result = await recommendation.loadItems(cloud.db, 'openid-1')
+  assert.equal(result.wearTruncated, true)
+  assert.equal(result.items.some(row => row._id === 'item-120'), true)
+  assert.deepEqual(cloud.calls.filter(call => call.collection === 'wear_records' && call.operation === 'get').map(call => call.offset),
+    Array.from({ length: 25 }, (_, index) => index * 20))
+})
+
+test('穿着记录增删改递增衣橱画像版本', async () => {
+  const today = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const cloud = loadCloud({
+    users: [{ _id: 'user', username: 'alice', openid: 'openid-1', autoLoginEnabled: true }],
+    clothes: [item('own', 'openid-1', '衬衫', '上衣', ['春秋'])]
+  })
+  const data = { date: today, outfitId: '', itemIds: ['own'], note: '' }
+  const added = await cloud.main({ action: 'data', operation: 'add', collection: 'wear_records', data })
+  assert.equal(added.success, true)
+  assert.equal(cloud.records.wardrobe_meta[0].version, 1)
+  assert.equal((await cloud.main({ action: 'data', operation: 'update', collection: 'wear_records', id: added._id,
+    data: { ...data, note: '更新' } })).success, true)
+  assert.equal(cloud.records.wardrobe_meta[0].version, 2)
+  assert.equal((await cloud.main({ action: 'data', operation: 'delete', collection: 'wear_records', id: added._id })).success, true)
+  assert.equal(cloud.records.wardrobe_meta[0].version, 3)
 })
 

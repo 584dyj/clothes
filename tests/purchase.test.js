@@ -75,3 +75,75 @@ test('购买评估页校验输入并展示服务端结果', async () => {
   assert.equal(calls[0].color, '蓝色')
   assert.equal(page.data.purchaseResult.verdict.code, 'buy')
 })
+
+test('购买评估选图后自动识别，仅填空字段并清理图片', async () => {
+  const calls = [], toasts = []
+  const page = loadPage('assistant', {
+    chooseImage: async sourceType => { calls.push(['choose', ...sourceType]); return '/tmp/top.jpg' },
+    uploadImage: async path => { calls.push(['upload', path]); return 'cloud://env/wardrobe/top.jpg' },
+    itemScan: async fileID => {
+      calls.push(['scan', fileID])
+      return { name: '白衬衫', category: '上衣', subcategory: '', color: '白色', seasons: ['夏'], brand: '不应填入' }
+    },
+    removeImage: async fileID => { calls.push(['remove', fileID]); return true }
+  }, { showToast: options => toasts.push(options.title) })
+  page.onModeTap({ currentTarget: { dataset: { mode: 'purchase' } } })
+  page.setData({ 'purchaseForm.name': '已有名称', 'purchaseForm.color': '蓝色', 'purchaseForm.price': '199',
+    'purchaseForm.note': '保留备注' })
+
+  await page.onPurchaseTakePhoto()
+
+  assert.deepEqual(calls, [
+    ['choose', 'camera'], ['upload', '/tmp/top.jpg'], ['scan', 'cloud://env/wardrobe/top.jpg'], ['remove', 'cloud://env/wardrobe/top.jpg']
+  ])
+  assert.equal(page.data.purchaseForm.name, '已有名称')
+  assert.equal(page.data.purchaseForm.category, '上衣')
+  assert.equal(page.data.purchaseForm.color, '蓝色')
+  assert.deepEqual(Array.from(page.data.purchaseForm.seasons), ['夏'])
+  assert.equal(page.data.purchaseForm.price, '199')
+  assert.equal(page.data.purchaseForm.note, '保留备注')
+  assert.equal(Object.hasOwn(page.data.purchaseForm, 'brand'), false)
+  assert.equal(page.data.purchaseImagePath, '')
+  assert.equal(page.data.purchaseScanFileID, '')
+  assert.equal(toasts.at(-1), '已自动填充，请核对')
+})
+
+test('购买评估识别失败保留图片供重试，离开模式时清理票据', async () => {
+  let scans = 0, uploads = 0
+  const removed = []
+  const page = loadPage('assistant', {
+    chooseImage: async () => '/tmp/shoe.jpg',
+    uploadImage: async () => { uploads++; return 'cloud://env/wardrobe/shoe.jpg' },
+    itemScan: async () => {
+      scans++
+      if (scans === 1) throw Error('识别失败，请重试或手动填写')
+      return { name: '运动鞋', category: '鞋', subcategory: '', color: '白色', seasons: ['春秋'], brand: '' }
+    },
+    removeImage: async fileID => { removed.push(fileID); return true }
+  })
+  page.onModeTap({ currentTarget: { dataset: { mode: 'purchase' } } })
+
+  await page.onPurchaseChooseAlbum()
+  assert.equal(page.data.purchaseImagePath, '/tmp/shoe.jpg')
+  assert.equal(page.data.purchaseScanFileID, 'cloud://env/wardrobe/shoe.jpg')
+  assert.match(page.data.purchaseError, /识别失败/)
+  assert.equal(removed.length, 0)
+
+  await page.onPurchaseScanPhoto()
+  assert.equal(uploads, 1)
+  assert.equal(scans, 2)
+  assert.deepEqual(removed, ['cloud://env/wardrobe/shoe.jpg'])
+  assert.equal(page.data.purchaseForm.category, '鞋')
+
+  page.setData({ purchaseImagePath: '/tmp/failed.jpg', purchaseScanFileID: 'cloud://env/wardrobe/failed.jpg' })
+  page.onModeTap({ currentTarget: { dataset: { mode: 'outfit' } } })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(page.data.purchaseImagePath, '')
+  assert.deepEqual(removed, ['cloud://env/wardrobe/shoe.jpg', 'cloud://env/wardrobe/failed.jpg'])
+
+  const fs = require('node:fs'), path = require('node:path')
+  const markup = fs.readFileSync(path.join(__dirname, '../pages/assistant/assistant.wxml'), 'utf8')
+  assert.match(markup, /拍照识别/)
+  assert.match(markup, /相册识别/)
+  assert.match(markup, /重试识别/)
+})

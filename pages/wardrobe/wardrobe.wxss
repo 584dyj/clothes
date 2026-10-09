@@ -185,3 +185,14 @@
   text-align: center;
   box-shadow: 0 6rpx 20rpx rgba(58, 56, 53, 0.3);
 }
+
+.batch-add {
+  position: fixed;
+  right: 164rpx;
+  bottom: 72rpx;
+  padding: 18rpx 28rpx;
+  border-radius: 36rpx;
+  background: #ffffff;
+  color: #3a3835;
+  box-shadow: 0 4rpx 16rpx rgba(58, 56, 53, 0.14);
+}

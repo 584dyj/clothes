@@ -96,7 +96,7 @@ async function activeUser(tx, user, openid) {
   if (!current || current.openid !== openid || current.autoLoginEnabled === false) throw new Error('登录状态已失效')
 }
 
-// 衣物每次增删改递增版本号，驱动衣橱画像缓存（ai_cache）失效重建。
+// 衣物或穿着记录每次增删改递增版本号，驱动衣橱画像缓存（ai_cache）失效重建。
 async function bumpWardrobeVersion(tx, openid) {
   const id = crypto.createHash('sha256').update('wardrobe:' + openid).digest('hex')
   const ref = tx.collection('wardrobe_meta').doc(id)
@@ -219,6 +219,7 @@ async function handle(context) {
         await tx.collection('cleanup_jobs').doc('refs-' + targetId).set({ data: { _openid: openid, kind: 'references', itemId: targetId, state: 'pending' } })
         await bumpWardrobeVersion(tx, openid)
       }
+      if (collection === 'wear_records') await bumpWardrobeVersion(tx, openid)
       if (collection === 'outfits') {
         await tx.collection('cleanup_jobs').doc('plans-' + targetId).set({ data: { _openid: openid, kind: 'plans', outfitId: targetId, state: 'pending' } })
       }
@@ -242,7 +243,7 @@ async function handle(context) {
     await claimImage(tx, openid, data.imageFileID, previous && previous.imageFileID, collection + '/' + targetId)
     if (previous) await ref.update({ data })
     else await ref.set({ data: { ...data, _openid: openid, createdAt: db.serverDate() } })
-    if (collection === 'clothes') await bumpWardrobeVersion(tx, openid)
+    if (collection === 'clothes' || collection === 'wear_records') await bumpWardrobeVersion(tx, openid)
     if (previous && previous.imageFileID !== data.imageFileID) await queueImage(tx, openid, previous.imageFileID)
   })
   // 提交后的清理失败必须返回已提交状态，不能让客户端把保存当作失败。

@@ -10,11 +10,16 @@ function loadCloud(records = {}) {
   const faults = { before: null, deleteStatus: 0, download: null }
   for (const name of ['users', 'invite_codes', 'auth_attempts', 'clothes', 'outfits', 'upload_tickets', 'cleanup_jobs', 'expenses', 'wear_records', 'outfit_plans', 'ai_chats', 'wardrobe_meta', 'ai_cache']) records[name] ||= []
   const clone = value => structuredClone(value)
-  const command = { all: values => ({ all: values }), pull: value => ({ pull: value }) }
+  const command = { all: values => ({ all: values }), pull: value => ({ pull: value }),
+    gte: value => ({ gte: value }), in: values => ({ in: values }) }
   function collection(name) {
     let conditions = {}, offset = 0, max = Infinity
-    const matches = row => Object.entries(conditions).every(([key, value]) => value && value.all
-      ? value.all.every(id => (row[key] || []).includes(id)) : row[key] === value)
+    const matches = row => Object.entries(conditions).every(([key, value]) => {
+      if (value && value.all) return value.all.every(id => (row[key] || []).includes(id))
+      if (value && value.gte !== undefined) return row[key] >= value.gte
+      if (value && value.in) return value.in.includes(row[key])
+      return row[key] === value
+    })
     function before(operation, id) {
       calls.push({ collection: name, operation, id, offset, max })
       if (faults.before) faults.before(name, operation, id)

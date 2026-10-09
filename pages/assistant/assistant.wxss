@@ -133,6 +133,40 @@
   line-height: 1.5;
 }
 
+.purchase-photo-preview-wrap {
+  position: relative;
+  width: 180rpx;
+}
+
+.purchase-photo-preview {
+  display: block;
+  width: 180rpx;
+  height: 220rpx;
+  border-radius: 16rpx;
+}
+
+.purchase-photo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 14rpx -6rpx 0;
+}
+
+.purchase-photo-action {
+  margin: 6rpx;
+  padding: 12rpx 22rpx;
+  border: 1rpx solid #d8d3ca;
+  border-radius: 28rpx;
+  color: #514d47;
+  font-size: 24rpx;
+}
+
+.purchase-photo-hint {
+  margin-top: 10rpx;
+  color: #aaa49b;
+  font-size: 22rpx;
+  line-height: 1.5;
+}
+
 .field-label {
   margin: 28rpx 0 12rpx;
   color: #3a3835;

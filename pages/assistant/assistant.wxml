@@ -26,6 +26,18 @@
           <view class="purchase-title">这件衣服值得买吗？</view>
           <view class="purchase-sub">根据衣橱重复度、搭配空间和当月开销给出评估</view>
 
+          <view class="field-label">照片识别 <text class="field-optional">选填</text></view>
+          <view wx:if="{{purchaseImagePath}}" class="purchase-photo-preview-wrap">
+            <image class="purchase-photo-preview" src="{{purchaseImagePath}}" mode="aspectFill" bindtap="onPreviewPurchasePhoto" />
+            <view class="image-remove" bindtap="onRemovePurchasePhoto">×</view>
+          </view>
+          <view class="purchase-photo-actions">
+            <view class="purchase-photo-action {{purchaseScanning ? 'send-disabled' : ''}}" bindtap="onPurchaseTakePhoto" role="button">拍照识别</view>
+            <view class="purchase-photo-action {{purchaseScanning ? 'send-disabled' : ''}}" bindtap="onPurchaseChooseAlbum" role="button">相册识别</view>
+            <view wx:if="{{purchaseImagePath}}" class="purchase-photo-action {{purchaseScanning ? 'send-disabled' : ''}}" bindtap="onPurchaseScanPhoto" role="button">{{purchaseScanning ? '识别中…' : '重试识别'}}</view>
+          </view>
+          <view class="purchase-photo-hint">识别结果只填充空白项，提交评估前仍可修改。</view>
+
           <view class="field-label">名称 <text class="field-optional">选填</text></view>
           <input class="purchase-input" value="{{purchaseForm.name}}" maxlength="60" data-field="name" bindinput="onPurchaseFieldInput" placeholder="例如：蓝色牛仔外套" />
 
@@ -75,7 +87,7 @@
           <view class="field-label">备注 <text class="field-optional">选填</text></view>
           <textarea class="purchase-textarea" value="{{purchaseForm.note}}" maxlength="200" data-field="note" bindinput="onPurchaseFieldInput" placeholder="版型、材质或购买顾虑" />
           <view wx:if="{{purchaseError}}" class="purchase-error">{{purchaseError}}</view>
-          <view class="purchase-submit {{purchaseAssessing ? 'send-disabled' : ''}}" bindtap="onPurchaseSubmit" role="button">{{purchaseAssessing ? '正在评估…' : '开始评估'}}</view>
+          <view class="purchase-submit {{purchaseAssessing || purchaseScanning ? 'send-disabled' : ''}}" bindtap="onPurchaseSubmit" role="button">{{purchaseAssessing ? '正在评估…' : purchaseScanning ? '正在识别…' : '开始评估'}}</view>
         </view>
 
         <view wx:else class="purchase-card result-card">

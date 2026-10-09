@@ -3,6 +3,9 @@ const { readDoc } = require('./data')
 const { requestChat } = require('./ai-http')
 
 const MAX_ITEMS = 120
+const RECENT_ITEMS = 60
+const MAX_WEAR_RECORDS = 500
+const INVENTORY_CACHE_VERSION = 2
 const CACHE_MS = 10 * 60 * 1000
 const COOLDOWN_MS = 60 * 1000
 const BUSY_MS = 25 * 1000
@@ -26,13 +29,15 @@ async function getInventory(db, openid) {
   const version = await versionOf()
   const cacheRef = db.collection('ai_cache').doc(crypto.createHash('sha256').update('ai-cache:' + openid).digest('hex'))
   const cache = await readDoc(cacheRef)
-  if (cache && cache.clothesVersion === version && Array.isArray(cache.items)) {
-    return { items: cache.items, truncated: cache.truncated === true }
+  if (cache && cache.clothesVersion === version && cache.strategyVersion === INVENTORY_CACHE_VERSION &&
+      Array.isArray(cache.items) && cache.items.length > 0) {
+    return { items: cache.items, truncated: cache.truncated === true, wearTruncated: cache.wearTruncated === true }
   }
-  const { items: rawItems, truncated } = await loadItems(db, openid)
+  const { items: rawItems, truncated, wearTruncated } = await loadItems(db, openid)
   const items = inventory(rawItems)
-  await cacheRef.set({ data: { _openid: openid, clothesVersion: version, items, truncated, builtAt: new Date() } })
-  return { items, truncated }
+  await cacheRef.set({ data: { _openid: openid, clothesVersion: version, strategyVersion: INVENTORY_CACHE_VERSION,
+    items, truncated, wearTruncated, builtAt: new Date() } })
+  return { items, truncated, wearTruncated }
 }
 
 async function loadItems(db, openid) {
@@ -43,7 +48,58 @@ async function loadItems(db, openid) {
     items.push(...res.data)
     if (res.data.length < 20) break
   }
-  return { items: items.slice(0, MAX_ITEMS), truncated: items.length > MAX_ITEMS }
+  if (items.length <= MAX_ITEMS) return { items, truncated: false, wearTruncated: false }
+
+  const recent = items.slice(0, MAX_ITEMS)
+  const fixed = recent.slice(0, RECENT_ITEMS)
+  const fixedIds = new Set(fixed.map(item => item._id))
+  const { counts, wearTruncated } = await loadWearCounts(db, openid)
+  const candidateIds = [...counts.keys()].filter(id => !fixedIds.has(id))
+  const candidates = await loadItemsByIds(db, openid, candidateIds)
+  const createdAt = item => {
+    const value = new Date(item.createdAt || 0).getTime()
+    return Number.isFinite(value) ? value : 0
+  }
+  candidates.sort((a, b) => (counts.get(b._id) || 0) - (counts.get(a._id) || 0) ||
+    createdAt(b) - createdAt(a) || String(a._id).localeCompare(String(b._id)))
+
+  const selected = fixed.slice()
+  const selectedIds = new Set(fixedIds)
+  for (const item of candidates) {
+    if (selected.length >= MAX_ITEMS) break
+    selected.push(item)
+    selectedIds.add(item._id)
+  }
+  for (const item of recent.slice(RECENT_ITEMS)) {
+    if (selected.length >= MAX_ITEMS) break
+    if (!selectedIds.has(item._id)) selected.push(item)
+  }
+  return { items: selected, truncated: true, wearTruncated }
+}
+
+async function loadWearCounts(db, openid) {
+  const cutoff = new Date(Date.now() + 8 * 60 * 60 * 1000 - 89 * 86400000).toISOString().slice(0, 10)
+  const counts = new Map()
+  let total = 0
+  for (let offset = 0; offset < MAX_WEAR_RECORDS; offset += 20) {
+    const res = await db.collection('wear_records').where({ _openid: openid, date: db.command.gte(cutoff) })
+      .orderBy('date', 'desc').orderBy('createdAt', 'desc').skip(offset).limit(20).get()
+    total += res.data.length
+    for (const record of res.data) {
+      for (const id of new Set(Array.isArray(record.itemIds) ? record.itemIds : [])) counts.set(id, (counts.get(id) || 0) + 1)
+    }
+    if (res.data.length < 20) break
+  }
+  return { counts, wearTruncated: total >= MAX_WEAR_RECORDS }
+}
+
+async function loadItemsByIds(db, openid, ids) {
+  const items = []
+  for (let offset = 0; offset < ids.length; offset += 20) {
+    const res = await db.collection('clothes').where({ _openid: openid, _id: db.command.in(ids.slice(offset, offset + 20)) }).limit(20).get()
+    items.push(...res.data)
+  }
+  return items
 }
 
 function inventory(items) {
@@ -132,10 +188,11 @@ async function handle({ db, openid, user, event }, request = requestCompletion, 
   const model = env.AI_MODEL || 'deepseek-flash'
   const key = env.AI_API_KEY
   if (!key) throw new Error('推荐服务尚未配置')
-  const { items, truncated } = await getInventory(db, openid)
+  const { items, truncated, wearTruncated } = await getInventory(db, openid)
   if (!items.length) throw new Error('衣橱中还没有衣物')
   const gaps = truncated ? [] : findGaps(items)
-  const inputHash = crypto.createHash('sha256').update(JSON.stringify({ model, occasion, items })).digest('hex')
+  const inputHash = crypto.createHash('sha256').update(JSON.stringify({ strategyVersion: INVENTORY_CACHE_VERSION,
+    model, occasion, items, wearTruncated })).digest('hex')
   const recordId = crypto.createHash('sha256').update(`recommend:${openid}`).digest('hex')
   const token = crypto.randomBytes(16).toString('hex')
   const now = Date.now()
@@ -167,7 +224,7 @@ async function handle({ db, openid, user, event }, request = requestCompletion, 
       { role: 'user', content: JSON.stringify({ occasion, items, gaps }) }
     ]
     const result = cleanResult(await request({ base, key, model, messages, disableThinking: env.AI_THINKING !== '1' }), items, gaps)
-    const value = { ...result, considered: items.length, truncated }
+    const value = { ...result, considered: items.length, truncated, wearTruncated }
     try {
       await db.runTransaction(async tx => {
         const ref = tx.collection('auth_attempts').doc(recordId)

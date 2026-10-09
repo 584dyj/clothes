@@ -1,0 +1,94 @@
+<view class="page">
+  <view wx:if="{{loadError}}" class="empty">{{loadError}}</view>
+  <block wx:else>
+    <view class="toolbar card">
+      <view>
+        <view class="toolbar-title">批量建档</view>
+        <view class="toolbar-hint">一次最多 9 张，图片会逐张识别</view>
+      </view>
+      <button class="choose-btn" bindtap="onChooseImages" disabled="{{processing || saving || !ready}}">选择图片</button>
+    </view>
+
+    <view wx:if="{{cards.length === 0}}" class="empty">选择衣物或鞋子的照片开始建档</view>
+    <view wx:else class="batch-grid">
+      <view wx:for="{{cards}}" wx:key="key" class="batch-card card {{item.expanded ? 'card-expanded' : ''}}">
+        <view class="card-summary" data-key="{{item.key}}" bindtap="onToggleCard">
+          <image class="card-image" src="{{item.imagePath || item.imageFileID}}" mode="aspectFill" />
+          <view class="summary-text">
+            <view class="summary-name">{{item.name || '未命名'}}</view>
+            <view class="summary-meta">{{item.category || '未分类'}}{{item.size ? ' · ' + item.size : ''}}{{item.color ? ' · ' + item.color : ''}}</view>
+            <view class="status status-{{item.status}}">{{item.statusText}}</view>
+          </view>
+        </view>
+
+        <view wx:if="{{item.error}}" class="card-error">{{item.error}}</view>
+        <view wx:if="{{item.status === 'failed'}}" class="card-actions">
+          <button size="mini" data-key="{{item.key}}" bindtap="onRetryScan" disabled="{{processing || saving}}">重试识别</button>
+        </view>
+
+        <view wx:if="{{item.expanded}}" class="editor">
+          <view class="field">
+            <text class="label">名称</text>
+            <input class="input" value="{{item.name}}" placeholder="请输入名称" data-key="{{item.key}}" data-field="name" bindinput="onInput" />
+          </view>
+          <view class="field field-column">
+            <text class="label">类别</text>
+            <view class="chip-row">
+              <view wx:for="{{categories}}" wx:key="*this" wx:for-item="option"
+                class="chip {{item.category === option ? 'chip-active' : ''}}"
+                data-key="{{item.key}}" data-value="{{option}}" bindtap="onCategoryTap">{{option}}</view>
+            </view>
+          </view>
+          <view wx:if="{{item.category === '配饰'}}" class="field">
+            <text class="label">配饰类型</text>
+            <view class="picker-value {{item.subcategory ? '' : 'placeholder'}}" data-key="{{item.key}}" data-target="subcategory" bindtap="openPicker">{{item.subcategory || '请选择'}}</view>
+          </view>
+          <view wx:if="{{item.category === '鞋'}}" class="field">
+            <text class="label">鞋码</text>
+            <view class="picker-value {{item.size ? '' : 'placeholder'}}" data-key="{{item.key}}" data-target="shoeSize" bindtap="openPicker">{{item.size || '可选'}}</view>
+          </view>
+          <view wx:else class="field field-column">
+            <text class="label">尺码</text>
+            <view class="chip-row">
+              <view wx:for="{{sizes}}" wx:key="*this" wx:for-item="option"
+                class="chip {{item.size === option ? 'chip-active' : ''}}"
+                data-key="{{item.key}}" data-value="{{option}}" bindtap="onSizeTap">{{option}}</view>
+            </view>
+          </view>
+          <view class="field field-column">
+            <text class="label">季节</text>
+            <view class="chip-row">
+              <view wx:for="{{item.seasonStates}}" wx:key="value" wx:for-item="season"
+                class="chip {{season.active ? 'chip-active' : ''}}"
+                data-key="{{item.key}}" data-value="{{season.value}}" bindtap="onSeasonTap">{{season.value}}</view>
+            </view>
+          </view>
+          <view class="field">
+            <text class="label">颜色</text>
+            <view class="picker-value {{item.color || item.colorCustom ? '' : 'placeholder'}}" data-key="{{item.key}}" data-target="color" bindtap="openPicker">{{item.colorCustom ? '其他' : (item.color || '可选')}}</view>
+          </view>
+          <view wx:if="{{item.colorCustom}}" class="field">
+            <text class="label">自定义颜色</text>
+            <input class="input" value="{{item.color}}" placeholder="请输入颜色" data-key="{{item.key}}" data-field="color" bindinput="onInput" />
+          </view>
+          <view class="field">
+            <text class="label">价格</text>
+            <input class="input" type="digit" value="{{item.price}}" placeholder="可选，单位：元" data-key="{{item.key}}" data-field="price" bindinput="onInput" />
+          </view>
+          <button class="remove-btn" data-key="{{item.key}}" bindtap="onRemoveCard" disabled="{{processing || saving}}">移除此项</button>
+        </view>
+      </view>
+    </view>
+
+    <button wx:if="{{cards.length}}" class="btn-primary save-btn" bindtap="onSaveAll" loading="{{saving}}" disabled="{{processing || saving}}">全部保存</button>
+  </block>
+
+  <wheel-picker
+    show="{{picker.show}}"
+    title="{{picker.title}}"
+    columns="{{picker.columns}}"
+    values="{{picker.values}}"
+    bind:confirm="onPickerConfirm"
+    bind:cancel="onPickerCancel"
+  />
+</view>

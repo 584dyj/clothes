@@ -24,8 +24,15 @@ Page({
     try { await this.onRetry() } finally { wx.stopPullDownRefresh() }
   },
 
-  onHide() { this.clearSessionTap() },
-  onUnload() { this.clearSessionTap() },
+  onHide() {
+    this.clearSessionTap()
+    if (this.data.activeMode === 'purchase') return this.cleanupPurchasePhoto()
+  },
+
+  onUnload() {
+    this.clearSessionTap()
+    return this.cleanupPurchasePhoto()
+  },
 
   data: {
     activeMode: 'outfit',
@@ -36,6 +43,9 @@ Page({
     colors: app.globalData.colors,
     occasions: app.globalData.occasions,
     purchaseForm: { name: '', category: '', subcategory: '', color: '', seasons: [], occasion: '', price: '', monthlyBudget: '', note: '' },
+    purchaseImagePath: '',
+    purchaseScanFileID: '',
+    purchaseScanning: false,
     purchaseAssessing: false,
     purchaseError: '',
     purchaseResult: null,
@@ -74,7 +84,15 @@ Page({
       this.applySessions(this.data.sessions, { activeMode: mode })
       return
     }
+    this.cleanupPurchasePhoto()
     this.applySessions(this.data.sessions, { activeMode: 'outfit' })
+  },
+
+  cleanupPurchasePhoto() {
+    this._purchaseScanSeq = (this._purchaseScanSeq || 0) + 1
+    const fileID = this.data.purchaseScanFileID
+    this.setData({ purchaseImagePath: '', purchaseScanFileID: '', purchaseScanning: false })
+    if (fileID) return db.removeImage(fileID)
   },
 
   saveView(id) {
@@ -310,6 +328,88 @@ Page({
     this.setData({ selectedItemId: '', selectedItemName: '', canSend: !!this.data.input.trim() || !!this.data.imagePath })
   },
 
+  onPurchaseTakePhoto() { return this.choosePurchasePhoto(['camera']) },
+
+  onPurchaseChooseAlbum() { return this.choosePurchasePhoto(['album']) },
+
+  async choosePurchasePhoto(sourceType) {
+    if (this.data.purchaseScanning) return
+    try {
+      const path = await db.chooseImage(sourceType)
+      const previous = this.data.purchaseScanFileID
+      this._purchaseScanSeq = (this._purchaseScanSeq || 0) + 1
+      this.setData({ purchaseImagePath: path, purchaseScanFileID: '', purchaseError: '' })
+      if (previous) await db.removeImage(previous)
+      return this.onPurchaseScanPhoto()
+    } catch (e) {
+      const message = e.errMsg || e.message || ''
+      if (sourceType[0] === 'camera' && /auth|authorize|permission|deny/i.test(message)) {
+        wx.showModal({ title: '无法使用相机', content: '请在小程序设置中允许使用相机',
+          confirmText: '打开设置', success: res => { if (res.confirm) wx.openSetting({}) } })
+      } else if (!/cancel/i.test(message)) {
+        wx.showToast({ title: '选图失败，请重试', icon: 'none' })
+      }
+    }
+  },
+
+  onPreviewPurchasePhoto() {
+    if (this.data.purchaseImagePath) wx.previewImage({ current: this.data.purchaseImagePath, urls: [this.data.purchaseImagePath] })
+  },
+
+  onRemovePurchasePhoto() {
+    if (this.data.purchaseScanning) return
+    return this.cleanupPurchasePhoto()
+  },
+
+  async onPurchaseScanPhoto() {
+    const { purchaseImagePath, purchaseScanFileID, purchaseScanning } = this.data
+    if (purchaseScanning || (!purchaseImagePath && !purchaseScanFileID)) return
+    const seq = (this._purchaseScanSeq = (this._purchaseScanSeq || 0) + 1)
+    this.setData({ purchaseScanning: true, purchaseError: '' })
+    wx.showLoading({ title: '识别中…' })
+    let fileID = purchaseScanFileID
+    try {
+      if (!fileID) {
+        fileID = await db.uploadImage(purchaseImagePath)
+        if (this._purchaseScanSeq !== seq) {
+          await db.removeImage(fileID)
+          return
+        }
+        this.setData({ purchaseScanFileID: fileID })
+      }
+      const result = await db.itemScan(fileID)
+      if (this._purchaseScanSeq !== seq) {
+        await db.removeImage(fileID)
+        return
+      }
+      const current = this.data.purchaseForm
+      const patch = {}
+      if (!current.name.trim() && result.name) patch['purchaseForm.name'] = result.name
+      if (!current.category && result.category) patch['purchaseForm.category'] = result.category
+      const category = patch['purchaseForm.category'] || current.category
+      if (category === '配饰' && !current.subcategory && result.subcategory) patch['purchaseForm.subcategory'] = result.subcategory
+      if (!current.color && result.color) patch['purchaseForm.color'] = result.color
+      if (!current.seasons.length && Array.isArray(result.seasons) && result.seasons.length) {
+        patch['purchaseForm.seasons'] = result.seasons
+        patch.seasonOptions = this.data.seasonOptions.map(item => ({ ...item, selected: result.seasons.includes(item.value) }))
+      }
+      await db.removeImage(fileID)
+      if (this._purchaseScanSeq !== seq) return
+      this.setData({ ...patch, purchaseImagePath: '', purchaseScanFileID: '', purchaseError: '' })
+      wx.showToast({ title: '已自动填充，请核对', icon: 'none' })
+    } catch (e) {
+      console.error(e)
+      if (this._purchaseScanSeq === seq) {
+        const message = e.message || '识别失败，请重试或手动填写'
+        this.setData({ purchaseError: message })
+        wx.showToast({ title: message, icon: 'none' })
+      }
+    } finally {
+      wx.hideLoading()
+      if (this._purchaseScanSeq === seq) this.setData({ purchaseScanning: false })
+    }
+  },
+
   onPurchaseFieldInput(e) {
     this.setData({ [`purchaseForm.${e.currentTarget.dataset.field}`]: e.detail.value, purchaseError: '' })
   },
@@ -341,7 +441,7 @@ Page({
   },
 
   async onPurchaseSubmit() {
-    if (this.data.purchaseAssessing) return
+    if (this.data.purchaseAssessing || this.data.purchaseScanning) return
     const form = this.data.purchaseForm
     let error = ''
     if (!form.category) error = '请选择分类'
@@ -353,6 +453,7 @@ Page({
       this.setData({ purchaseError: error })
       return
     }
+    this.cleanupPurchasePhoto()
     this.setData({ purchaseAssessing: true, purchaseError: '' })
     try {
       this.setData({ purchaseResult: await db.purchaseAssess(form) })
