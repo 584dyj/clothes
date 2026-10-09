@@ -350,6 +350,32 @@
   border-top: 1rpx solid #efede8;
 }
 
+.selected-item-wrap {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  margin-bottom: 12rpx;
+}
+
+.selected-item {
+  max-width: 520rpx;
+  padding: 10rpx 20rpx;
+  overflow: hidden;
+  border-radius: 28rpx;
+  background: #efede8;
+  color: #514d47;
+  font-size: 24rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selected-item-remove {
+  margin-left: 10rpx;
+  color: #9a958c;
+  font-size: 34rpx;
+  line-height: 1;
+}
+
 .image-preview-wrap {
   position: relative;
   display: inline-block;

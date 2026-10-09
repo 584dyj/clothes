@@ -26,8 +26,9 @@ async function claimImage(tx, openid, fileID, previous, target) {
   if (!match) throw new Error('请重新上传图片')
   const ref = tx.collection('upload_tickets').doc(match[1])
   const ticket = await readDoc(ref)
+  const scannedItem = ticket && ticket.target === 'itemScan' && ticket.fileID === fileID && target.startsWith('clothes/')
   if (!ticket || ticket._openid !== openid || !fileID.endsWith('/' + ticket.cloudPath) ||
-      ticket.target || ticket.cancelled) throw new Error('图片不属于当前账号或已使用')
+      (ticket.target && !scannedItem) || ticket.cancelled) throw new Error('图片不属于当前账号或已使用')
   await ref.update({ data: { fileID, target } })
 }
 
@@ -184,7 +185,7 @@ async function handle(context) {
       const ticket = match && await readDoc(tx.collection('upload_tickets').doc(match[1]))
       if (!ticket || ticket._openid !== openid || !fileID.endsWith('/' + ticket.cloudPath)) throw new Error('无权删除此图片')
       // 已提交图片的删除必须由替换或删除记录创建清理任务，防止响应丢失后的错误回滚。
-      if (ticket.target) return
+      if (ticket.target && ticket.target !== 'itemScan') return
       await tx.collection('upload_tickets').doc(match[1]).update({ data: { cancelled: true, fileID } })
       await queueImage(tx, openid, fileID)
     })

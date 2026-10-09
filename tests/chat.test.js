@@ -45,6 +45,26 @@ test('对话发送新建会话，带衣橱画像并保存多轮上下文', async
   assert.equal(second.messages.at(-1).role, 'assistant')
   assert.equal(cloud.records.ai_chats[0].messages.length, 4)
 })
+
+test('对话可指定本人非挂件单品，模型收到精确 ID 且衣橱画像排除挂件', async () => {
+  const shoe = { ...item('shoe-1', '鞋'), name: '黑色乐福鞋', size: '42' }
+  const hanger = { ...item('charm-1', '挂件'), name: '玩偶挂件' }
+  const foreign = { ...item('foreign-1', '上衣'), _openid: 'openid-2' }
+  const cloud = loadCloud({ users: [user()], clothes: [shoe, hanger, foreign] })
+  const streamEnv = { ...env, CHAT_STREAM_SECRET: 's'.repeat(32) }
+  const result = await chatApi.handle({ db: cloud.db, cloud, openid: 'openid-1',
+    event: { action: 'chatStart', text: '通勤怎么搭？', itemId: 'shoe-1' } }, undefined, streamEnv)
+  const payload = JSON.parse(Buffer.from(result.ticket.split('.')[0], 'base64url').toString('utf8'))
+  assert.match(payload.request.messages.at(-1).content, /shoe-1/)
+  assert.match(payload.request.messages.at(-1).content, /黑色乐福鞋/)
+  assert.equal(payload.request.messages[0].content.includes('charm-1'), false)
+  assert.equal(cloud.records.ai_chats[0].messages[0].text, '通勤怎么搭？')
+  await assert.rejects(chatApi.handle({ db: cloud.db, cloud, openid: 'openid-1',
+    event: { action: 'chatStart', text: 'x', itemId: 'charm-1' } }, undefined, streamEnv), /已删除或无权/)
+  await assert.rejects(chatApi.handle({ db: cloud.db, cloud, openid: 'openid-1',
+    event: { action: 'chatStart', text: 'x', itemId: 'foreign-1' } }, undefined, streamEnv), /已删除或无权/)
+})
+
 test('对话携带图片时校验票据并转 base64 发送，历史消息只传文本', async () => {
   const cloud = loadCloud({ users: [user()], upload_tickets: [ticket()] })
   let captured
@@ -283,11 +303,11 @@ test('助手拍照、图片预览和长按删除入口', async () => {
   assert.doesNotMatch(markup, /catchtap="onDeleteSession"/)
 })
 
-test('单个图片入口可选择拍照或相册', async () => {
+test('附件入口提供拍照、相册和衣橱选择', async () => {
   const sources = []
   const page = loadPage('assistant', { chooseImage: async source => { sources.push(source[0]); return '/tmp/pic.jpg' } },
     { showActionSheet: options => {
-      assert.deepEqual(Array.from(options.itemList), ['拍照', '从相册选择'])
+      assert.deepEqual(Array.from(options.itemList), ['拍照', '从相册选择', '从衣橱选择'])
       options.success({ tapIndex: sources.length })
     } })
   page.onChooseImage()
@@ -295,6 +315,33 @@ test('单个图片入口可选择拍照或相册', async () => {
   page.onChooseImage()
   await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(sources, ['camera', 'album'])
+})
+
+test('助手可从衣橱选择单品发起穿搭建议，选择列表排除挂件', async () => {
+  let sent
+  const page = loadPage('assistant', {
+    listItems: async () => [
+      { _id: 'top-1', name: '白衬衫', category: '上衣', color: '白色' },
+      { _id: 'shoe-1', name: '乐福鞋', category: '鞋', color: '黑色' },
+      { _id: 'charm-1', name: '玩偶', category: '挂件', color: '粉色' }
+    ],
+    chatSend: async payload => {
+      sent = payload
+      return { chatId: 'c1', title: '乐福鞋搭配', messages: [{ role: 'user', text: payload.text }] }
+    },
+    chatList: async () => []
+  })
+  await page.onChooseWardrobeItem()
+  assert.deepEqual(Array.from(page.data.itemPicker.columns[0]), ['白衬衫 · 上衣 · 白色', '乐福鞋 · 鞋 · 黑色'])
+  page.onItemPickerConfirm({ detail: { values: [1] } })
+  assert.equal(page.data.selectedItemId, 'shoe-1')
+  await page.onSend()
+  assert.equal(sent.itemId, 'shoe-1')
+  assert.match(sent.text, /乐福鞋/)
+  assert.equal(page.data.selectedItemId, '')
+  const fs = require('node:fs'), path = require('node:path')
+  const markup = fs.readFileSync(path.join(__dirname, '../pages/assistant/assistant.wxml'), 'utf8')
+  assert.match(markup, /selectedItemName/)
 })
 
 test('点击模板立即显示用户消息与等待状态，输入框保持空白', async () => {

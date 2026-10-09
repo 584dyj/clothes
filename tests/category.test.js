@@ -2,12 +2,12 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { loadPage } = require('./support/page')
 
-test('尺码按钮仅提供 XS 至 XL，忽略旧尺码记忆并保留已有记录', async () => {
+test('尺码按钮提供 XS 至 XL 及 F，忽略旧尺码记忆并保留已有记录', async () => {
   const page = loadPage('item-edit', {}, { getStorageSync: () => 'XXL' })
   await page.onLoad({})
-  assert.deepEqual(Array.from(page.data.sizes), ['XS', 'S', 'M', 'L', 'XL'])
+  assert.deepEqual(Array.from(page.data.sizes), ['XS', 'S', 'M', 'L', 'XL', 'F'])
   assert.equal(page.data.size, '')
-  for (const size of ['XS', 'XL', 'XL']) {
+  for (const size of ['XS', 'XL', 'F']) {
     page.onSizeTap({ currentTarget: { dataset: { value: size } } })
     assert.equal(page.data.size, size)
   }
@@ -18,6 +18,20 @@ test('尺码按钮仅提供 XS 至 XL，忽略旧尺码记忆并保留已有记�
   const existing = loadPage('item-edit', { getItem: async () => ({ size: 'XXL' }) })
   await existing.onLoad({ id: 'old' })
   assert.equal(existing.data.size, 'XXL')
+})
+
+test('鞋类使用 30 至 50 的鞋码滚轮，切换衣物类别时清除不适用尺码', async () => {
+  const page = loadPage('item-edit', {}, { getStorageSync: () => 'M' })
+  await page.onLoad({})
+  assert.equal(page.data.size, 'M')
+  page.onCategoryTap({ currentTarget: { dataset: { value: '鞋' } } })
+  assert.equal(page.data.size, '')
+  page.openPicker({ currentTarget: { dataset: { target: 'shoeSize' } } })
+  assert.deepEqual(Array.from(page.data.picker.columns[0]), Array.from({ length: 21 }, (_, index) => String(index + 30)))
+  page.onPickerConfirm({ detail: { values: [12] } })
+  assert.equal(page.data.size, '42')
+  page.onCategoryTap({ currentTarget: { dataset: { value: '上衣' } } })
+  assert.equal(page.data.size, '')
 })
 
 test('类别按钮回显已有选择，保持单选并清除不适用的配饰类型', async () => {

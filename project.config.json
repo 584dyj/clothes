@@ -63,6 +63,10 @@
       },
       {
         "type": "file",
+        "value": "SPEC.md"
+      },
+      {
+        "type": "file",
         "value": "project.private.config.json"
       }
     ],

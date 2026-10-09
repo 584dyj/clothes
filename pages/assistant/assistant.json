@@ -1,4 +1,7 @@
 {
   "navigationBarTitleText": "穿搭助手",
-  "enablePullDownRefresh": true
+  "enablePullDownRefresh": true,
+  "usingComponents": {
+    "wheel-picker": "/components/wheel-picker/wheel-picker"
+  }
 }

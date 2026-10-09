@@ -14,6 +14,12 @@
       <view>拍照或从相册选择</view>
     </view>
   </view>
+  <button
+    wx:if="{{!id && (imagePath || scanFileID)}}"
+    class="scan-btn"
+    bindtap="onScanPhoto"
+    disabled="{{scanning || saving || !ready}}"
+  >{{scanning ? '识别中…' : 'AI 识别填充'}}</button>
 
   <!-- 表单 -->
   <view class="form card">
@@ -39,7 +45,14 @@
       </view>
     </view>
 
-    <view class="field field-column">
+    <view class="field" wx:if="{{category === '鞋'}}">
+      <text class="label">鞋码</text>
+      <view class="picker-value {{size ? '' : 'placeholder'}}" data-target="shoeSize" bindtap="openPicker">
+        {{size || '请选择鞋码'}}
+      </view>
+    </view>
+
+    <view class="field field-column" wx:else>
       <text class="label">尺码</text>
       <view class="season-row category-row">
         <view wx:for="{{sizes}}" wx:key="*this"
@@ -47,7 +60,7 @@
           data-value="{{item}}" bindtap="onSizeTap"
         >{{item}}</view>
       </view>
-      <text wx:if="{{size && size !== 'XS' && size !== 'S' && size !== 'M' && size !== 'L' && size !== 'XL'}}" class="placeholder">原尺码：{{size}}</text>
+      <text wx:if="{{size && size !== 'XS' && size !== 'S' && size !== 'M' && size !== 'L' && size !== 'XL' && size !== 'F'}}" class="placeholder">原尺码：{{size}}</text>
     </view>
 
     <view class="field field-column">
@@ -98,7 +111,7 @@
     </view>
   </view>
 
-  <button class="btn-primary save-btn" bindtap="onSave" disabled="{{saving || !ready}}">保存</button>
+  <button class="btn-primary save-btn" bindtap="onSave" disabled="{{saving || scanning || !ready}}">保存</button>
   <button wx:if="{{id}}" class="btn-danger delete-btn" bindtap="onDelete" disabled="{{saving || !ready}}">删除</button>
 
   <wheel-picker

@@ -43,6 +43,64 @@ test('月历分段切换与计划实穿标记、明细', async () => {
   assert.equal(page.data.dayExpenses.length, 1)
 })
 
+// ---------- 一键打卡 ----------
+
+test('计划一键打卡提交单品并转为已打卡', async () => {
+  const added = []
+  const day20 = thisMonth(new Date().getDate()) // 打卡只允许今天及以前，用今天
+  let wearList = []
+  const page = loadPage('calendar', {
+    listItems: async () => [],
+    listExpenses: async () => [],
+    listPlans: async () => [{ _id: 'p1', date: day20, outfitId: 'f1', note: '见客户' }],
+    listWearRecords: async () => wearList,
+    listOutfits: async () => [{ _id: 'f1', name: '通勤', itemIds: ['i1', 'i2'] }],
+    addWearRecord: async data => { added.push(data); wearList = [{ _id: 'w1', ...data }] }
+  })
+  page.onLoad()
+  await page.loadData()
+  page.onDayTap({ currentTarget: { dataset: { date: day20 } } })
+  assert.equal(page.data.dayPlans[0].checkInState, 'ready')
+
+  await page.onQuickCheckIn({ currentTarget: { dataset: { id: 'p1' } } })
+  // vm 沙箱内创建的对象原型与宿主不同，用 JSON 比较（与文件内其他用例一致）
+  assert.equal(JSON.stringify(added[0]), JSON.stringify({ date: day20, outfitId: 'f1', itemIds: ['i1', 'i2'], note: '见客户' }))
+  assert.equal(page.data.dayPlans[0].checkInState, 'done')
+
+  // 已打卡后再次点击不再提交
+  await page.onQuickCheckIn({ currentTarget: { dataset: { id: 'p1' } } })
+  assert.equal(added.length, 1)
+
+  const fs = require('node:fs'), path = require('node:path')
+  const markup = fs.readFileSync(path.join(__dirname, '../pages/calendar/calendar.wxml'), 'utf8')
+  assert.match(markup, /catchtap="onQuickCheckIn"/)
+  assert.match(markup, /已打卡/)
+})
+
+test('一键打卡禁用态：已打卡、未来日期、已删除与空穿搭', async () => {
+  const day20 = thisMonth(new Date().getDate())
+  const futureDate = `${new Date().getFullYear() + 1}-01-15`
+  const page = loadPage('calendar', {
+    listItems: async () => [],
+    listExpenses: async () => [],
+    listPlans: async () => [
+      { _id: 'p1', date: day20, outfitId: 'f1', note: '' },
+      { _id: 'p2', date: day20, outfitId: 'gone', note: '' },
+      { _id: 'p3', date: day20, outfitId: 'empty', note: '' },
+      { _id: 'p4', date: futureDate, outfitId: 'f1', note: '' }
+    ],
+    listWearRecords: async () => [{ _id: 'w1', date: day20, outfitId: 'f1', itemIds: ['i1'] }],
+    listOutfits: async () => [{ _id: 'f1', name: '通勤', itemIds: ['i1'] }, { _id: 'empty', name: '空', itemIds: [] }],
+    addWearRecord: async () => { throw Error('不应提交') }
+  })
+  page.onLoad()
+  await page.loadData()
+  page.onDayTap({ currentTarget: { dataset: { date: day20 } } })
+  assert.deepEqual(page.data.dayPlans.map(plan => plan.checkInState), ['done', 'deleted', 'empty'])
+  page.onDayTap({ currentTarget: { dataset: { date: futureDate } } })
+  assert.equal(page.data.dayPlans[0].checkInState, 'future')
+})
+
 // ---------- plan-edit ----------
 
 test('计划页保存需选穿搭，选择后提交', async () => {

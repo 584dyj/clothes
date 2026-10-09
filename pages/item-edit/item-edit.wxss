@@ -31,6 +31,20 @@
   margin-bottom: 12rpx;
 }
 
+.scan-btn {
+  width: 420rpx;
+  margin: -8rpx auto 24rpx;
+  border: 1rpx solid #3a3835;
+  border-radius: 999rpx;
+  background: #ffffff;
+  color: #3a3835;
+  font-size: 28rpx;
+}
+
+.scan-btn::after {
+  border: none;
+}
+
 .form {
   padding: 8rpx 28rpx;
   margin-bottom: 32rpx;

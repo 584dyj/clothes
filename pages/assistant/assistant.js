@@ -46,6 +46,9 @@ Page({
     messages: [],
     input: '',
     imagePath: '',
+    selectedItemId: '',
+    selectedItemName: '',
+    itemPicker: { show: false, title: '', columns: [], values: [] },
     canSend: false,
     sending: false,
     streaming: false,
@@ -165,7 +168,8 @@ Page({
     this.detachPendingSend()
     this.saveView('')
     this.clearSessionTap()
-    this.setData({ currentId: '', title: '新会话', messages: [], input: '', imagePath: '', canSend: false, sendError: '',
+    this.setData({ currentId: '', title: '新会话', messages: [], input: '', imagePath: '', selectedItemId: '', selectedItemName: '',
+      'itemPicker.show': false, canSend: false, sendError: '',
       awaitingReply: false, scrollIntoView: '' })
   },
 
@@ -227,14 +231,18 @@ Page({
   },
 
   onInput(e) {
-    this.setData({ input: e.detail.value, canSend: !!e.detail.value.trim() || !!this.data.imagePath })
+    this.setData({ input: e.detail.value, canSend: !!e.detail.value.trim() || !!this.data.imagePath || !!this.data.selectedItemId })
   },
 
   onChooseImage() {
     if (this.data.sending) return
     wx.showActionSheet({
-      itemList: ['拍照', '从相册选择'],
-      success: res => { if (res.tapIndex === 0) this.onTakePhoto(); else if (res.tapIndex === 1) this.onChooseAlbum() }
+      itemList: ['拍照', '从相册选择', '从衣橱选择'],
+      success: res => {
+        if (res.tapIndex === 0) this.onTakePhoto()
+        else if (res.tapIndex === 1) this.onChooseAlbum()
+        else if (res.tapIndex === 2) this.onChooseWardrobeItem()
+      }
     })
   },
 
@@ -245,7 +253,7 @@ Page({
   async chooseImage(sourceType) {
     try {
       const path = await db.chooseImage(sourceType)
-      this.setData({ imagePath: path, canSend: true })
+      this.setData({ imagePath: path, selectedItemId: '', selectedItemName: '', canSend: true })
     } catch (e) {
       const message = e.errMsg || e.message || ''
       if (sourceType[0] === 'camera' && /auth|authorize|permission|deny/i.test(message)) {
@@ -267,7 +275,39 @@ Page({
   },
 
   onRemoveImage() {
-    this.setData({ imagePath: '', canSend: !!this.data.input.trim() })
+    this.setData({ imagePath: '', canSend: !!this.data.input.trim() || !!this.data.selectedItemId })
+  },
+
+  async onChooseWardrobeItem() {
+    try {
+      const items = (await db.listItems()).filter(item => item.category !== '挂件')
+      if (!items.length) {
+        wx.showToast({ title: '衣橱暂无可选单品', icon: 'none' })
+        return
+      }
+      this._wardrobeItems = items
+      const labels = items.map(item => [item.name || '未命名', item.category, item.color].filter(Boolean).join(' · '))
+      const selectedIndex = items.findIndex(item => item._id === this.data.selectedItemId)
+      this.setData({ itemPicker: { show: true, title: '选择衣橱单品', columns: [labels], values: [Math.max(selectedIndex, 0)] } })
+    } catch (e) {
+      console.error(e)
+      wx.showToast({ title: '衣橱加载失败，请重试', icon: 'none' })
+    }
+  },
+
+  onItemPickerConfirm(e) {
+    const item = (this._wardrobeItems || [])[e.detail.values[0]]
+    if (!item) return this.setData({ 'itemPicker.show': false })
+    this.setData({ selectedItemId: item._id, selectedItemName: item.name || '未命名', imagePath: '', canSend: true,
+      'itemPicker.show': false })
+  },
+
+  onItemPickerCancel() {
+    this.setData({ 'itemPicker.show': false })
+  },
+
+  onRemoveSelectedItem() {
+    this.setData({ selectedItemId: '', selectedItemName: '', canSend: !!this.data.input.trim() || !!this.data.imagePath })
   },
 
   onPurchaseFieldInput(e) {
@@ -328,9 +368,12 @@ Page({
 
   async onSend(suggestion) {
     const fromSuggestion = typeof suggestion === 'string'
-    const text = (fromSuggestion ? suggestion : this.data.input).trim()
-    const { imagePath, sending } = this.data
-    if (sending || (!text && !imagePath)) return
+    const inputText = (fromSuggestion ? suggestion : this.data.input).trim()
+    const { imagePath, selectedItemId, selectedItemName, sending } = this.data
+    if (sending || (!inputText && !imagePath && !selectedItemId)) return
+    const text = selectedItemId
+      ? (inputText ? `【${selectedItemName}】${inputText}` : `请以「${selectedItemName}」为核心给我穿搭建议`)
+      : inputText
     // 发送期间允许切模式/看其他会话/切 tab：序号不变说明用户仍在原视图，变了则只做后台收尾。
     const seq = (this._sendSeq = (this._sendSeq || 0) + 1)
     const inView = () => this._sendSeq === seq
@@ -342,7 +385,7 @@ Page({
       let fileID = ''
       if (imagePath) fileID = await db.uploadImage(imagePath)
       let streamed = '', lastRender = 0
-      const result = await db.chatSend({ chatId: this.data.currentId || '', text, imageFileID: fileID }, delta => {
+      const result = await db.chatSend({ chatId: this.data.currentId || '', text, imageFileID: fileID, itemId: selectedItemId }, delta => {
         if (!inView()) return
         streamed += delta
         if (Date.now() - lastRender < 80) return
@@ -359,6 +402,8 @@ Page({
           messages,
           input: '',
           imagePath: '',
+          selectedItemId: '',
+          selectedItemName: '',
           canSend: false,
           scrollIntoView: messages.length ? 'msg-' + (messages.length - 1) : ''
         })
@@ -372,7 +417,8 @@ Page({
       if (inView()) {
         const failedMessages = pendingMessages
         const failedPatch = { messages: failedMessages, scrollIntoView: failedMessages.length ? 'msg-' + (failedMessages.length - 1) : '',
-          input: fromSuggestion ? '' : text, canSend: fromSuggestion ? !!imagePath : !!text || !!imagePath,
+          input: fromSuggestion ? '' : inputText,
+          canSend: fromSuggestion ? !!imagePath || !!selectedItemId : !!inputText || !!imagePath || !!selectedItemId,
           sendError: e.message || '发送失败，请重试' }
         if (e.chatId) {
           failedPatch.currentId = e.chatId

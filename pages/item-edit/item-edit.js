@@ -22,6 +22,7 @@ Page({
     subcategoryIndex: -1,
     size: '',
     sizes: [],
+    shoeSizes: Array.from({ length: 21 }, (_, index) => String(index + 30)),
     color: '',
     colorOptions: [],   // 常见颜色 + 「其他」
     colorIndex: -1,
@@ -35,6 +36,8 @@ Page({
     note: '',
     imagePath: '',        // 本地临时路径（新选的图）
     imageFileID: '',      // 已上传的云端 fileID
+    scanFileID: '',       // 新增页为识别提前上传的图片
+    scanning: false,
     saving: false,
     ready: false,
     loading: true,
@@ -116,11 +119,67 @@ Page({
   },
 
   async onChooseImage() {
+    if (this.data.scanning || this.data.saving) return
     try {
       const path = await db.chooseImage()
-      this.setData({ imagePath: path })
+      const previousScan = this.data.scanFileID
+      const patch = { imagePath: path, scanFileID: '' }
+      if (!this.data.id) patch.imageFileID = ''
+      this.setData(patch)
+      if (previousScan) db.removeImage(previousScan)
     } catch (e) {
       // 用户取消选择
+    }
+  },
+
+  onUnload() {
+    if (this.data.scanFileID && !this._scanCommitted) db.removeImage(this.data.scanFileID)
+  },
+
+  async onScanPhoto() {
+    const { id, imagePath, scanFileID, scanning, saving, ready } = this.data
+    if (id || scanning || saving || !ready || (!imagePath && !scanFileID)) return
+    this.setData({ scanning: true })
+    wx.showLoading({ title: '识别中…' })
+    let message = '已自动填充，请核对'
+    try {
+      let fileID = scanFileID
+      if (!fileID) {
+        fileID = await db.uploadImage(imagePath)
+        this.setData({ imagePath: '', imageFileID: fileID, scanFileID: fileID })
+      }
+      const result = await db.itemScan(fileID)
+      const current = this.data
+      const patch = {}
+      if (!current.name.trim() && result.name) patch.name = result.name
+      if (!current.category && result.category) {
+        patch.category = result.category
+        const allowedSizes = result.category === '鞋' ? current.shoeSizes : current.sizes
+        if (!allowedSizes.includes(current.size)) patch.size = ''
+      }
+      const category = patch.category || current.category
+      if (category === '配饰' && !current.subcategory && result.subcategory) {
+        patch.subcategory = result.subcategory
+        patch.subcategoryIndex = current.accessoryTypes.indexOf(result.subcategory)
+      }
+      if (!current.color.trim() && !current.colorCustom && result.color) {
+        patch.color = result.color
+        patch.colorIndex = current.colorOptions.indexOf(result.color)
+        patch.colorCustom = false
+      }
+      if (!current.selectedSeasons.length && result.seasons.length) {
+        patch.selectedSeasons = result.seasons
+        patch.seasonStates = current.seasons.map(value => ({ value, active: result.seasons.includes(value) }))
+      }
+      if (!current.brand.trim() && result.brand) patch.brand = result.brand
+      this.setData(patch)
+    } catch (e) {
+      console.error(e)
+      message = e.message || '识别失败，请重试或手动填写'
+    } finally {
+      wx.hideLoading()
+      this.setData({ scanning: false })
+      wx.showToast({ title: message, icon: 'none' })
     }
   },
 
@@ -137,6 +196,8 @@ Page({
     const category = e.currentTarget.dataset.value
     if (!this.data.categories.includes(category)) return
     const patch = { category }
+    const allowedSizes = category === '鞋' ? this.data.shoeSizes : this.data.sizes
+    if (category !== this.data.category && !allowedSizes.includes(this.data.size)) patch.size = ''
     if (category !== '配饰') {
       patch.subcategory = ''
       patch.subcategoryIndex = -1
@@ -152,6 +213,8 @@ Page({
     let picker
     if (target === 'subcategory') {
       picker = { target, title: '选择配饰类型', columns: [d.accessoryTypes], values: [Math.max(d.subcategoryIndex, 0)] }
+    } else if (target === 'shoeSize') {
+      picker = { target, title: '选择鞋码', columns: [d.shoeSizes], values: [Math.max(d.shoeSizes.indexOf(d.size), 0)] }
     } else if (target === 'color') {
       picker = { target, title: '选择颜色', columns: [d.colorOptions], values: [Math.max(d.colorIndex, 0)] }
     } else {
@@ -168,6 +231,8 @@ Page({
     if (picker.target === 'subcategory') {
       patch.subcategoryIndex = values[0]
       patch.subcategory = picker.columns[0][values[0]]
+    } else if (picker.target === 'shoeSize') {
+      patch.size = picker.columns[0][values[0]]
     } else if (picker.target === 'color') {
       const value = picker.columns[0][values[0]]
       patch.colorIndex = values[0]
@@ -257,6 +322,7 @@ Page({
         await db.addItem(data)
       }
       committed = true
+      this._scanCommitted = true
       // 只记尺码，供下次新增时带出
       try { if (size) wx.setStorageSync('lastSize', size) } catch (e) { console.error('尺码记忆失败', e) }
       wx.hideLoading()

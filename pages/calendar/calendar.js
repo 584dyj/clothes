@@ -41,6 +41,7 @@ Page({
     dayExpenses: [],
     dayPlans: [],
     dayWears: [],
+    checkingId: '',          // 一键打卡进行中的计划 _id，防重复提交
     selectedTotal: 0,
     undatedTotal: 0,
     canPrev: true,
@@ -182,10 +183,22 @@ Page({
       ? (this._expenses || []).filter(expense => expense.date === date && Number(expense.amount) > 0)
         .map(expense => ({ ...expense, amount: Math.round(Number(expense.amount) * 100) / 100 }))
       : []
-    const dayPlans = (this._plans || []).filter(plan => plan.date === date)
-      .map(plan => ({ ...plan, outfitName: this.outfitNameOf(plan.outfitId) }))
     const dayWears = (this._wears || []).filter(wear => wear.date === date)
       .map(wear => ({ ...wear, outfitName: this.outfitNameOf(wear.outfitId), itemCount: (wear.itemIds || []).length }))
+    // 一键打卡状态：已打卡 > 未来日期 > 穿搭已删除 > 穿搭无单品 > 可打卡
+    const now = new Date()
+    const pad = n => String(n).padStart(2, '0')
+    const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+    const wornOutfitIds = new Set(dayWears.map(wear => wear.outfitId).filter(Boolean))
+    const dayPlans = (this._plans || []).filter(plan => plan.date === date)
+      .map(plan => {
+        const outfit = (this._outfits || []).find(row => row._id === plan.outfitId)
+        const checkInState = wornOutfitIds.has(plan.outfitId) ? 'done'
+          : date > todayStr ? 'future'
+          : !outfit ? 'deleted'
+          : !(outfit.itemIds || []).length ? 'empty' : 'ready'
+        return { ...plan, outfitName: this.outfitNameOf(plan.outfitId), checkInState }
+      })
     const cents = dayItems.reduce((total, item) => total + Math.round(item.price * 100), 0) +
       dayExpenses.reduce((total, expense) => total + Math.round(expense.amount * 100), 0)
     this.setData({ selectedDate: date, dayItems, dayExpenses, dayPlans, dayWears, selectedTotal: cents / 100 })
@@ -210,6 +223,28 @@ Page({
 
   onPlanTap(e) {
     wx.navigateTo({ url: '/pages/plan-edit/plan-edit?id=' + encodeURIComponent(e.currentTarget.dataset.id) })
+  },
+
+  // 一键打卡：把计划穿搭的单品直接记为当日实穿，服务端校验单品归属
+  async onQuickCheckIn(e) {
+    if (this.data.checkingId) return
+    const id = e.currentTarget.dataset.id
+    const plan = (this._plans || []).find(row => row._id === id)
+    const outfit = plan && (this._outfits || []).find(row => row._id === plan.outfitId)
+    const itemIds = outfit ? (outfit.itemIds || []) : []
+    // 按钮在已打卡时本不渲染，这里再拦一次同日同穿搭的重复提交
+    const alreadyWorn = plan && (this._wears || []).some(wear => wear.date === plan.date && wear.outfitId === plan.outfitId)
+    if (!plan || alreadyWorn || !itemIds.length) return
+    this.setData({ checkingId: id })
+    try {
+      await db.addWearRecord({ date: plan.date, outfitId: plan.outfitId, itemIds: [...itemIds], note: plan.note || '' })
+      await this.loadData(true)
+    } catch (err) {
+      console.error(err)
+      wx.showToast({ title: err.message || '打卡失败，请重试', icon: 'none' })
+    } finally {
+      this.setData({ checkingId: '' })
+    }
   },
 
   onWearTap(e) {
