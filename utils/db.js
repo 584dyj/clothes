@@ -259,11 +259,13 @@ async function chatSend(payload, onDelta = () => {}) {
 const chatDelete = id => call('chatDelete', { chatId: id })
 const chatRename = (id, title) => call('chatRename', { chatId: id, title })
 const purchaseAssess = candidate => call('purchaseAssess', { candidate }).then(result => result.assessment)
+const purchaseVisual = (candidate, imageFileID) => call('purchaseVisual', { candidate, imageFileID }).then(result => result.visualReview)
 const itemScan = imageFileID => call('itemScan', { imageFileID }).then(result => result.item)
+const subscribeReport = () => call('subscribeReport')
 
 module.exports = { chooseImage, uploadImage, removeImage, retryCleanup, cleanupStatus, clearCache,
   listItems, getItem, addItem, updateItem, deleteItem, listOutfits, listOutfitsPage, getOutfit, addOutfit, updateOutfit, deleteOutfit,
   listExpenses, addExpense, updateExpense, deleteExpense,
   listWearRecords, addWearRecord, updateWearRecord, deleteWearRecord,
   listPlans, addPlan, updatePlan, deletePlan,
-  chatList, chatGet, chatSend, chatDelete, chatRename, purchaseAssess, itemScan }
+  chatList, chatGet, chatSend, chatDelete, chatRename, purchaseAssess, purchaseVisual, itemScan, subscribeReport }

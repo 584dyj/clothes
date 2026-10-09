@@ -245,14 +245,14 @@ test('日期、月份边界及每日明细与月历金额一致', () => {
   assert.equal(page.data.dayItems.length, 2)
   page._year = 2022; page._month = 1; page.render(); page.onPrevMonth()
   assert.equal(page._year, 2022); assert.equal(page._month, 1)
-  page._year = new Date().getFullYear() + 1; page._month = 12; page.render(); page.onNextMonth()
+  page._year = 2030; page._month = 12; page.render(); page.onNextMonth()
   assert.equal(page._month, 12)
   page._year = 2024; page._month = 12; page.render(); page.onNextMonth()
   assert.equal(page._year, 2025); assert.equal(page._month, 1)
 })
 
-test('购买日期与统计年月范围均为 2022 至明年，云端允许保存明年日期', async () => {
-  const maxYear = new Date().getFullYear() + 1
+test('日期与统计年月范围均为 2022 至 2030 年，云端采用相同上限', async () => {
+  const maxYear = 2030
   const edit = loadPage('item-edit')
   const calendar = loadPage('calendar')
   calendar.onLoad()

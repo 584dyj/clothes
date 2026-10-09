@@ -5,7 +5,7 @@ const swipeBack = require('../../utils/swipe-back')
 // 月历：开销（衣物购买 + 独立账本，可按 全部/衣物/账本 分段统计）+
 // 穿搭计划与实穿记录叠加展示。数据在客户端内存过滤，与既有口径一致。
 
-const { validDate } = require('../../utils/date')
+const { validDate, MIN_YEAR, MAX_YEAR } = require('../../utils/date')
 const WEEK_LABELS = ['日', '一', '二', '三', '四', '五', '六']
 const SEGMENTS = [
   { value: 'all', label: '全部' },
@@ -161,8 +161,8 @@ Page({
       cells,
       monthTotal: monthTotal / 100,
       undatedTotal: undatedTotal / 100,
-      canPrev: year > 2022 || month > 1,
-      canNext: year < today.getFullYear() + 1 || month < 12,
+      canPrev: year > MIN_YEAR || month > 1,
+      canNext: year < MAX_YEAR || month < 12,
       yearTotal: yearTotal / 100,
       todayTotal: (dayTotal[todayStr] || 0) / 100,
       todayLabel: `${today.getMonth() + 1}月${today.getDate()}日`
@@ -269,10 +269,9 @@ Page({
 
   // ---------- 快速切换年月（滚轮选择器） ----------
   openPicker() {
-    const currentYear = new Date().getFullYear()
-    // 年份范围：2022 年至当前年份的下一年
+    // 年份范围：2022 年至 2030 年
     const years = []
-    for (let y = 2022; y <= currentYear + 1; y++) years.push(String(y))
+    for (let y = MIN_YEAR; y <= MAX_YEAR; y++) years.push(String(y))
     const months = []
     for (let m = 1; m <= 12; m++) months.push(String(m).padStart(2, '0'))
     this.setData({

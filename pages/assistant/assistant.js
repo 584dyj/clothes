@@ -47,6 +47,8 @@ Page({
     purchaseScanFileID: '',
     purchaseScanning: false,
     purchaseAssessing: false,
+    purchaseVisualLoading: false,
+    purchaseVisualReview: null,
     purchaseError: '',
     purchaseResult: null,
     sessions: [],
@@ -90,8 +92,9 @@ Page({
 
   cleanupPurchasePhoto() {
     this._purchaseScanSeq = (this._purchaseScanSeq || 0) + 1
+    this._purchaseVisualSeq = (this._purchaseVisualSeq || 0) + 1
     const fileID = this.data.purchaseScanFileID
-    this.setData({ purchaseImagePath: '', purchaseScanFileID: '', purchaseScanning: false })
+    this.setData({ purchaseImagePath: '', purchaseScanFileID: '', purchaseScanning: false, purchaseVisualLoading: false })
     if (fileID) return db.removeImage(fileID)
   },
 
@@ -353,7 +356,8 @@ Page({
   },
 
   onPreviewPurchasePhoto() {
-    if (this.data.purchaseImagePath) wx.previewImage({ current: this.data.purchaseImagePath, urls: [this.data.purchaseImagePath] })
+    const image = this.data.purchaseImagePath || this.data.purchaseScanFileID
+    if (image) wx.previewImage({ current: image, urls: [image] })
   },
 
   onRemovePurchasePhoto() {
@@ -393,9 +397,8 @@ Page({
         patch['purchaseForm.seasons'] = result.seasons
         patch.seasonOptions = this.data.seasonOptions.map(item => ({ ...item, selected: result.seasons.includes(item.value) }))
       }
-      await db.removeImage(fileID)
       if (this._purchaseScanSeq !== seq) return
-      this.setData({ ...patch, purchaseImagePath: '', purchaseScanFileID: '', purchaseError: '' })
+      this.setData({ ...patch, purchaseError: '' })
       wx.showToast({ title: '已自动填充，请核对', icon: 'none' })
     } catch (e) {
       console.error(e)
@@ -453,18 +456,50 @@ Page({
       this.setData({ purchaseError: error })
       return
     }
-    this.cleanupPurchasePhoto()
-    this.setData({ purchaseAssessing: true, purchaseError: '' })
+    const candidate = { ...form, seasons: form.seasons.slice() }
+    const imageFileID = this.data.purchaseScanFileID
+    this._purchaseVisualSeq = (this._purchaseVisualSeq || 0) + 1
+    this.setData({ purchaseAssessing: true, purchaseVisualLoading: false, purchaseVisualReview: null, purchaseError: '' })
     try {
-      this.setData({ purchaseResult: await db.purchaseAssess(form) })
+      this.setData({ purchaseResult: await db.purchaseAssess(candidate) })
+      if (imageFileID && this.data.purchaseScanFileID === imageFileID && this.data.activeMode === 'purchase') {
+        this.startPurchaseVisual(candidate, imageFileID)
+      }
     } catch (e) {
       console.error(e)
       this.setData({ purchaseError: e.message || '评估失败，请重试' })
     } finally { this.setData({ purchaseAssessing: false }) }
   },
 
+  startPurchaseVisual(candidate, imageFileID) {
+    const seq = (this._purchaseVisualSeq = (this._purchaseVisualSeq || 0) + 1)
+    this.setData({ purchaseVisualLoading: true, purchaseVisualReview: null })
+    this._purchaseVisualPromise = db.purchaseVisual(candidate, imageFileID).then(visualReview => {
+      if (this._purchaseVisualSeq === seq && visualReview) this.setData({ purchaseVisualReview: visualReview })
+    }).catch(error => {
+      console.error('购买视觉复核失败，保留规则结果', error)
+    }).finally(() => {
+      if (this._purchaseVisualSeq === seq) this.setData({ purchaseVisualLoading: false })
+    })
+    return this._purchaseVisualPromise
+  },
+
   onPurchaseEdit() {
-    this.setData({ purchaseResult: null, purchaseError: '' })
+    this._purchaseVisualSeq = (this._purchaseVisualSeq || 0) + 1
+    this.setData({ purchaseResult: null, purchaseVisualLoading: false, purchaseVisualReview: null, purchaseError: '' })
+  },
+
+  onPurchaseRestart() {
+    const cleanup = this.cleanupPurchasePhoto()
+    this.setData({
+      purchaseForm: { name: '', category: '', subcategory: '', color: '', seasons: [], occasion: '', price: '', monthlyBudget: '', note: '' },
+      seasonOptions: app.globalData.seasons.map(value => ({ value, selected: false })),
+      purchaseAssessing: false,
+      purchaseResult: null,
+      purchaseVisualReview: null,
+      purchaseError: ''
+    })
+    return cleanup
   },
 
   async onSend(suggestion) {

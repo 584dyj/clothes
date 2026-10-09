@@ -187,10 +187,6 @@ Page({
     wx.navigateTo({ url: '/pages/item-edit/item-edit' })
   },
 
-  onBatchAddTap() {
-    wx.navigateTo({ url: '/pages/batch-add/batch-add' })
-  },
-
   onItemTap(e) {
     const id = e.currentTarget.dataset.id
     wx.navigateTo({ url: `/pages/item-edit/item-edit?id=${id}` })

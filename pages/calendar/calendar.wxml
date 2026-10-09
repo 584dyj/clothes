@@ -4,7 +4,6 @@
   <view wx:if="{{loading}}" class="empty">加载中…</view>
 
   <block wx:else>
-    <view class="calendar-note">开销按衣物购买日期和账本记录统计；计划/实穿为穿搭安排与打卡。</view>
     <view wx:if="{{undatedTotal > 0}}" class="calendar-note">未填有效日期的 ¥{{undatedTotal}} 未计入月历。</view>
 
     <!-- 开销分段 -->
@@ -106,7 +105,7 @@
       <button wx:for="{{dayWears}}" wx:key="_id" class="day-item wear-item" data-id="{{item._id}}" bindtap="onWearTap"><image class="day-item-icon" src="/assets/icons/wear.svg" mode="aspectFit" /> {{item.outfitName || item.itemCount + ' 件单品'}}{{item.note ? ' · ' + item.note : ''}} ›</button>
     </view>
 
-    <view wx:if="{{dayItems.length === 0 && dayExpenses.length === 0 && dayPlans.length === 0 && dayWears.length === 0}}" class="calendar-note">当天没有记录</view>
+    <view wx:if="{{dayItems.length === 0 && dayExpenses.length === 0 && dayPlans.length === 0 && dayWears.length === 0}}" class="calendar-note day-empty-note">当天没有记录</view>
   </view>
 
   <!-- 年月快速选择滚轮 -->

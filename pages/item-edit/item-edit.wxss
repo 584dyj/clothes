@@ -3,6 +3,10 @@
   padding-bottom: 60rpx;
 }
 
+.item-edit-loading {
+  padding: 48rpx 0;
+}
+
 .image-box {
   width: 420rpx;
   height: 560rpx; /* 3:4 竖版，居中 */
@@ -79,6 +83,8 @@
 }
 
 .picker-value {
+  flex: 1;
+  min-width: 0;
   font-size: 28rpx;
 }
 
@@ -123,4 +129,51 @@
 
 .save-btn {
   margin-bottom: 24rpx;
+}
+
+.mode-switch {
+  position: relative;
+  display: flex;
+  margin: 0 0 24rpx;
+  padding: 6rpx;
+  border-radius: 36rpx;
+  background: #e9e5de;
+}
+
+.mode-indicator {
+  position: absolute;
+  top: 6rpx;
+  bottom: 6rpx;
+  left: 6rpx;
+  width: calc(50% - 6rpx);
+  border-radius: 32rpx;
+  background: #ffffff;
+  transform: translateX(0);
+  transition: transform 240ms ease;
+}
+
+.mode-indicator-right {
+  transform: translateX(100%);
+}
+
+.mode-option {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  height: 64rpx;
+  line-height: 64rpx;
+  border-radius: 32rpx;
+  text-align: center;
+  color: #77716a;
+  font-size: 26rpx;
+  transition: color 240ms ease;
+}
+
+.mode-active {
+  color: #3a3835;
+  font-weight: 600;
+}
+
+.mode-panel-hidden {
+  display: none;
 }

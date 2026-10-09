@@ -26,6 +26,7 @@ const revision = crypto.createHash('sha256')
   .update(fs.readFileSync(path.join(__dirname, 'purchase.js')))
   .update(fs.readFileSync(path.join(__dirname, 'chat.js')))
   .update(fs.readFileSync(path.join(__dirname, 'scan.js')))
+  .update(fs.readFileSync(path.join(__dirname, 'subscription.js')))
   .update(fs.readFileSync(path.join(__dirname, 'ai-http.js')))
   .digest('hex').slice(0, 12)
 
@@ -36,6 +37,7 @@ const recommendation = require('./recommend')
 const purchase = require('./purchase')
 const chatApi = require('./chat')
 const scanApi = require('./scan')
+const subscriptionApi = require('./subscription')
 const { readDoc } = dataApi
 const USERS = 'users'
 const CODES = 'invite_codes'
@@ -258,10 +260,22 @@ async function main(event = {}) {
     return purchase.handle({ db, openid, event })
   }
 
+  if (action === 'purchaseVisual') {
+    const user = await getBoundUser(openid)
+    if (!user || user.autoLoginEnabled === false) throw new Error('登录状态已失效')
+    return purchase.visualHandle({ db, cloud, openid, event })
+  }
+
   if (action === 'itemScan') {
     const user = await getBoundUser(openid)
     if (!user || user.autoLoginEnabled === false) throw new Error('登录状态已失效')
     return scanApi.handle({ db, cloud, openid, event })
+  }
+
+  if (action === 'subscribeReport') {
+    const user = await getBoundUser(openid)
+    if (!user || user.autoLoginEnabled === false) throw new Error('登录状态已失效')
+    return subscriptionApi.subscribe({ db, openid })
   }
 
   if (action === 'chatList' || action === 'chatGet' || action === 'chatSend' || action === 'chatDelete' || action === 'chatRename' ||

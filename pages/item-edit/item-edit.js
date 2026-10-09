@@ -14,6 +14,7 @@ Page({
 
   data: {
     id: '',               // 为空表示新增
+    mode: 'single',       // 新增页模式：single 单件添加 / batch 批量添加
     name: '',
     category: '',
     categories: [],
@@ -183,6 +184,13 @@ Page({
     }
   },
 
+  onModeTap(e) {
+    const mode = e.currentTarget.dataset.mode
+    if (this.data.id || !['single', 'batch'].includes(mode) || mode === this.data.mode) return
+    this.setData({ mode })
+    wx.setNavigationBarTitle({ title: mode === 'batch' ? '批量添加' : '添加衣物' })
+  },
+
   onNameInput(e) { this.setData({ name: e.detail.value }) },
   onColorInput(e) { this.setData({ color: e.detail.value }) },   // 「其他」时的自定义颜色
   onBrandInput(e) { this.setData({ brand: e.detail.value }) },
@@ -214,7 +222,7 @@ Page({
     if (target === 'subcategory') {
       picker = { target, title: '选择配饰类型', columns: [d.accessoryTypes], values: [Math.max(d.subcategoryIndex, 0)] }
     } else if (target === 'shoeSize') {
-      picker = { target, title: '选择鞋码', columns: [d.shoeSizes], values: [Math.max(d.shoeSizes.indexOf(d.size), 0)] }
+      picker = { target, title: '选择鞋码', columns: [d.shoeSizes], values: [Math.max(d.shoeSizes.indexOf(d.size || '37'), 0)] }
     } else if (target === 'color') {
       picker = { target, title: '选择颜色', columns: [d.colorOptions], values: [Math.max(d.colorIndex, 0)] }
     } else {

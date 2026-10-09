@@ -1,17 +1,20 @@
-<view class="page">
+<view class="batch-panel">
   <view wx:if="{{loadError}}" class="empty">{{loadError}}</view>
   <block wx:else>
-    <view class="toolbar card">
-      <view>
-        <view class="toolbar-title">批量建档</view>
-        <view class="toolbar-hint">一次最多 9 张，图片会逐张识别</view>
+    <view wx:if="{{cards.length}}" class="toolbar card">
+      <view class="toolbar-text">
+        <view class="toolbar-hint">{{toolbarHint}}</view>
       </view>
-      <button class="choose-btn" bindtap="onChooseImages" disabled="{{processing || saving || !ready}}">选择图片</button>
+      <button class="choose-btn" bindtap="onChooseImages" disabled="{{processing || saving || !ready}}">继续选图</button>
     </view>
 
-    <view wx:if="{{cards.length === 0}}" class="empty">选择衣物或鞋子的照片开始建档</view>
+    <view wx:if="{{cards.length === 0}}" class="empty-state">
+      <view class="empty-text">{{toolbarHint}}</view>
+      <button class="btn-primary empty-choose" bindtap="onChooseImages" disabled="{{processing || saving || !ready}}">选择图片</button>
+    </view>
     <view wx:else class="batch-grid">
-      <view wx:for="{{cards}}" wx:key="key" class="batch-card card {{item.expanded ? 'card-expanded' : ''}}">
+      <view wx:for="{{cards}}" wx:key="key" class="batch-card card {{item.expanded ? 'card-expanded' : ''}} {{item.status === 'saved' ? 'card-saved' : ''}}">
+        <view wx:if="{{item.status !== 'saved'}}" class="card-remove" data-key="{{item.key}}" catchtap="onRemoveCard">×</view>
         <view class="card-summary" data-key="{{item.key}}" bindtap="onToggleCard">
           <image class="card-image" src="{{item.imagePath || item.imageFileID}}" mode="aspectFill" />
           <view class="summary-text">
@@ -23,7 +26,8 @@
 
         <view wx:if="{{item.error}}" class="card-error">{{item.error}}</view>
         <view wx:if="{{item.status === 'failed'}}" class="card-actions">
-          <button size="mini" data-key="{{item.key}}" bindtap="onRetryScan" disabled="{{processing || saving}}">重试识别</button>
+          <button wx:if="{{item.failStage === 'save'}}" size="mini" data-key="{{item.key}}" bindtap="onRetrySave" disabled="{{processing || saving}}">重试保存</button>
+          <button wx:else size="mini" data-key="{{item.key}}" bindtap="onRetryScan" disabled="{{processing || saving}}">重试识别</button>
         </view>
 
         <view wx:if="{{item.expanded}}" class="editor">
@@ -75,12 +79,11 @@
             <text class="label">价格</text>
             <input class="input" type="digit" value="{{item.price}}" placeholder="可选，单位：元" data-key="{{item.key}}" data-field="price" bindinput="onInput" />
           </view>
-          <button class="remove-btn" data-key="{{item.key}}" bindtap="onRemoveCard" disabled="{{processing || saving}}">移除此项</button>
         </view>
       </view>
     </view>
 
-    <button wx:if="{{cards.length}}" class="btn-primary save-btn" bindtap="onSaveAll" loading="{{saving}}" disabled="{{processing || saving}}">全部保存</button>
+    <button wx:if="{{cards.length}}" class="btn-primary save-btn" bindtap="onSaveAll" loading="{{saving}}" disabled="{{processing || saving}}">{{saveBtnText}}</button>
   </block>
 
   <wheel-picker

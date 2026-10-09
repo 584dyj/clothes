@@ -118,4 +118,4 @@ async function handle({ db, cloud, openid, event }, request = requestChat, env =
   }
 }
 
-module.exports = { handle, cleanResult, systemPrompt }
+module.exports = { handle, cleanResult, systemPrompt, claimImage }

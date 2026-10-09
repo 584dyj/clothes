@@ -2,6 +2,7 @@ const db = require('../../utils/db')
 const auth = require('../../utils/auth')
 
 const app = getApp()
+const REPORT_TEMPLATE_ID = 'CeSjEXCpR71PZvGbIoqCDgO0H0CSHSwGbo_7o7ZgLIE'
 
 Page({
   async onRetry() {
@@ -29,7 +30,8 @@ Page({
     expenseTotal: 0,     // 账本总开销
     expenseStats: [],    // [{ name, amount, percent }]，percent 基数为账本总额
     wearRank: [],        // 穿着频次 Top N [{ name, count }]
-    idleRank: []         // 闲置榜 Top N [{ name, days }]（最近未穿的天数）
+    idleRank: [],        // 闲置榜 Top N [{ name, days }]（最近未穿的天数）
+    subscribing: false
   },
 
   async onShow() {
@@ -154,5 +156,27 @@ Page({
   // 进入月历页（查看月度/年度开销）
   onCalendarTap() {
     wx.navigateTo({ url: '/pages/calendar/calendar' })
+  },
+
+  async onSubscribeReport() {
+    if (this.data.subscribing) return
+    this.setData({ subscribing: true })
+    try {
+      const result = await new Promise((resolve, reject) => wx.requestSubscribeMessage({
+        tmplIds: [REPORT_TEMPLATE_ID], success: resolve, fail: reject
+      }))
+      const state = result[REPORT_TEMPLATE_ID]
+      if (state !== 'accept') {
+        wx.showToast({ title: state === 'ban' ? '请在设置中开启订阅消息' : '已取消订阅', icon: 'none' })
+        return
+      }
+      await db.subscribeReport()
+      wx.showToast({ title: '已增加一次月报额度', icon: 'none' })
+    } catch (e) {
+      console.error(e)
+      wx.showToast({ title: e && e.message || '订阅失败，请重试', icon: 'none' })
+    } finally {
+      this.setData({ subscribing: false })
+    }
   }
 })

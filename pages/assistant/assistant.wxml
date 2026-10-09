@@ -2,6 +2,7 @@
   <view wx:if="{{loadError}}" class="empty">{{loadError}}<button bindtap="onRetry">重新加载</button></view>
   <block wx:if="{{!loadError}}">
     <view class="mode-switch" role="tablist" aria-label="助手功能">
+      <view class="mode-indicator {{activeMode === 'purchase' ? 'mode-indicator-right' : ''}}" aria-hidden="true"></view>
       <view class="mode-option {{activeMode === 'outfit' ? 'mode-active' : ''}}" data-mode="outfit" bindtap="onModeTap" role="tab" aria-selected="{{activeMode === 'outfit'}}">穿搭推荐</view>
       <view class="mode-option {{activeMode === 'purchase' ? 'mode-active' : ''}}" data-mode="purchase" bindtap="onModeTap" role="tab" aria-selected="{{activeMode === 'purchase'}}">购买评估</view>
     </view>
@@ -27,14 +28,14 @@
           <view class="purchase-sub">根据衣橱重复度、搭配空间和当月开销给出评估</view>
 
           <view class="field-label">照片识别 <text class="field-optional">选填</text></view>
-          <view wx:if="{{purchaseImagePath}}" class="purchase-photo-preview-wrap">
-            <image class="purchase-photo-preview" src="{{purchaseImagePath}}" mode="aspectFill" bindtap="onPreviewPurchasePhoto" />
+          <view wx:if="{{purchaseImagePath || purchaseScanFileID}}" class="purchase-photo-preview-wrap">
+            <image class="purchase-photo-preview" src="{{purchaseImagePath || purchaseScanFileID}}" mode="aspectFill" bindtap="onPreviewPurchasePhoto" />
             <view class="image-remove" bindtap="onRemovePurchasePhoto">×</view>
           </view>
           <view class="purchase-photo-actions">
             <view class="purchase-photo-action {{purchaseScanning ? 'send-disabled' : ''}}" bindtap="onPurchaseTakePhoto" role="button">拍照识别</view>
             <view class="purchase-photo-action {{purchaseScanning ? 'send-disabled' : ''}}" bindtap="onPurchaseChooseAlbum" role="button">相册识别</view>
-            <view wx:if="{{purchaseImagePath}}" class="purchase-photo-action {{purchaseScanning ? 'send-disabled' : ''}}" bindtap="onPurchaseScanPhoto" role="button">{{purchaseScanning ? '识别中…' : '重试识别'}}</view>
+            <view wx:if="{{purchaseImagePath || purchaseScanFileID}}" class="purchase-photo-action {{purchaseScanning ? 'send-disabled' : ''}}" bindtap="onPurchaseScanPhoto" role="button">{{purchaseScanning ? '识别中…' : '重试识别'}}</view>
           </view>
           <view class="purchase-photo-hint">识别结果只填充空白项，提交评估前仍可修改。</view>
 
@@ -91,7 +92,18 @@
         </view>
 
         <view wx:else class="purchase-card result-card">
-          <view class="verdict verdict-{{purchaseResult.verdict.code}}">{{purchaseResult.verdict.label}}</view>
+          <view class="verdict verdict-{{purchaseVisualReview ? purchaseVisualReview.finalVerdict.code : purchaseResult.verdict.code}}">{{purchaseVisualReview ? purchaseVisualReview.finalVerdict.label : purchaseResult.verdict.label}}</view>
+          <view wx:if="{{purchaseVisualLoading}}" class="visual-review visual-loading">AI 视觉复核中…</view>
+          <view wx:elif="{{purchaseVisualReview}}" class="visual-review">
+            <view class="visual-title">AI 视觉复核</view>
+            <view wx:if="{{purchaseVisualReview.ruleVerdict.code !== purchaseVisualReview.finalVerdict.code}}" class="visual-verdicts">
+              <text>规则基准：{{purchaseVisualReview.ruleVerdict.label}}</text>
+              <text>调整后：{{purchaseVisualReview.finalVerdict.label}}</text>
+            </view>
+            <view wx:else class="visual-verdicts"><text>结论维持：{{purchaseVisualReview.finalVerdict.label}}</text></view>
+            <view class="visual-reason">{{purchaseVisualReview.reason}}</view>
+            <view class="visual-count">已对比 {{purchaseVisualReview.comparedCount}} 件现有衣物</view>
+          </view>
           <view wx:if="{{purchaseResult.modelAdvice}}" class="model-advice">
             <view class="model-summary">{{purchaseResult.modelAdvice.summary}}</view>
             <view class="model-advice-text">{{purchaseResult.modelAdvice.advice}}</view>
@@ -111,7 +123,10 @@
           </view>
           <view wx:if="{{purchaseResult.truncated}}" class="purchase-note">衣橱超过 120 件，缺口判断已关闭，避免误判。</view>
           <view wx:if="{{purchaseError}}" class="purchase-error">{{purchaseError}}</view>
-          <view class="purchase-submit" bindtap="onPurchaseEdit" role="button">修改条件</view>
+          <view class="purchase-result-actions">
+            <view class="purchase-submit purchase-submit-secondary" bindtap="onPurchaseEdit" role="button">修改条件</view>
+            <view class="purchase-submit" bindtap="onPurchaseRestart" role="button">重新评估</view>
+          </view>
         </view>
         <view class="purchase-bottom-space"></view>
       </scroll-view>

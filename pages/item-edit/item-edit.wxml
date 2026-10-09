@@ -1,6 +1,16 @@
 <view class="page" bindtouchstart="onSwipeBackStart" bindtouchend="onSwipeBackEnd">
-  <view wx:if="{{loading}}" class="empty">加载中…</view>
+  <view wx:if="{{loading}}" class="empty item-edit-loading">加载中…</view>
   <view wx:elif="{{loadError}}" class="empty">{{loadError}}<button bindtap="onRetry">重新加载</button></view>
+
+  <block wx:else>
+    <!-- 新增时可在单件与批量之间切换 -->
+    <view wx:if="{{!id}}" class="mode-switch" role="tablist" aria-label="添加方式">
+      <view class="mode-indicator {{mode === 'batch' ? 'mode-indicator-right' : ''}}" aria-hidden="true"></view>
+      <view class="mode-option {{mode === 'single' ? 'mode-active' : ''}}" data-mode="single" bindtap="onModeTap" role="tab" aria-selected="{{mode === 'single'}}">单件添加</view>
+      <view class="mode-option {{mode === 'batch' ? 'mode-active' : ''}}" data-mode="batch" bindtap="onModeTap" role="tab" aria-selected="{{mode === 'batch'}}">批量添加</view>
+    </view>
+
+  <block wx:if="{{id || mode === 'single'}}">
   <!-- 图片 -->
   <view class="image-box card" bindtap="onChooseImage">
     <image
@@ -38,16 +48,16 @@
       </view>
     </view>
 
-    <view class="field" wx:if="{{category === '配饰'}}">
+    <view class="field" wx:if="{{category === '配饰'}}" data-target="subcategory" bindtap="openPicker">
       <text class="label">配饰类型</text>
-      <view class="picker-value {{subcategory ? '' : 'placeholder'}}" data-target="subcategory" bindtap="openPicker">
+      <view class="picker-value {{subcategory ? '' : 'placeholder'}}">
         {{subcategory || '请选择配饰类型'}}
       </view>
     </view>
 
-    <view class="field" wx:if="{{category === '鞋'}}">
+    <view class="field" wx:if="{{category === '鞋'}}" data-target="shoeSize" bindtap="openPicker">
       <text class="label">鞋码</text>
-      <view class="picker-value {{size ? '' : 'placeholder'}}" data-target="shoeSize" bindtap="openPicker">
+      <view class="picker-value {{size ? '' : 'placeholder'}}">
         {{size || '请选择鞋码'}}
       </view>
     </view>
@@ -76,9 +86,9 @@
       </view>
     </view>
 
-    <view class="field">
+    <view class="field" data-target="color" bindtap="openPicker">
       <text class="label">颜色</text>
-      <view class="picker-value {{color || colorCustom ? '' : 'placeholder'}}" data-target="color" bindtap="openPicker">
+      <view class="picker-value {{color || colorCustom ? '' : 'placeholder'}}">
         {{colorCustom ? '其他' : (color || '请选择颜色')}}
       </view>
     </view>
@@ -98,9 +108,9 @@
       <input class="input" type="digit" placeholder="{{_focus.price ? '' : '可选，单位：元'}}" value="{{price}}" data-field="price" bindinput="onPriceInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
     </view>
 
-    <view class="field">
+    <view class="field" data-target="date" bindtap="openPicker">
       <text class="label">购买日期</text>
-      <view class="picker-value {{purchaseDate ? '' : 'placeholder'}}" data-target="date" bindtap="openPicker">
+      <view class="picker-value {{purchaseDate ? '' : 'placeholder'}}">
         {{purchaseDate || '可选'}}
       </view>
     </view>
@@ -113,6 +123,12 @@
 
   <button class="btn-primary save-btn" bindtap="onSave" disabled="{{saving || scanning || !ready}}">保存</button>
   <button wx:if="{{id}}" class="btn-danger delete-btn" bindtap="onDelete" disabled="{{saving || !ready}}">删除</button>
+  </block>
+
+    <view wx:if="{{!id}}" class="{{mode === 'batch' ? '' : 'mode-panel-hidden'}}">
+      <batch-panel />
+    </view>
+  </block>
 
   <wheel-picker
     show="{{picker.show}}"

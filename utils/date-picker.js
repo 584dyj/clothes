@@ -1,4 +1,4 @@
-const { validDate } = require('./date')
+const { validDate, MIN_YEAR, MAX_YEAR } = require('./date')
 
 function daysIn(year, month) {
   const count = new Date(Number(year), Number(month), 0).getDate()
@@ -6,9 +6,8 @@ function daysIn(year, month) {
 }
 
 function buildDateColumns(dateStr) {
-  const currentYear = new Date().getFullYear()
   const years = []
-  for (let year = 2022; year <= currentYear + 1; year++) years.push(String(year))
+  for (let year = MIN_YEAR; year <= MAX_YEAR; year++) years.push(String(year))
   const months = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, '0'))
   const date = validDate(dateStr) ? new Date(dateStr.replace(/-/g, '/')) : new Date()
   const year = String(date.getFullYear())

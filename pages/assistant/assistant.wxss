@@ -7,6 +7,7 @@
 }
 
 .mode-switch {
+  position: relative;
   display: flex;
   margin: 18rpx 24rpx 8rpx;
   padding: 6rpx;
@@ -15,7 +16,25 @@
   flex-shrink: 0;
 }
 
+.mode-indicator {
+  position: absolute;
+  top: 6rpx;
+  bottom: 6rpx;
+  left: 6rpx;
+  width: calc(50% - 6rpx);
+  border-radius: 32rpx;
+  background: #ffffff;
+  transform: translateX(0);
+  transition: transform 240ms ease;
+}
+
+.mode-indicator-right {
+  transform: translateX(100%);
+}
+
 .mode-option {
+  position: relative;
+  z-index: 1;
   flex: 1;
   height: 64rpx;
   line-height: 64rpx;
@@ -23,10 +42,10 @@
   text-align: center;
   color: #77716a;
   font-size: 26rpx;
+  transition: color 240ms ease;
 }
 
 .mode-active {
-  background: #ffffff;
   color: #3a3835;
   font-weight: 600;
 }
@@ -249,6 +268,21 @@
   text-align: center;
 }
 
+.purchase-result-actions {
+  display: flex;
+  margin: 28rpx -6rpx 0;
+}
+
+.purchase-result-actions .purchase-submit {
+  flex: 1;
+  margin: 0 6rpx;
+}
+
+.purchase-submit-secondary {
+  background: #efede8;
+  color: #3a3835;
+}
+
 .purchase-error,
 .purchase-note {
   margin-top: 20rpx;
@@ -272,6 +306,39 @@
 .verdict-buy { background: #e2efe5; color: #39704a; }
 .verdict-consider { background: #f4ead4; color: #8a6326; }
 .verdict-skip { background: #f4dfdd; color: #9b443f; }
+
+.visual-review {
+  margin-top: 24rpx;
+  padding: 20rpx 22rpx;
+  border-radius: 18rpx;
+  background: #eef2f5;
+  color: #514d47;
+  font-size: 24rpx;
+  line-height: 1.6;
+}
+
+.visual-loading { color: #7b858e; }
+
+.visual-title {
+  color: #3a3835;
+  font-size: 27rpx;
+  font-weight: 600;
+}
+
+.visual-verdicts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  margin-top: 8rpx;
+}
+
+.visual-reason { margin-top: 8rpx; }
+
+.visual-count {
+  margin-top: 6rpx;
+  color: #8b857c;
+  font-size: 22rpx;
+}
 
 .model-advice {
   margin-top: 24rpx;

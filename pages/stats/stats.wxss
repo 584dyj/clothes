@@ -142,3 +142,22 @@
 .idle-row:last-child {
   border-bottom: none;
 }
+
+.wear-empty, .report-hint {
+  color: #9a958c;
+  font-size: 24rpx;
+  text-align: center;
+}
+
+.report-btn {
+  margin-top: 28rpx;
+  border: 1rpx solid #3a3835;
+  border-radius: 40rpx;
+  background: #ffffff;
+  color: #3a3835;
+  font-size: 28rpx;
+}
+
+.report-btn::after { border: none; }
+
+.report-hint { margin-top: 12rpx; }

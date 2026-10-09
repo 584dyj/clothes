@@ -206,6 +206,7 @@
 }
 
 .calendar-note { color: #6b675f; font-size: 24rpx; line-height: 1.6; margin-bottom: 16rpx; }
+.day-empty-note { text-align: center; }
 .day-selected { background: #e9e4db; }
 .day-details { margin-top: 24rpx; padding: 24rpx; }
 .day-item { text-align: left; font-size: 28rpx; margin-top: 12rpx; }

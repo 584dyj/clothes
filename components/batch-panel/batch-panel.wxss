@@ -1,6 +1,5 @@
-.page {
-  padding: 24rpx;
-  padding-bottom: 60rpx;
+.batch-panel {
+  display: block;
 }
 
 .toolbar {
@@ -11,9 +10,15 @@
   margin-bottom: 24rpx;
 }
 
+.toolbar-text {
+  flex: 1;
+  min-width: 0;
+}
+
 .toolbar-title {
   font-size: 32rpx;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .toolbar-hint, .summary-meta {
@@ -22,12 +27,43 @@
   font-size: 24rpx;
 }
 
+.toolbar-hint {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .choose-btn {
-  margin: 0;
+  flex-shrink: 0;
+  margin: 0 0 0 24rpx;
   background: #3a3835;
   color: #ffffff;
   border-radius: 36rpx;
   font-size: 26rpx;
+}
+
+.empty-state {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  min-height: calc(100vh - 300rpx);
+  padding: 180rpx 0 120rpx;
+  box-sizing: border-box;
+}
+
+.empty-text {
+  width: 100%;
+  color: #9a958c;
+  font-size: 26rpx;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.empty-choose {
+  width: 420rpx;
+  margin: auto 0 0;
+  background: #3a3835;
+  color: #ffffff;
 }
 
 .batch-grid {
@@ -37,6 +73,7 @@
 }
 
 .batch-card {
+  position: relative;
   width: 48.5%;
   margin-bottom: 20rpx;
   overflow: hidden;
@@ -45,6 +82,25 @@
 
 .card-expanded {
   width: 100%;
+}
+
+.card-saved {
+  opacity: 0.65;
+}
+
+.card-remove {
+  position: absolute;
+  z-index: 2;
+  top: 10rpx;
+  right: 10rpx;
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 50%;
+  background: rgba(58, 56, 53, 0.55);
+  color: #ffffff;
+  font-size: 32rpx;
+  line-height: 44rpx;
+  text-align: center;
 }
 
 .card-summary {
@@ -144,12 +200,5 @@
 }
 
 .placeholder { color: #b3aea5; }
-
-.remove-btn {
-  margin-top: 24rpx;
-  color: #c0504d;
-  background: #ffffff;
-  font-size: 26rpx;
-}
 
 .save-btn { margin-top: 20rpx; }

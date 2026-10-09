@@ -1,0 +1,10 @@
+{
+  "name": "monthly-report",
+  "version": "1.0.0",
+  "description": "每月闲置衣物订阅消息",
+  "main": "index.js",
+  "private": true,
+  "dependencies": {
+    "wx-server-sdk": "2.6.3"
+  }
+}

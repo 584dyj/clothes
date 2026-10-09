@@ -6,16 +6,17 @@ const { createRequire } = require('node:module')
 // 只模拟本项目调用的接口；串行事务检查提交与回滚，真实冲突重试仍需云端验收。
 function loadCloud(records = {}) {
   let openid = 'openid-1', sequence = 0, chain = Promise.resolve()
-  const calls = [], deletedFiles = [], downloads = []
-  const faults = { before: null, deleteStatus: 0, download: null }
-  for (const name of ['users', 'invite_codes', 'auth_attempts', 'clothes', 'outfits', 'upload_tickets', 'cleanup_jobs', 'expenses', 'wear_records', 'outfit_plans', 'ai_chats', 'wardrobe_meta', 'ai_cache']) records[name] ||= []
+  const calls = [], deletedFiles = [], downloads = [], sentMessages = []
+  const faults = { before: null, deleteStatus: 0, download: null, send: null }
+  for (const name of ['users', 'invite_codes', 'auth_attempts', 'clothes', 'outfits', 'upload_tickets', 'cleanup_jobs', 'expenses', 'wear_records', 'outfit_plans', 'ai_chats', 'wardrobe_meta', 'ai_cache', 'subscriptions']) records[name] ||= []
   const clone = value => structuredClone(value)
-  const command = { all: values => ({ all: values }), pull: value => ({ pull: value }),
-    gte: value => ({ gte: value }), in: values => ({ in: values }) }
+  const command = { all: values => ({ all: values }), pull: value => ({ pull: value }), remove: () => ({ remove: true }),
+    gt: value => ({ gt: value }), gte: value => ({ gte: value }), in: values => ({ in: values }) }
   function collection(name) {
     let conditions = {}, offset = 0, max = Infinity
     const matches = row => Object.entries(conditions).every(([key, value]) => {
       if (value && value.all) return value.all.every(id => (row[key] || []).includes(id))
+      if (value && value.gt !== undefined) return row[key] > value.gt
       if (value && value.gte !== undefined) return row[key] >= value.gte
       if (value && value.in) return value.in.includes(row[key])
       return row[key] === value
@@ -52,7 +53,10 @@ function loadCloud(records = {}) {
             const row = records[name].find(row => row._id === id)
             if (!row) return { stats: { updated: 0 } }
             unique(id, { ...row, ...data })
-            for (const [key, value] of Object.entries(data)) row[key] = value && Object.hasOwn(value, 'pull') ? (row[key] || []).filter(id => id !== value.pull) : clone(value)
+            for (const [key, value] of Object.entries(data)) {
+              if (value && Object.hasOwn(value, 'remove')) delete row[key]
+              else row[key] = value && Object.hasOwn(value, 'pull') ? (row[key] || []).filter(id => id !== value.pull) : clone(value)
+            }
             return { stats: { updated: 1 } }
           },
           async remove() { before('remove', id); records[name] = records[name].filter(row => row._id !== id); return { stats: { removed: 1 } } }
@@ -74,13 +78,22 @@ function loadCloud(records = {}) {
   }
   const cloud = {
     init() {}, database: () => db, getWXContext: () => ({ OPENID: openid }),
+    openapi: { subscribeMessage: { async send(data) {
+      if (typeof faults.send === 'function') await faults.send(data)
+      else if (faults.send) throw faults.send
+      sentMessages.push(clone(data))
+      return { errCode: 0 }
+    } } },
     async deleteFile({ fileList }) {
       if (!faults.deleteStatus) deletedFiles.push(...fileList)
       return { fileList: fileList.map(fileID => ({ fileID, status: faults.deleteStatus })) }
     },
     async downloadFile({ fileID }) {
-      if (faults.download) throw faults.download
       downloads.push(fileID)
+      if (typeof faults.download === 'function') {
+        const result = await faults.download(fileID)
+        if (result) return result
+      } else if (faults.download) throw faults.download
       return { fileContent: Buffer.from('fake-image-bytes') }
     }
   }
@@ -92,7 +105,7 @@ function loadCloud(records = {}) {
     require: name => name === 'wx-server-sdk' ? cloud : localRequire(name),
     console: { error() {} }, Buffer, Date
   }, { filename: file })
-  return { main: exported.main, db, records, calls, deletedFiles, downloads, faults, setOpenid(value) { openid = value }, cloudService: cloud }
+  return { main: exported.main, db, records, calls, deletedFiles, downloads, sentMessages, faults, setOpenid(value) { openid = value }, cloudService: cloud }
 }
 
 module.exports = { loadCloud }

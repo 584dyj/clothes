@@ -43,12 +43,13 @@ const FIELDS = {
 const COLLECTIONS = Object.keys(FIELDS)
 
 const EXPENSE_CATEGORIES = ['服饰', '鞋包', '洗护', '修改', '其他']
+const MAX_YEAR = 2030
 
 function validDateString(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
   const date = new Date(value + 'T00:00:00Z')
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value &&
-    Number(value.slice(0, 4)) >= 2022 && Number(value.slice(0, 4)) <= new Date().getFullYear() + 1
+    Number(value.slice(0, 4)) >= 2022 && Number(value.slice(0, 4)) <= MAX_YEAR
 }
 
 function cleanItemIds(value) {

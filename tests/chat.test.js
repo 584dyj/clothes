@@ -374,8 +374,11 @@ test('助手顶部显示购买评估入口', () => {
 
   const fs = require('node:fs'), path = require('node:path')
   const markup = fs.readFileSync(path.join(__dirname, '../pages/assistant/assistant.wxml'), 'utf8')
+  const styles = fs.readFileSync(path.join(__dirname, '../pages/assistant/assistant.wxss'), 'utf8')
   assert.match(markup, /穿搭推荐/)
   assert.match(markup, /购买评估/)
+  assert.match(markup, /mode-indicator-right/)
+  assert.match(styles, /transition:\s*transform 240ms ease/)
   assert.doesNotMatch(markup, /新品查询/)
 })
 

@@ -1,5 +1,5 @@
 {
-  "navigationBarTitleText": "批量添加",
+  "component": true,
   "usingComponents": {
     "wheel-picker": "/components/wheel-picker/wheel-picker"
   }

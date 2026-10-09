@@ -1,6 +1,7 @@
 {
   "navigationBarTitleText": "添加衣物",
   "usingComponents": {
-    "wheel-picker": "/components/wheel-picker/wheel-picker"
+    "wheel-picker": "/components/wheel-picker/wheel-picker",
+    "batch-panel": "/components/batch-panel/batch-panel"
   }
 }
