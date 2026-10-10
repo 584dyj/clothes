@@ -3,9 +3,12 @@ const crypto = require('crypto')
 const PAGE_SIZE = 100
 const SCENE = 'idle-monthly'
 const QUOTA_SCENE = 'idle-monthly-quota'
+const SENT_SCENE = 'idle-monthly-sent'
 const DAY_MS = 86400000
 const TEXT_LIMIT = 20
 const quotaId = openid => 'quota-' + crypto.createHash('sha256').update(openid).digest('hex')
+// 账号+月份的持久幂等记录：同月重复运行、触发器重试或并发执行都只发送一次
+const sentId = (openid, month) => `sent-${openid}-${month}`
 
 function shanghaiParts(date) {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -83,15 +86,21 @@ async function buildReport(db, openid, now) {
 }
 
 async function claim(db, id, consumedAt) {
+  const month = formatShanghai(consumedAt).slice(0, 7)
   return db.runTransaction(async tx => {
     const ref = tx.collection('subscriptions').doc(id)
     const res = await ref.get()
     const row = Array.isArray(res.data) ? res.data[0] : res.data
     if (!row || row.consumedAt) return false
+    const markerRef = tx.collection('subscriptions').doc(sentId(row._openid, month))
+    const markerRes = await markerRef.get()
+    const marker = Array.isArray(markerRes.data) ? markerRes.data[0] : markerRes.data
+    if (marker) return false
     const quotaRef = tx.collection('subscriptions').doc(quotaId(row._openid))
     const quotaRes = await quotaRef.get()
     const quota = Array.isArray(quotaRes.data) ? quotaRes.data[0] : quotaRes.data
     await ref.update({ data: { consumedAt } })
+    await markerRef.set({ data: { _openid: row._openid, scene: SENT_SCENE, month, createdAt: consumedAt } })
     if (quota && quota.scene === QUOTA_SCENE) {
       const unused = Number.isInteger(quota.unused) ? quota.unused : 0
       await quotaRef.update({ data: { unused: Math.max(0, unused - 1), updatedAt: consumedAt } })
@@ -101,6 +110,7 @@ async function claim(db, id, consumedAt) {
 }
 
 async function restoreClaim(db, id, restoredAt) {
+  const month = formatShanghai(restoredAt).slice(0, 7)
   return db.runTransaction(async tx => {
     const ref = tx.collection('subscriptions').doc(id)
     const res = await ref.get()
@@ -110,6 +120,8 @@ async function restoreClaim(db, id, restoredAt) {
     const quotaRes = await quotaRef.get()
     const quota = Array.isArray(quotaRes.data) ? quotaRes.data[0] : quotaRes.data
     await ref.update({ data: { consumedAt: db.command.remove() } })
+    // 删除月度幂等记录，同月重跑可再次尝试发送
+    await tx.collection('subscriptions').doc(sentId(row._openid, month)).remove()
     if (quota && quota.scene === QUOTA_SCENE) {
       const unused = Number.isInteger(quota.unused) ? quota.unused : 0
       await quotaRef.update({ data: { unused: Math.min(12, unused + 1), updatedAt: restoredAt } })

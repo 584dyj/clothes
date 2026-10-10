@@ -121,6 +121,69 @@ test('43101 删除失效额度，临时错误恢复额度且不阻塞其他账�
   assert.deepEqual(cloud.sentMessages.map(message => message.touser), ['ok'])
 })
 
+test('同账号同月重复运行只发送一次，跨月可再次发送', async () => {
+  const cloud = loadCloud({
+    subscriptions: [subscription('s1', 'u1'), subscription('s2', 'u1'), quota('u1', 2)],
+    clothes: [item('u1-idle', 'u1', '旧衣物', '2025-01-01')],
+    wear_records: [wear('u1-recent', 'u1', '2026-10-01', ['deleted'])]
+  })
+  const first = await report.handle({ db: cloud.db, cloud: cloud.cloudService, templateId: TEMPLATE_ID, now: NOW })
+  assert.equal(first.sent, 1)
+  const second = await report.handle({ db: cloud.db, cloud: cloud.cloudService, templateId: TEMPLATE_ID, now: NOW })
+  assert.equal(second.sent, 0)
+  assert.equal(cloud.sentMessages.length, 1)
+  assert.equal(cloud.records.subscriptions.find(row => row.scene === 'idle-monthly-quota').unused, 1)
+  assert.ok(cloud.records.subscriptions.find(row => row.scene === 'idle-monthly-sent' && row.month === '2026-10'))
+  assert.equal(cloud.records.subscriptions.find(row => row._id === 's2').consumedAt, undefined)
+  const third = await report.handle({ db: cloud.db, cloud: cloud.cloudService, templateId: TEMPLATE_ID, now: new Date('2026-11-01T01:00:00.000Z') })
+  assert.equal(third.sent, 1)
+  assert.equal(cloud.sentMessages.length, 2)
+  assert.equal(cloud.records.subscriptions.find(row => row.scene === 'idle-monthly-quota').unused, 0)
+})
+
+test('发送失败恢复后同月重跑仍可发送，成功后不再重复', async () => {
+  const cloud = loadCloud({
+    subscriptions: [subscription('s1', 'u1'), subscription('s2', 'u1'), quota('u1', 2)],
+    clothes: [item('u1-idle', 'u1', '旧衣物', '2025-01-01')],
+    wear_records: [wear('u1-recent', 'u1', '2026-10-01', ['deleted'])]
+  })
+  cloud.faults.send = async () => { throw Error('network timeout') }
+  const first = await report.handle({ db: cloud.db, cloud: cloud.cloudService, templateId: TEMPLATE_ID, now: NOW })
+  assert.equal(first.failed, 1)
+  assert.equal(cloud.records.subscriptions.some(row => row.scene === 'idle-monthly-sent'), false)
+  assert.equal(cloud.records.subscriptions.find(row => row.scene === 'idle-monthly-quota').unused, 2)
+  cloud.faults.send = null
+  const second = await report.handle({ db: cloud.db, cloud: cloud.cloudService, templateId: TEMPLATE_ID, now: NOW })
+  assert.equal(second.sent, 1)
+  assert.equal(cloud.sentMessages.length, 1)
+  const third = await report.handle({ db: cloud.db, cloud: cloud.cloudService, templateId: TEMPLATE_ID, now: NOW })
+  assert.equal(third.sent, 0)
+  assert.equal(cloud.sentMessages.length, 1)
+  assert.equal(cloud.records.subscriptions.find(row => row.scene === 'idle-monthly-quota').unused, 1)
+})
+
+test('43101 失效后同月不再尝试该账号的其他授权', async () => {
+  const cloud = loadCloud({
+    subscriptions: [subscription('s1', 'u1'), subscription('s2', 'u1'), quota('u1', 2)],
+    clothes: [item('u1-idle', 'u1', '旧衣物', '2025-01-01')],
+    wear_records: [wear('u1-recent', 'u1', '2026-10-01', ['deleted'])]
+  })
+  cloud.faults.send = async () => {
+    const error = new Error('43101 user refuse')
+    error.errCode = 43101
+    throw error
+  }
+  const first = await report.handle({ db: cloud.db, cloud: cloud.cloudService, templateId: TEMPLATE_ID, now: NOW })
+  assert.equal(first.expired, 1)
+  assert.equal(cloud.records.subscriptions.some(row => row._id === 's1'), false)
+  cloud.faults.send = null
+  const second = await report.handle({ db: cloud.db, cloud: cloud.cloudService, templateId: TEMPLATE_ID, now: NOW })
+  assert.equal(second.sent, 0)
+  assert.equal(cloud.sentMessages.length, 0)
+  assert.equal(cloud.records.subscriptions.find(row => row._id === 's2').consumedAt, undefined)
+  assert.equal(cloud.records.subscriptions.find(row => row.scene === 'idle-monthly-quota').unused, 1)
+})
+
 test('名称摘要保留总数后缀并限制在二十字符内', () => {
   const value = report.summarize(Array.from({ length: 4 }, (_, index) => ({ name: `特别特别长的衣物名称${index}` })))
   assert.ok(Array.from(value).length <= 20)
