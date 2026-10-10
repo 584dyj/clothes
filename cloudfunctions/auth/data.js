@@ -164,10 +164,6 @@ async function retryCleanup({ db, cloud, openid }) {
 
 async function handle(context) {
   const { db, cloud, user, openid, event } = context
-  if (event.action === 'cleanupStatus') {
-    const jobs = await db.collection('cleanup_jobs').where({ _openid: openid, state: 'pending' }).limit(1).get()
-    return { success: true, pendingCleanup: jobs.data.length > 0 }
-  }
   if (event.action === 'prepareUpload') {
     if (!['wardrobe', 'avatars'].includes(event.directory) || !['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(event.ext)) throw new Error('图片格式无效')
     const id = crypto.randomBytes(16).toString('hex')

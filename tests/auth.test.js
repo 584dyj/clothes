@@ -8,16 +8,16 @@ function loadAuth(records, openid = 'openid-1') {
   return cloud.main
 }
 
-test('未知操作返回实际操作和源码标识，清理操作正常命中', async () => {
+test('未知操作返回实际操作和源码标识，资料操作正常命中', async () => {
   const main = loadAuth({ users: [{ _id: 'user', openid: 'openid-1' }] })
   const unknown = await main({ action: 'invalid-action' })
   assert.equal(unknown.code, 'UNKNOWN_ACTION')
   assert.equal(unknown.diagnostic.action, 'invalid-action')
   assert.match(unknown.diagnostic.revision, /^[a-f0-9]{12}$/)
-  const status = await main({ action: 'cleanupStatus' })
+  const status = await main({ action: 'profile' })
   assert.equal(status.success, true)
   assert.equal(status.diagnostic.revision, unknown.diagnostic.revision)
-  assert.equal(status.diagnostic.action, 'cleanupStatus')
+  assert.equal(status.diagnostic.action, 'profile')
 })
 
 test('profile 返回头像、用户名和新账号保存的注册码', async () => {

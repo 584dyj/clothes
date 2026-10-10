@@ -15,7 +15,8 @@ test('清理入口只展示当前账号的 pending 任务，重试完成后隐�
     { _id: 'foreign', _openid: 'openid-2', state: 'pending', kind: 'references', itemId: 'gone' }
   ] })
   const page = loadPage('profile', {
-    cleanupStatus: () => c.main({ action: 'cleanupStatus' }),
+    cleanupStatus: () => c.main({ action: 'profile' })
+      .then(result => ({ pendingCleanup: result.profile && result.profile.pendingCleanup === true })),
     retryCleanup: () => c.main({ action: 'retryCleanup' })
   })
   await page.refreshCleanupStatus()
@@ -28,7 +29,7 @@ test('清理入口只展示当前账号的 pending 任务，重试完成后隐�
   assert.equal(page.data.cleaning, false)
   assert.deepEqual(c.records.cleanup_jobs.map(job => job._id), ['review', 'foreign'])
   await c.main({ action: 'logout' })
-  assert.equal((await c.main({ action: 'cleanupStatus' })).success, false)
+  assert.equal((await c.main({ action: 'profile' })).success, false)
 })
 
 test('清理请求失败保留重试入口并解除按钮禁用', async () => {

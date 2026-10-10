@@ -41,14 +41,6 @@ Page({
       occasions: app.globalData.occasions,
       categories: ['全部', '已选', ...app.globalData.categories]
     })
-    if (!options.id && options.recommended === '1') {
-      this.setData({
-        name: typeof options.name === 'string' ? options.name.slice(0, 40) : '',
-        occasion: app.globalData.occasions.includes(options.occasion) ? options.occasion : '',
-        occasionIndex: app.globalData.occasions.indexOf(options.occasion),
-        selectedIds: typeof options.itemIds === 'string' ? options.itemIds.split(',').slice(0, 10) : []
-      })
-    }
     if (options.id) wx.setNavigationBarTitle({ title: '编辑穿搭' })
     return this.onRetry()
   },

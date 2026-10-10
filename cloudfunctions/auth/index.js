@@ -242,7 +242,7 @@ async function main(event = {}) {
     return { success: true, username }
   }
 
-  if (['data', 'prepareUpload', 'removeImage', 'retryCleanup', 'cleanupStatus'].includes(action)) {
+  if (['data', 'prepareUpload', 'removeImage', 'retryCleanup'].includes(action)) {
     const user = await getBoundUser(openid)
     if (!user || user.autoLoginEnabled === false) throw new Error('登录状态已失效')
     return dataApi.handle({ db, cloud, user, openid, event })
