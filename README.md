@@ -85,4 +85,4 @@ node tools/benchmark.js  # 100 / 500 / 1000 件规模逻辑耗时测量
 
 ## 许可
 
-本项目暂未指定开源许可；在添加 LICENSE 前，默认保留所有权利。
+本项目基于 [MIT License](LICENSE) 开源。
