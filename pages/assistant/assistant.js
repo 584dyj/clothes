@@ -82,7 +82,7 @@ Page({
     const mode = e.currentTarget.dataset.mode
     if (!['outfit', 'purchase'].includes(mode) || mode === this.data.activeMode) return
     if (mode === 'purchase') {
-      this.onNewSession()
+      this.clearSessionTap()
       this.applySessions(this.data.sessions, { activeMode: mode })
       return
     }
@@ -505,7 +505,7 @@ Page({
   async onSend(suggestion) {
     const fromSuggestion = typeof suggestion === 'string'
     const inputText = (fromSuggestion ? suggestion : this.data.input).trim()
-    const { imagePath, selectedItemId, selectedItemName, sending } = this.data
+    const { currentId, imagePath, selectedItemId, selectedItemName, sending } = this.data
     if (sending || (!inputText && !imagePath && !selectedItemId)) return
     const text = selectedItemId
       ? (inputText ? `【${selectedItemName}】${inputText}` : `请以「${selectedItemName}」为核心给我穿搭建议`)
@@ -521,7 +521,7 @@ Page({
       let fileID = ''
       if (imagePath) fileID = await db.uploadImage(imagePath)
       let streamed = '', lastRender = 0
-      const result = await db.chatSend({ chatId: this.data.currentId || '', text, imageFileID: fileID, itemId: selectedItemId }, delta => {
+      const result = await db.chatSend({ chatId: currentId || '', text, imageFileID: fileID, itemId: selectedItemId }, delta => {
         if (!inView()) return
         streamed += delta
         if (Date.now() - lastRender < 80) return

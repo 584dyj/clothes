@@ -247,7 +247,10 @@ test('助手页加载会话、发送、切换与删除', async () => {
   assert.equal(page.data.messages.length, 2)
   assert.equal(page.data.messages[0].displayText, 'hi')
 
-  page.onNewSession()
+  page.onSessionTap({ currentTarget: { dataset: { id: 'new' } } })
+  assert.equal(page.data.currentId, '')
+  assert.equal(page.data.messages.length, 0)
+  assert.equal(page.data.input, '')
   page.onInput({ detail: { value: 'hello' } })
   await page.onSend()
   assert.equal(page.data.currentId, 'new-1')
@@ -278,6 +281,46 @@ test('助手页发送带图片时先上传再交给云函数', async () => {
   page.onInput({ detail: { value: '看看这件' } })
   await page.onSend()
   assert.equal(page.data.messages[0].imageFileID, 'cloud://env/wardrobe/uploaded.jpg')
+})
+
+test('助手图片上传中切换会话仍发送到原会话且不覆盖当前视图', async t => {
+  for (const currentId of ['a', '']) {
+    await t.test(currentId ? '已有会话' : '新会话', async () => {
+      let completeUpload, switchSession, sent
+      const sessions = [{ _id: 'a', title: '会话 A' }, { _id: 'b', title: '会话 B' }]
+      const page = loadPage('assistant', {
+        uploadImage: () => new Promise(resolve => { completeUpload = resolve }),
+        chatGet: async id => {
+          assert.equal(id, 'b')
+          return { title: '会话 B', messages: [{ role: 'assistant', text: 'B 的回复' }] }
+        },
+        chatSend: async (payload, onDelta) => {
+          sent = payload
+          onDelta('A 的回复')
+          return { chatId: currentId || 'new-a', title: '会话 A', messages: [{ role: 'assistant', text: 'A 的回复' }] }
+        },
+        chatList: async () => sessions
+      }, {
+        testSetTimeout: callback => { switchSession = callback; return 1 }
+      })
+      page.setData({ sessions, currentId, input: '看看这件', imagePath: '/tmp/pic.jpg' })
+      const pending = page.onSend()
+      assert.equal(sent, undefined)
+      page.onSessionTap({ currentTarget: { dataset: { id: 'b' } } })
+      switchSession()
+      await new Promise(resolve => setImmediate(resolve))
+      assert.equal(page.data.currentId, 'b')
+      completeUpload('cloud://env/wardrobe/uploaded.jpg')
+      await pending
+      assert.equal(sent.chatId, currentId)
+      assert.equal(sent.imageFileID, 'cloud://env/wardrobe/uploaded.jpg')
+      assert.equal(page.data.currentId, 'b')
+      assert.equal(page.data.title, '会话 B')
+      assert.equal(page.data.messages.length, 1)
+      assert.equal(page.data.messages[0].text, 'B 的回复')
+      assert.equal(page.data.sending, false)
+    })
+  }
 })
 
 test('助手拍照、图片预览和长按删除入口', async () => {
@@ -399,7 +442,7 @@ test('会话列表隐藏旧品牌搜索记录，新会话仍标记为 outfit', a
   assert.equal(list.chats.some(chat => Object.hasOwn(chat, 'kind')), false)
 })
 
-test('购买评估模式隐藏会话栏，返回穿搭后恢复会话列表', async () => {
+test('购买评估模式隐藏会话栏，返回穿搭后保留会话和输入草稿', async () => {
   const sessions = [
     { _id: 'o1', title: '通勤穿搭' },
     { _id: 'old', title: '旧会话' }
@@ -407,18 +450,27 @@ test('购买评估模式隐藏会话栏，返回穿搭后恢复会话列表', as
   const page = loadPage('assistant', { chatList: async () => sessions })
   await page.onShow()
   assert.deepEqual(page.data.visibleSessions.map(s => s._id), ['o1', 'old'])
+  page.setData({ currentId: 'o1', title: '通勤穿搭', messages: [
+    { role: 'user', text: '怎么搭配' }, { role: 'assistant', text: '衬衫配长裤' }
+  ], input: '配什么鞋', imagePath: '/tmp/pic.jpg', canSend: true })
   page.onModeTap({ currentTarget: { dataset: { mode: 'purchase' } } })
   assert.equal(page.data.activeMode, 'purchase')
   page.onModeTap({ currentTarget: { dataset: { mode: 'outfit' } } })
   assert.deepEqual(page.data.visibleSessions.map(s => s._id), ['o1', 'old'])
+  assert.equal(page.data.currentId, 'o1')
+  assert.equal(page.data.title, '通勤穿搭')
+  assert.equal(page.data.messages[1].text, '衬衫配长裤')
+  assert.equal(page.data.input, '配什么鞋')
+  assert.equal(page.data.imagePath, '/tmp/pic.jpg')
+  assert.equal(page.data.canSend, true)
   const fs = require('node:fs'), path = require('node:path')
   const markup = fs.readFileSync(path.join(__dirname, '../pages/assistant/assistant.wxml'), 'utf8')
   assert.match(markup, /wx:for="\{\{visibleSessions\}\}"/)
   assert.doesNotMatch(markup, /session-bar[^>]*wx:if/)
 })
 
-test('等待回复时可切模式/看其他会话，后台完成不覆盖当前视图', async () => {
-  let complete, listCalls = 0
+test('等待回复时切模式保留对话，切其他会话后后台完成不覆盖当前视图', async () => {
+  let complete, savedView, listCalls = 0
   const history = [{ _id: 'c1', title: '旧会话', kind: 'outfit' }]
   const page = loadPage('assistant', {
     chatList: async () => listCalls++ === 0 ? history : [{ _id: 'new-1', title: '约会穿搭', kind: 'outfit' }, ...history],
@@ -427,7 +479,8 @@ test('等待回复时可切模式/看其他会话，后台完成不覆盖当前�
       complete = () => resolve({ chatId: 'new-1', title: '约会穿搭',
         messages: [{ role: 'user', text: payload.text }, { role: 'assistant', text: '新回复' }] })
     })
-  }, { testSetTimeout: setTimeout, testClearTimeout: clearTimeout })
+  }, { testSetTimeout: setTimeout, testClearTimeout: clearTimeout,
+    setStorageSync: (key, value) => { savedView = value } })
   await page.onShow()
   page.onNewSession()
   page.onInput({ detail: { value: '约会穿什么' } })
@@ -435,20 +488,32 @@ test('等待回复时可切模式/看其他会话，后台完成不覆盖当前�
   assert.equal(page.data.sending, true)
   assert.equal(page.data.awaitingReply, true)
 
-  // 发送中切到购买评估：不被拦截，视图清空，等待气泡消失
+  // 切到购买评估再返回：用户消息和等待状态保留
   page.onModeTap({ currentTarget: { dataset: { mode: 'purchase' } } })
   assert.equal(page.data.activeMode, 'purchase')
-  assert.equal(page.data.messages.length, 0)
-  assert.equal(page.data.awaitingReply, false)
+  assert.equal(page.data.messages.length, 1)
+  assert.equal(page.data.messages[0].text, '约会穿什么')
+  assert.equal(page.data.awaitingReply, true)
+  page.onModeTap({ currentTarget: { dataset: { mode: 'outfit' } } })
+  assert.equal(page.data.activeMode, 'outfit')
+  assert.equal(page.data.messages[0].text, '约会穿什么')
+  assert.equal(page.data.awaitingReply, true)
 
-  // 后台完成：不覆盖当前视图，但会话列表已刷新
+  // 留在购买评估时后台完成：保持当前模式，保存完整对话
+  page.onModeTap({ currentTarget: { dataset: { mode: 'purchase' } } })
   complete()
   await pending
   assert.equal(page.data.activeMode, 'purchase')
-  assert.equal(page.data.messages.length, 0)
-  assert.equal(page.data.currentId, '')
+  assert.equal(page.data.messages.length, 2)
+  assert.equal(page.data.messages[1].text, '新回复')
+  assert.equal(page.data.currentId, 'new-1')
+  assert.equal(page.data.title, '约会穿搭')
+  assert.equal(savedView.currentId, 'new-1')
   assert.equal(page.data.sending, false)
+  assert.equal(page.data.awaitingReply, false)
   page.onModeTap({ currentTarget: { dataset: { mode: 'outfit' } } })
+  assert.equal(page.data.messages[1].text, '新回复')
+  assert.equal(page.data.currentId, 'new-1')
   assert.deepEqual(page.data.visibleSessions.map(s => s._id), ['new-1', 'c1'])
 
   // 发送中查看其他会话：同样不被拦截，完成后不串视图
