@@ -7,7 +7,7 @@
     {
       "name": "weather-alert",
       "type": "timer",
-      "config": "0 0 30 21 * * *"
+      "config": "0 30 21 * * * *"
     }
   ]
 }

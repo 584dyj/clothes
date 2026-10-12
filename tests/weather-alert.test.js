@@ -39,6 +39,15 @@ function run(cloud, request, now = NOW) {
   return alert.handle({ db: cloud.db, cloud: cloud.cloudService, templateId: TEMPLATE_ID, now, request, env: ENV })
 }
 
+test('天气提醒每日21:30、闲置月报每月1日09:00的定时配置', () => {
+  assert.deepEqual(require('../cloudfunctions/weather-alert/config.json').triggers, [
+    { name: 'weather-alert', type: 'timer', config: '0 30 21 * * * *' }
+  ])
+  assert.deepEqual(require('../cloudfunctions/monthly-report/config.json').triggers, [
+    { name: 'monthly-report', type: 'timer', config: '0 0 9 1 * * *' }
+  ])
+})
+
 // ---------- 触发规则 ----------
 
 test('触发规则边界与优先级', () => {
