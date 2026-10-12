@@ -262,10 +262,24 @@ const purchaseAssess = candidate => call('purchaseAssess', { candidate }).then(r
 const purchaseVisual = (candidate, imageFileID) => call('purchaseVisual', { candidate, imageFileID }).then(result => result.visualReview)
 const itemScan = imageFileID => call('itemScan', { imageFileID }).then(result => result.item)
 const subscribeReport = () => call('subscribeReport')
+const subscribeWeather = () => call('subscribeWeather')
+
+// 天气提醒云函数（城市设置等），与 auth 分离部署，错误处理同构
+function callWeather(data) {
+  return wx.cloud.callFunction({ name: 'weather-alert', data }).then(res => {
+    if (!res.result || !res.result.success) {
+      const error = new Error(res.result && res.result.error || '服务暂不可用')
+      console.error('weather-alert 调用失败', { requestID: res.requestID, message: error.message })
+      throw error
+    }
+    return res.result
+  })
+}
+const setCity = cityName => callWeather({ action: 'setCity', cityName })
 
 module.exports = { chooseImage, uploadImage, removeImage, retryCleanup, cleanupStatus, clearCache,
   listItems, getItem, addItem, updateItem, deleteItem, listOutfits, listOutfitsPage, getOutfit, addOutfit, updateOutfit, deleteOutfit,
   listExpenses, addExpense, updateExpense, deleteExpense,
   listWearRecords, addWearRecord, updateWearRecord, deleteWearRecord,
   listPlans, addPlan, updatePlan, deletePlan,
-  chatList, chatGet, chatSend, chatDelete, chatRename, purchaseAssess, purchaseVisual, itemScan, subscribeReport }
+  chatList, chatGet, chatSend, chatDelete, chatRename, purchaseAssess, purchaseVisual, itemScan, subscribeReport, subscribeWeather, setCity }

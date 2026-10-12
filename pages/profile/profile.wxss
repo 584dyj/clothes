@@ -108,6 +108,32 @@
   letter-spacing: 1rpx;
 }
 
+.tappable:active {
+  opacity: 0.6;
+}
+
+.muted {
+  color: #9a958c;
+}
+
+.streak-card {
+  padding-top: 28rpx;
+  padding-bottom: 28rpx;
+  text-align: center;
+}
+
+.streak-num {
+  font-size: 56rpx;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.streak-label {
+  margin-top: 8rpx;
+  color: #6b675f;
+  font-size: 24rpx;
+}
+
 .section-title {
   margin: 0 8rpx 18rpx;
   color: #6b675f;

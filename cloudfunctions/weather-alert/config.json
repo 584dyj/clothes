@@ -1,0 +1,13 @@
+{
+  "timeout": 300,
+  "permissions": {
+    "openapi": ["subscribeMessage.send"]
+  },
+  "triggers": [
+    {
+      "name": "weather-alert",
+      "type": "timer",
+      "config": "0 0 30 21 * * *"
+    }
+  ]
+}

@@ -40,7 +40,8 @@ test('profile 返回头像、用户名和新账号保存的注册码', async () 
     pendingCleanup: false,
     username: 'alice',
     registerCode: 'CODE-1',
-    avatarFileID: 'cloud://avatar-1'
+    avatarFileID: 'cloud://avatar-1',
+    cityName: ''
   })
 })
 

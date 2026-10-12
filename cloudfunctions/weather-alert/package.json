@@ -1,0 +1,10 @@
+{
+  "name": "weather-alert",
+  "version": "1.0.0",
+  "description": "天气触发穿搭提醒订阅消息",
+  "main": "index.js",
+  "private": true,
+  "dependencies": {
+    "wx-server-sdk": "2.6.3"
+  }
+}

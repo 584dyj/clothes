@@ -1,5 +1,8 @@
 const auth = require('../../utils/auth')
 const db = require('../../utils/db')
+const streak = require('../../utils/streak')
+
+const WEATHER_TEMPLATE_ID = 'gecbz6HZQxVtg7x5eMAY7ugCWXgeIQsuWK9ELJR4Xe0'
 
 Page({
   async onRetry() {
@@ -22,7 +25,13 @@ Page({
     avatarFileID: '',
     registerCode: '',
     mostExpensive: null,
-    favoriteBrand: null
+    favoriteBrand: null,
+    cityName: '',
+    weatherStateText: '点击订阅明日穿搭提醒',
+    subscribingWeather: false,
+    hasWearRecords: false,
+    streakDays: 0,
+    monthCheckins: 0
   },
 
   async onShow() {
@@ -30,6 +39,7 @@ Page({
       this.setData({ loading: false, loadError: '登录校验未完成，请重试' })
       return
     }
+    this.refreshWeatherState()
     this.loadData()
   },
 
@@ -44,10 +54,13 @@ Page({
     this._loading = true
     if (!this._loaded) this.setData({ loading: true })
     try {
-      const [profile, items] = await Promise.all([auth.profile(), db.listItems(force)])
+      const [profile, items, wearRecords] = await Promise.all([auth.profile(), db.listItems(force), db.listWearRecords(force)])
       const mostExpensive = this.findMostExpensive(items)
       const favoriteBrand = this.findFavoriteBrand(items)
       const username = profile.username || ''
+      const now = new Date()
+      const pad = n => String(n).padStart(2, '0')
+      const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
       this._loaded = true
       this.setData({
         loading: false,
@@ -55,8 +68,12 @@ Page({
         avatarText: Array.from(username)[0] || '我',
         avatarFileID: profile.avatarFileID || '',
         registerCode: profile.registerCode || '未记录',
+        cityName: profile.cityName || '',
         mostExpensive,
-        favoriteBrand
+        favoriteBrand,
+        hasWearRecords: wearRecords.length > 0,
+        streakDays: streak.streakDays(wearRecords, today),
+        monthCheckins: streak.monthDays(wearRecords, today)
       })
     } catch (e) {
       console.error(e)
@@ -126,6 +143,69 @@ Page({
       this.setData({ pendingCleanup: result.pendingCleanup === true })
     } catch (e) {
       console.error('读取清理状态失败', e)
+    }
+  },
+
+  // 天气提醒授权状态：勾选「总是保持以上选择」后 itemSettings 为 accept，后续点击无弹窗
+  refreshWeatherState() {
+    if (typeof wx.getSetting !== 'function') return
+    wx.getSetting({
+      withSubscriptions: true,
+      success: res => {
+        const setting = res.subscriptionsSetting || {}
+        const state = (setting.itemSettings || {})[WEATHER_TEMPLATE_ID]
+        const text = setting.mainSwitch === false ? '订阅消息总开关已关闭，请在设置中开启'
+          : state === 'accept' ? '已开启免询问，点击增加一次提醒额度'
+          : state === 'reject' ? '已拒绝提醒，点击重新订阅'
+          : '点击订阅明日穿搭提醒'
+        this.setData({ weatherStateText: text })
+      },
+      fail: () => {}
+    })
+  },
+
+  onCityTap() {
+    wx.showModal({
+      title: '设置城市',
+      editable: true,
+      placeholderText: '输入城市名，如：上海',
+      content: this.data.cityName,
+      success: async res => {
+        if (!res.confirm) return
+        const name = String(res.content || '').trim()
+        if (!name) return
+        try {
+          const result = await db.setCity(name)
+          this.setData({ cityName: result.cityName || name })
+          wx.showToast({ title: `已设置为 ${result.cityName || name}`, icon: 'none' })
+        } catch (e) {
+          console.error(e)
+          wx.showToast({ title: e.message || '城市设置失败，请重试', icon: 'none' })
+        }
+      }
+    })
+  },
+
+  async onSubscribeWeather() {
+    if (this.data.subscribingWeather) return
+    this.setData({ subscribingWeather: true })
+    try {
+      const result = await new Promise((resolve, reject) => wx.requestSubscribeMessage({
+        tmplIds: [WEATHER_TEMPLATE_ID], success: resolve, fail: reject
+      }))
+      const state = result[WEATHER_TEMPLATE_ID]
+      if (state !== 'accept') {
+        wx.showToast({ title: state === 'ban' ? '请在设置中开启订阅消息' : '已取消订阅', icon: 'none' })
+        return
+      }
+      const subscribed = await db.subscribeWeather()
+      wx.showToast({ title: `已增加一次提醒额度，剩余可订 ${subscribed.remaining} 次`, icon: 'none' })
+    } catch (e) {
+      console.error(e)
+      wx.showToast({ title: e && e.message || '订阅失败，请重试', icon: 'none' })
+    } finally {
+      this.setData({ subscribingWeather: false })
+      this.refreshWeatherState()
     }
   },
 

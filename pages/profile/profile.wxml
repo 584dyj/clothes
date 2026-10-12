@@ -32,6 +32,26 @@
         </view>
       </view>
 
+      <view class="section-title">提醒</view>
+      <view class="account-card card">
+        <view class="info-row tappable" bindtap="onCityTap">
+          <text class="info-label">城市</text>
+          <text class="info-value {{cityName ? '' : 'muted'}}">{{cityName || '未设置，无法接收天气提醒'}}</text>
+        </view>
+        <view class="info-row tappable" bindtap="onSubscribeWeather">
+          <text class="info-label">天气提醒</text>
+          <text class="info-value">{{weatherStateText}}</text>
+        </view>
+      </view>
+
+      <block wx:if="{{hasWearRecords}}">
+        <view class="section-title">穿搭记录</view>
+        <view class="account-card card streak-card">
+          <view class="streak-num">{{streakDays}}</view>
+          <view class="streak-label">连续记录天数 · 本月打卡 {{monthCheckins}} 天</view>
+        </view>
+      </block>
+
       <view class="section-title">衣橱偏好</view>
       <view class="insight-row">
         <view class="insight-card card">

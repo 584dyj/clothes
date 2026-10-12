@@ -278,6 +278,12 @@ async function main(event = {}) {
     return subscriptionApi.subscribe({ db, openid })
   }
 
+  if (action === 'subscribeWeather') {
+    const user = await getBoundUser(openid)
+    if (!user || user.autoLoginEnabled === false) throw new Error('登录状态已失效')
+    return subscriptionApi.subscribe({ db, openid, scene: 'weather-alert' })
+  }
+
   if (action === 'chatList' || action === 'chatGet' || action === 'chatSend' || action === 'chatDelete' || action === 'chatRename' ||
       action === 'chatStart' || action === 'chatFinish' || action === 'chatCancel') {
     const user = await getBoundUser(openid)
@@ -312,7 +318,8 @@ async function main(event = {}) {
           pendingCleanup,
           username: user.username,
           registerCode,
-          avatarFileID: user.avatarFileID || ''
+          avatarFileID: user.avatarFileID || '',
+          cityName: user.cityName || ''
         }
       }
     } catch (e) {
