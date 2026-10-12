@@ -90,7 +90,7 @@ test('天气提醒订阅：接受积累额度，拒绝与禁用分别提示', as
   })
   await profile.onSubscribeWeather()
   assert.equal(subscribed, 1)
-  assert.equal(toasts.at(-1), '已增加一次提醒额度，剩余可订 11 次')
+  assert.equal(toasts.at(-1), '已订阅，可接收 1 次提醒')
   state = 'reject'
   await profile.onSubscribeWeather()
   assert.equal(subscribed, 1)
@@ -101,14 +101,18 @@ test('天气提醒订阅：接受积累额度，拒绝与禁用分别提示', as
   assert.equal(profile.data.subscribingWeather, false)
 })
 
-test('天气提醒授权状态读取：免询问与已拒绝', () => {
-  const profile = loadPage('profile', {}, {
+test('天气提醒授权状态读取不会自动新增订阅，记忆选择与已拒绝分别展示', () => {
+  let subscribed = 0, requested = 0
+  const profile = loadPage('profile', { subscribeWeather: () => { subscribed++ } }, {
+    requestSubscribeMessage() { requested++ },
     getSetting({ success }) {
       success({ subscriptionsSetting: { mainSwitch: true, itemSettings: { [WEATHER_TEMPLATE_ID]: 'accept' } } })
     }
   })
   profile.refreshWeatherState()
-  assert.equal(profile.data.weatherStateText, '已开启免询问，点击增加一次提醒额度')
+  assert.equal(profile.data.weatherStateText, '已记住选择，点击订阅')
+  assert.equal(subscribed, 0)
+  assert.equal(requested, 0)
   const rejected = loadPage('profile', {}, {
     getSetting({ success }) {
       success({ subscriptionsSetting: { mainSwitch: true, itemSettings: { [WEATHER_TEMPLATE_ID]: 'reject' } } })
@@ -116,6 +120,44 @@ test('天气提醒授权状态读取：免询问与已拒绝', () => {
   })
   rejected.refreshWeatherState()
   assert.equal(rejected.data.weatherStateText, '已拒绝提醒，点击重新订阅')
+})
+
+test('订阅成功反馈实际可接收次数，兼容旧响应并优先使用服务端实际次数', async () => {
+  const toasts = []
+  for (const [response, expected] of [
+    [{ remaining: 11 }, 1],
+    [{ remaining: 0 }, 12],
+    [{ unused: 3 }, 3]
+  ]) {
+    const profile = loadPage('profile', { subscribeWeather: async () => response }, {
+      requestSubscribeMessage: ({ success }) => success({ [WEATHER_TEMPLATE_ID]: 'accept' }),
+      showToast: options => toasts.push(options.title)
+    })
+    await profile.onSubscribeWeather()
+    assert.equal(toasts.at(-1), `已订阅，可接收 ${expected} 次提醒`)
+  }
+})
+
+test('天气授权请求失败不会新增订阅，解除提交状态并允许重试', async () => {
+  let subscribed = 0, failed = true
+  const toasts = []
+  const profile = loadPage('profile', {
+    subscribeWeather: async () => { subscribed++; return { unused: 1 } }
+  }, {
+    requestSubscribeMessage({ success, fail }) {
+      if (failed) fail(new Error('授权请求失败'))
+      else success({ [WEATHER_TEMPLATE_ID]: 'accept' })
+    },
+    showToast: options => toasts.push(options.title)
+  })
+  await profile.onSubscribeWeather()
+  assert.equal(subscribed, 0)
+  assert.equal(profile.data.subscribingWeather, false)
+  assert.equal(toasts.at(-1), '授权请求失败')
+  failed = false
+  await profile.onSubscribeWeather()
+  assert.equal(subscribed, 1)
+  assert.equal(profile.data.subscribingWeather, false)
 })
 
 test('城市设置：确认后调用云端并回显，失败提示原因', async () => {

@@ -43,7 +43,7 @@ async function subscribe({ db, openid, scene = 'idle-monthly' }) {
     if (quota) await quotaRef.update({ data: quotaData })
     else await quotaRef.set({ data: { ...quotaData, createdAt } })
     await tx.collection(COLLECTION).doc(recordId).set({ data: { _openid: openid, scene, createdAt } })
-    return { success: true, remaining: MAX_UNUSED - unused - 1 }
+    return { success: true, unused: unused + 1, remaining: MAX_UNUSED - unused - 1 }
   })
 }
 

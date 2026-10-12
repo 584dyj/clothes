@@ -19,7 +19,7 @@ const forecast = (today, tomorrow) => ({ status: '1', forecasts: [{ casts: [toda
 const nday = (tempMin, tempMax, textDay) => ({ tempMin: String(tempMin), tempMax: String(tempMax), textDay })
 // 降温 8°C 且无降水（不触发其他规则）
 const DROP_FORECAST = forecast(cast(20, 28, '多云'), cast(12, 22, '阴'))
-const NONE_FORECAST = forecast(cast(20, 28, '多云'), cast(19, 27, '多云'))
+const NORMAL_FORECAST = forecast(cast(20, 28, '多云'), cast(19, 27, '多云'))
 
 // 按请求路径中的关键字分发响应；calls 记录调用路径
 function stubWeather(map, calls = []) {
@@ -50,14 +50,14 @@ test('天气提醒每日21:30、闲置月报每月1日09:00的定时配置', () 
 
 // ---------- 触发规则 ----------
 
-test('触发规则边界与优先级', () => {
+test('特殊天气规则边界与优先级', () => {
   const evaluate = (t1, t2) => alert.evaluate(nday(...t1), nday(...t2))
   assert.deepEqual(evaluate([20, 28, '多云'], [14, 26, '多云']), { type: 'drop', delta: 6 }) // 恰好降 6°C 触发
   assert.equal(evaluate([20, 28, '多云'], [15, 26, '多云']), null)                          // 降 5°C 不触发
   assert.deepEqual(evaluate([20, 28, '晴'], [20, 26, '雷阵雨']), { type: 'rain' })
-  assert.equal(evaluate([20, 28, '小雨'], [20, 26, '大雨']), null)                          // 今天已有雨不重复提醒
+  assert.equal(evaluate([20, 28, '小雨'], [20, 26, '大雨']), null)                          // 今天已有雨不进入特殊降水规则
   assert.deepEqual(evaluate([20, 34, '多云'], [25, 35, '晴']), { type: 'hot', temp: 35 })   // 恰好 35°C 触发
-  assert.equal(evaluate([20, 35, '多云'], [25, 36, '晴']), null)                            // 今天已高温不触发
+  assert.equal(evaluate([20, 35, '多云'], [25, 36, '晴']), null)                            // 今天已高温不进入特殊高温规则
   assert.deepEqual(evaluate([10, 20, '多云'], [12, 26, '多云']), { type: 'rise', delta: 6 })
   assert.equal(evaluate([10, 20, '多云'], [12, 25, '多云']), null)
   assert.deepEqual(evaluate([20, 28, '多云'], [12, 22, '小雨']), { type: 'drop', delta: 8 }) // 降温优先于降水
@@ -94,9 +94,35 @@ test('提醒文案按规则取件、超限截断、空候选回退固定文案',
   assert.match(advice, /等6件$/)
 })
 
+test('普通天气按明天温度取冬夏春秋衣物，雨天提醒带伞，空候选有建议且不超过二十字', () => {
+  const items = [
+    item('winter', 'u', '羽绒服', { seasons: ['冬'] }),
+    item('summer', 'u', '短袖', { seasons: ['夏'] }),
+    item('spring', 'u', '卫衣', { seasons: ['春秋'] })
+  ]
+  for (const [tempMin, tempMax, name, fallback] of [[10, 20, '羽绒服', /保暖/], [11, 28, '短袖', /轻薄/], [11, 27, '卫衣', /长袖/]]) {
+    const trigger = { type: 'normal', ...nday(tempMin, tempMax, '多云') }
+    const advice = alert.buildAdvice(trigger, items)
+    assert.ok(advice.includes(name), advice)
+    for (const other of items.filter(item => item.name !== name)) assert.ok(!advice.includes(other.name), advice)
+    assert.ok(Array.from(advice).length <= 20, advice)
+    const empty = alert.buildAdvice(trigger, [])
+    assert.ok(empty.length > 0 && Array.from(empty).length <= 20, empty)
+    assert.match(empty, fallback)
+  }
+  const rain = { type: 'normal', ...nday(18, 25, '小雨') }
+  assert.match(alert.buildAdvice(rain, items), /伞/)
+  assert.match(alert.buildAdvice(rain, []), /伞/)
+  const long = Array.from({ length: 6 }, (_, i) => item('l' + i, 'u', '超长名称的冬季衣物' + i, { seasons: ['冬'] }))
+  const advice = alert.buildAdvice({ type: 'normal', ...nday(10, 20, '小雨') }, long)
+  assert.ok(Array.from(advice).length <= 20, advice)
+  assert.match(advice, /等6件$/)
+  assert.match(advice, /伞/)
+})
+
 // ---------- 发送主流程 ----------
 
-test('命中降温发送一条，额度、月度计数与模板字段正确', async () => {
+test('命中降温发送一条，额度与模板字段正确', async () => {
   const cloud = loadCloud({
     users: [cityUser('u1')],
     subscriptions: [sub('w1', 'u1'), quota('u1')],
@@ -115,8 +141,6 @@ test('命中降温发送一条，额度、月度计数与模板字段正确', as
   assert.equal(message.data.date4.value, '2026年10月10日')
   const quotaRow = cloud.records.subscriptions.find(row => row.scene === 'weather-alert-quota')
   assert.equal(quotaRow.unused, 0)
-  assert.equal(quotaRow.month, '2026-10')
-  assert.equal(quotaRow.monthSent, 1)
   // 同日重跑：授权已消耗且幂等标记存在，不再发送
   const again = await run(cloud, stubWeather({ ['city=' + CITY]: DROP_FORECAST }))
   assert.equal(again.sent, 0)
@@ -136,35 +160,95 @@ test('幂等标记存在时同账号同日只发一次且不消耗额度', async
   assert.equal(cloud.records.subscriptions.find(row => row.scene === 'weather-alert-quota').unused, 1)
 })
 
-test('无触发、未设城市、天气接口失败均不发送也不消耗额度', async () => {
+test('普通天气发送，未设城市与天气接口失败不发送也不消耗额度', async () => {
   const cloud = loadCloud({
     users: [cityUser('u1'), cityUser('u2', { cityId: '', cityName: '' }), cityUser('u3', { cityId: 'bad-city' })],
     subscriptions: [sub('w1', 'u1'), quota('u1'), sub('w2', 'u2'), quota('u2'), sub('w3', 'u3'), quota('u3')]
   })
   const calls = []
-  const summary = await run(cloud, stubWeather({ ['city=' + CITY]: NONE_FORECAST, 'city=bad-city': new Error('天气服务不可用') }, calls))
-  assert.equal(summary.sent, 0)
-  assert.equal(summary.skipped, 3)
+  const summary = await run(cloud, stubWeather({ ['city=' + CITY]: NORMAL_FORECAST, 'city=bad-city': new Error('天气服务不可用') }, calls))
+  assert.equal(summary.sent, 1)
+  assert.equal(summary.skipped, 2)
+  assert.equal(cloud.sentMessages[0].touser, 'u1')
+  assert.ok(cloud.sentMessages[0].data.thing2.value)
+  assert.ok(cloud.records.subscriptions.find(row => row._id === 'w1').consumedAt)
+  assert.equal(cloud.records.subscriptions.find(row => row._id === alert.quotaId('u1')).unused, 0)
   assert.deepEqual(calls.length, 2) // u2 未设城市不发起请求
-  for (const openid of ['u1', 'u2', 'u3']) {
+  for (const openid of ['u2', 'u3']) {
     assert.equal(cloud.records.subscriptions.find(row => row._openid === openid && row.scene === 'weather-alert').consumedAt, undefined)
     assert.equal(cloud.records.subscriptions.find(row => row._openid === openid && row.scene === 'weather-alert-quota').unused, 1)
   }
 })
 
-test('达到月度上限的账号不发送且不消耗额度', async () => {
-  const cloud = loadCloud({
-    users: [cityUser('u1')],
-    subscriptions: [sub('w1', 'u1'), quota('u1', { month: '2026-10', monthSent: alert.MAX_MONTH_SENT })]
-  })
-  const summary = await run(cloud, stubWeather({ ['city=' + CITY]: DROP_FORECAST }))
-  assert.equal(summary.sent, 0)
-  assert.equal(cloud.sentMessages.length, 0)
-  assert.equal(cloud.records.subscriptions.find(row => row._id === 'w1').consumedAt, undefined)
-  assert.equal(cloud.records.subscriptions.find(row => row.scene === 'weather-alert-quota').unused, 1)
+test('天气接口温度非法或天气文本为空时跳过且不消耗授权', async () => {
+  for (const patch of [{ nighttemp: '' }, { daytemp: 'x' }, { nighttemp: null }, { daytemp: '   ' }, { dayweather: '', nightweather: '' }]) {
+    const cloud = loadCloud({ users: [cityUser('u1')], subscriptions: [sub('w1', 'u1'), quota('u1')] })
+    const before = structuredClone(cloud.records.subscriptions)
+    const invalid = forecast(cast(20, 28, '多云'), { ...cast(19, 27, '多云'), ...patch })
+    const summary = await run(cloud, stubWeather({ ['city=' + CITY]: invalid }))
+    assert.equal(summary.sent, 0)
+    assert.equal(summary.skipped, 1)
+    assert.equal(cloud.sentMessages.length, 0)
+    assert.deepEqual(cloud.records.subscriptions, before)
+  }
 })
 
-test('43101 删除授权记录且当天不再尝试，其他失败恢复额度与月度计数', async () => {
+test('旧数据月度计数达到八条仍可发送，旧字段保持不变', async () => {
+  const cloud = loadCloud({
+    users: [cityUser('u1')],
+    subscriptions: [sub('w1', 'u1'), quota('u1', { month: '2026-10', monthSent: 8 })]
+  })
+  const summary = await run(cloud, stubWeather({ ['city=' + CITY]: NORMAL_FORECAST }))
+  assert.equal(summary.sent, 1)
+  assert.equal(cloud.sentMessages.length, 1)
+  assert.ok(cloud.records.subscriptions.find(row => row._id === 'w1').consumedAt)
+  const quotaRow = cloud.records.subscriptions.find(row => row.scene === 'weather-alert-quota')
+  assert.equal(quotaRow.unused, 0)
+  assert.equal(quotaRow.month, '2026-10')
+  assert.equal(quotaRow.monthSent, 8)
+})
+
+test('额度为零或无效、额度记录缺失或场景不匹配均不发送且不修改授权', async () => {
+  for (const patch of [{ unused: 0 }, { unused: -1 }, { unused: 0.5 }, { unused: '1' }, { scene: 'idle-monthly-quota' }, null]) {
+    const subscriptions = [sub('w1', 'u1')]
+    if (patch) subscriptions.push(quota('u1', patch))
+    const cloud = loadCloud({ users: [cityUser('u1')], subscriptions })
+    const before = structuredClone(cloud.records.subscriptions)
+    const summary = await run(cloud, stubWeather({ ['city=' + CITY]: NORMAL_FORECAST }))
+    assert.equal(summary.sent, 0)
+    assert.equal(cloud.sentMessages.length, 0)
+    assert.deepEqual(cloud.records.subscriptions, before)
+  }
+})
+
+test('连续两天普通天气各发一条，同日重跑不重复且每天只消耗一次额度', async () => {
+  const cloud = loadCloud({
+    users: [cityUser('u1')],
+    subscriptions: [sub('w1', 'u1'), sub('w2', 'u1'), quota('u1', { unused: 2 })],
+    clothes: [item('i1', 'u1', '卫衣', { seasons: ['春秋'] })]
+  })
+  const request = stubWeather({ ['city=' + CITY]: NORMAL_FORECAST })
+  assert.equal((await run(cloud, request)).sent, 1)
+  const message = cloud.sentMessages[0]
+  assert.equal(message.data.thing12.value, '多云')
+  assert.equal(message.data.character_string41.value, '19~27℃')
+  assert.ok(message.data.thing2.value.includes('卫衣'))
+  assert.equal(message.data.date4.value, '2026年10月10日')
+  assert.equal((await run(cloud, request)).sent, 0)
+  assert.equal(cloud.sentMessages.length, 1)
+  assert.equal(cloud.records.subscriptions.find(row => row._id === alert.quotaId('u1')).unused, 1)
+  assert.equal(cloud.records.subscriptions.filter(row => row.scene === 'weather-alert' && row.consumedAt).length, 1)
+
+  const nextDay = new Date(NOW.getTime() + 86400000)
+  assert.equal((await run(cloud, request, nextDay)).sent, 1)
+  assert.equal(cloud.sentMessages[1].data.date4.value, '2026年10月11日')
+  assert.equal((await run(cloud, request, nextDay)).sent, 0)
+  assert.equal(cloud.sentMessages.length, 2)
+  assert.equal(cloud.records.subscriptions.find(row => row._id === alert.quotaId('u1')).unused, 0)
+  assert.equal(cloud.records.subscriptions.filter(row => row.scene === 'weather-alert' && row.consumedAt).length, 2)
+})
+
+test('43101 删除授权记录且当天不再尝试，其他失败恢复额度', async () => {
   const cloud = loadCloud({
     users: [cityUser('u1'), cityUser('u2')],
     subscriptions: [sub('w1', 'u1'), quota('u1'), sub('w2', 'u2'), quota('u2')],
@@ -177,10 +261,9 @@ test('43101 删除授权记录且当天不再尝试，其他失败恢复额度�
   assert.equal(cloud.records.subscriptions.some(row => row._id === 'w1'), false) // 43101 删除授权记录
   const quota1 = cloud.records.subscriptions.find(row => row._id === alert.quotaId('u1'))
   assert.equal(quota1.unused, 0) // 43101 不恢复额度，与月报一致
-  // 临时失败：额度、月度计数恢复，幂等标记删除
+  // 临时失败：额度恢复，幂等标记删除
   const quota2 = cloud.records.subscriptions.find(row => row._id === alert.quotaId('u2'))
   assert.equal(quota2.unused, 1)
-  assert.equal(quota2.monthSent, 0)
   assert.equal(cloud.records.subscriptions.find(row => row._id === 'w2').consumedAt, undefined)
   assert.equal(cloud.records.subscriptions.some(row => row._id === alert.sentId('u2', '2026-10-09')), false)
   // 恢复后同日重跑可成功发送
@@ -190,13 +273,45 @@ test('43101 删除授权记录且当天不再尝试，其他失败恢复额度�
   assert.equal(cloud.sentMessages.at(-1).touser, 'u2')
 })
 
+test('发送在途新增订阅后失败，恢复全部已接受额度并限制继续订阅', async () => {
+  const openid = 'openid-1'
+  const cloud = loadCloud({
+    users: [cityUser(openid)],
+    subscriptions: [quota(openid, { unused: 12 }), ...Array.from({ length: 12 }, (_, i) => sub('w' + i, openid))]
+  })
+  const request = stubWeather({ ['city=' + CITY]: NORMAL_FORECAST })
+  cloud.faults.send = async () => {
+    const subscribed = await cloud.main({ action: 'subscribeWeather' })
+    assert.equal(subscribed.success, true)
+    assert.equal(subscribed.unused, 12)
+    throw new Error('50031 system busy')
+  }
+  assert.equal((await run(cloud, request)).failed, 1)
+  assert.equal(cloud.records.subscriptions.filter(row => row.scene === 'weather-alert' && !row.consumedAt).length, 13)
+  assert.equal(cloud.records.subscriptions.find(row => row._id === alert.quotaId(openid)).unused, 13)
+  assert.equal(cloud.records.subscriptions.some(row => row._id === alert.sentId(openid, '2026-10-09')), false)
+
+  const rejected = await cloud.main({ action: 'subscribeWeather' })
+  assert.equal(rejected.success, false)
+  assert.match(rejected.error, /提醒额度已充足/)
+  assert.equal(cloud.records.subscriptions.filter(row => row.scene === 'weather-alert' && !row.consumedAt).length, 13)
+  assert.equal(cloud.records.subscriptions.find(row => row._id === alert.quotaId(openid)).unused, 13)
+
+  cloud.faults.send = null
+  assert.equal((await run(cloud, request)).sent, 1)
+  assert.equal(cloud.sentMessages.length, 1)
+  assert.equal(cloud.records.subscriptions.filter(row => row.scene === 'weather-alert' && !row.consumedAt).length, 12)
+  assert.equal(cloud.records.subscriptions.find(row => row._id === alert.quotaId(openid)).unused, 12)
+  assert.equal(cloud.records.subscriptions.some(row => row._id === alert.sentId(openid, '2026-10-09')), true)
+})
+
 test('同城多账号只请求一次预报并各发一条', async () => {
   const cloud = loadCloud({
     users: [cityUser('u1'), cityUser('u2')],
     subscriptions: [sub('w1', 'u1'), quota('u1'), sub('w2', 'u2'), quota('u2')]
   })
   const calls = []
-  const summary = await run(cloud, stubWeather({ ['city=' + CITY]: DROP_FORECAST }, calls))
+  const summary = await run(cloud, stubWeather({ ['city=' + CITY]: NORMAL_FORECAST }, calls))
   assert.equal(summary.sent, 2)
   assert.equal(calls.filter(path => path.includes('city=' + CITY)).length, 1)
 })
@@ -212,6 +327,7 @@ test('subscribeWeather 需要登录、写独立场景额度、与月报互不影
     cloud.main({ action: 'subscribeWeather' })
   ])
   assert.ok(results.every(result => result.success))
+  assert.deepEqual(results.map(result => result.unused).sort((a, b) => a - b), [1, 2])
   const rows = cloud.records.subscriptions.filter(row => row.scene === 'weather-alert')
   assert.equal(rows.length, 2)
   assert.ok(rows.every(row => row._id.startsWith('walert-')))

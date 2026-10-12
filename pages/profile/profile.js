@@ -27,7 +27,7 @@ Page({
     mostExpensive: null,
     favoriteBrand: null,
     cityName: '',
-    weatherStateText: '点击订阅明日穿搭提醒',
+    weatherStateText: '点击订阅下次提醒',
     subscribingWeather: false,
     hasWearRecords: false,
     streakDays: 0,
@@ -146,7 +146,7 @@ Page({
     }
   },
 
-  // 天气提醒授权状态：勾选「总是保持以上选择」后 itemSettings 为 accept，后续点击无弹窗
+  // itemSettings 只表示授权选择已记住；每次点击接受后才增加一次提醒。
   refreshWeatherState() {
     if (typeof wx.getSetting !== 'function') return
     wx.getSetting({
@@ -155,9 +155,9 @@ Page({
         const setting = res.subscriptionsSetting || {}
         const state = (setting.itemSettings || {})[WEATHER_TEMPLATE_ID]
         const text = setting.mainSwitch === false ? '订阅消息总开关已关闭，请在设置中开启'
-          : state === 'accept' ? '已开启免询问，点击增加一次提醒额度'
+          : state === 'accept' ? '已记住选择，点击订阅'
           : state === 'reject' ? '已拒绝提醒，点击重新订阅'
-          : '点击订阅明日穿搭提醒'
+          : '点击订阅下次提醒'
         this.setData({ weatherStateText: text })
       },
       fail: () => {}
@@ -199,7 +199,8 @@ Page({
         return
       }
       const subscribed = await db.subscribeWeather()
-      wx.showToast({ title: `已增加一次提醒额度，剩余可订 ${subscribed.remaining} 次`, icon: 'none' })
+      const reminders = Number.isInteger(subscribed.unused) ? subscribed.unused : 12 - subscribed.remaining
+      wx.showToast({ title: `已订阅，可接收 ${reminders} 次提醒`, icon: 'none' })
     } catch (e) {
       console.error(e)
       wx.showToast({ title: e && e.message || '订阅失败，请重试', icon: 'none' })

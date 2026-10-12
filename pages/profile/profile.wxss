@@ -116,6 +116,21 @@
   color: #9a958c;
 }
 
+.weather-hint {
+  padding: 16rpx 0 20rpx;
+  color: #6b675f;
+  font-size: 24rpx;
+  line-height: 1.6;
+}
+
+.weather-hint view {
+  margin-bottom: 8rpx;
+}
+
+.weather-hint view:last-child {
+  margin-bottom: 0;
+}
+
 .streak-card {
   padding-top: 28rpx;
   padding-bottom: 28rpx;

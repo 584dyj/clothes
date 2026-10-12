@@ -39,8 +39,13 @@
           <text class="info-value {{cityName ? '' : 'muted'}}">{{cityName || '未设置，无法接收天气提醒'}}</text>
         </view>
         <view class="info-row tappable" bindtap="onSubscribeWeather">
-          <text class="info-label">天气提醒</text>
+          <text class="info-label">明日天气与穿搭</text>
           <text class="info-value">{{weatherStateText}}</text>
+        </view>
+        <view class="weather-hint">
+          <view>每天 21:30，为你送上明日天气与穿搭建议。</view>
+          <view>每次订阅可收到一条提醒，若已过今日发送时间，则顺延至明晚 21:30。</view>
+          <view>订阅前，请先选择城市。</view>
         </view>
       </view>
 

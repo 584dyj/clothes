@@ -8,12 +8,12 @@ const PAGE_SIZE = 100
 const SCENE = 'weather-alert'
 const QUOTA_SCENE = 'weather-alert-quota'
 const SENT_SCENE = 'weather-alert-sent'
-const MAX_UNUSED = 12
-const MAX_MONTH_SENT = 8       // 月度上限：防疲劳与额度空烧
 const TEXT_LIMIT = 20
 const TEMP_DROP = 6            // 降温阈值（°C，最低温）
 const TEMP_RISE = 6            // 升温阈值（°C，最高温）
 const TEMP_HOT = 35            // 高温阈值（°C，最高温）
+const TEMP_COOL = 10           // 基础建议经验值：偏冷时优先冬季衣物
+const TEMP_WARM = 28           // 基础建议经验值：偏热时优先夏季衣物
 
 const sha256 = value => crypto.createHash('sha256').update(value).digest('hex')
 const quotaId = openid => 'quota-weather-alert-' + sha256(openid)
@@ -109,11 +109,19 @@ async function fetchForecast({ request, host, key, cityId }) {
   const res = await request({ host, path: `/v3/weather/weatherInfo?city=${encodeURIComponent(cityId)}&key=${encodeURIComponent(key)}&extensions=all&output=JSON` })
   const casts = res.status === '1' && res.forecasts && res.forecasts[0] && res.forecasts[0].casts
   if (!Array.isArray(casts) || casts.length < 2) throw new Error('天气预报数据无效')
-  return { today: castToDay(casts[0]), tomorrow: castToDay(casts[1]) }
+  const forecast = { today: castToDay(casts[0]), tomorrow: castToDay(casts[1]) }
+  for (const day of [forecast.today, forecast.tomorrow]) {
+    if (!day.textDay.trim() || [day.tempMin, day.tempMax].some(value =>
+      value == null || !String(value).trim() || !Number.isFinite(Number(value)))) {
+      throw new Error('天气预报数据无效')
+    }
+  }
+  return forecast
 }
 
-// ---------- 触发规则（优先级：降温 > 降水 > 高温 > 升温） ----------
+// 特殊天气只决定提示重点，普通天气仍提供明日穿搭建议。
 const isWet = text => /[雨雪雷]/.test(text || '')
+const seasonFor = day => Number(day.tempMin) <= TEMP_COOL ? '冬' : Number(day.tempMax) >= TEMP_WARM ? '夏' : '春秋'
 
 function evaluate(today, tomorrow) {
   const tMin1 = Number(today.tempMin), tMin2 = Number(tomorrow.tempMin)
@@ -147,12 +155,23 @@ const RULES = {
     prefix: trigger => `升温${trigger.delta}度：`,
     empty: trigger => `升温${trigger.delta}度，可以轻薄些`,
     pick: items => items.filter(item => (item.seasons || []).includes('春秋'))
+  },
+  normal: {
+    prefix: trigger => isWet(trigger.textDay) ? '有雨带伞，可穿：' : '明日可穿：',
+    empty: trigger => {
+      if (isWet(trigger.textDay)) return '明日有雨，带伞穿防水鞋'
+      const season = seasonFor(trigger)
+      if (season === '冬') return '明日偏冷，注意保暖'
+      if (season === '夏') return '明日偏热，穿轻薄衣物'
+      return '长袖搭配，备件薄外套'
+    },
+    pick: (items, trigger) => items.filter(item => (item.seasons || []).includes(seasonFor(trigger)))
   }
 }
 
 function buildAdvice(trigger, items) {
   const rule = RULES[trigger.type]
-  const names = rule.pick(items).map(item => trimText(item.name || '未命名', 10))
+  const names = rule.pick(items, trigger).map(item => trimText(item.name || '未命名', 10))
   if (!names.length) return rule.empty(trigger)
   const prefix = rule.prefix(trigger)
   return prefix + summarize(names, TEXT_LIMIT - Array.from(prefix).length)
@@ -161,7 +180,6 @@ function buildAdvice(trigger, items) {
 // ---------- 额度认领 / 恢复（与 monthly-report 同构，scene 独立） ----------
 async function claim(db, id, now) {
   const day = shanghaiDate(now)
-  const month = day.slice(0, 7)
   return db.runTransaction(async tx => {
     const ref = tx.collection('subscriptions').doc(id)
     const row = docData(await ref.get())
@@ -170,21 +188,16 @@ async function claim(db, id, now) {
     if (docData(await markerRef.get())) return false
     const quotaRef = tx.collection('subscriptions').doc(quotaId(row._openid))
     const quota = docData(await quotaRef.get())
-    const monthSent = quota && quota.month === month && Number.isInteger(quota.monthSent) ? quota.monthSent : 0
-    if (monthSent >= MAX_MONTH_SENT) return false   // 月度上限：不发送也不消耗额度
+    if (!quota || quota.scene !== QUOTA_SCENE || !Number.isInteger(quota.unused) || quota.unused <= 0) return false
     await ref.update({ data: { consumedAt: now } })
     await markerRef.set({ data: { _openid: row._openid, scene: SENT_SCENE, day, createdAt: now } })
-    if (quota && quota.scene === QUOTA_SCENE) {
-      const unused = Number.isInteger(quota.unused) ? quota.unused : 0
-      await quotaRef.update({ data: { unused: Math.max(0, unused - 1), month, monthSent: monthSent + 1, updatedAt: now } })
-    }
+    await quotaRef.update({ data: { unused: quota.unused - 1, updatedAt: now } })
     return true
   })
 }
 
 async function restoreClaim(db, id, now) {
   const day = shanghaiDate(now)
-  const month = day.slice(0, 7)
   return db.runTransaction(async tx => {
     const ref = tx.collection('subscriptions').doc(id)
     const row = docData(await ref.get())
@@ -196,8 +209,8 @@ async function restoreClaim(db, id, now) {
     await tx.collection('subscriptions').doc(sentId(row._openid, day)).remove()
     if (quota && quota.scene === QUOTA_SCENE) {
       const unused = Number.isInteger(quota.unused) ? quota.unused : 0
-      const monthSent = quota.month === month && Number.isInteger(quota.monthSent) ? quota.monthSent : 0
-      await quotaRef.update({ data: { unused: Math.min(MAX_UNUSED, unused + 1), monthSent: Math.max(0, monthSent - 1), updatedAt: now } })
+      // 发送在途时可能又接受了订阅，恢复须保留所有已获授权。
+      await quotaRef.update({ data: { unused: unused + 1, updatedAt: now } })
     }
   })
 }
@@ -279,7 +292,7 @@ async function handle({ db, cloud, templateId, now = new Date(), request = reque
   })
   summary.skipped += candidates.length - ready.length
 
-  // 3. 按城市分组取预报（每城市一次调用），逐账号评估并发送
+  // 3. 每城市取一次预报，有额度的账号每天发送一条，特殊天气调整文案。
   const forecasts = new Map()
   const failedCities = new Set()
   const tomorrow = shiftDate(shanghaiDate(now), 1)
@@ -297,8 +310,7 @@ async function handle({ db, cloud, templateId, now = new Date(), request = reque
       }
     }
     const forecast = forecasts.get(cityId)
-    const trigger = evaluate(forecast.today, forecast.tomorrow)
-    if (!trigger) { summary.skipped++; continue }
+    const trigger = evaluate(forecast.today, forecast.tomorrow) || { type: 'normal', ...forecast.tomorrow }
     try {
       const state = await sendAlert({ db, cloud, subscription, trigger, forecast, tomorrow, templateId, now })
       if (state === 'sent') summary.sent++
@@ -335,4 +347,4 @@ async function setCity({ db, openid, name, request = requestWeather, env = proce
 }
 
 module.exports = { handle, setCity, evaluate, buildAdvice, fetchForecast, quotaId, sentId,
-  SCENE, QUOTA_SCENE, SENT_SCENE, MAX_UNUSED, MAX_MONTH_SENT, shanghaiDate, shiftDate, dateCn, summarize }
+  SCENE, QUOTA_SCENE, SENT_SCENE, shanghaiDate, shiftDate, dateCn, summarize }
