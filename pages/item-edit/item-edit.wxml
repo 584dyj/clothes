@@ -42,7 +42,7 @@
       <text class="label">类别</text>
       <view class="season-row category-row">
         <view wx:for="{{categories}}" wx:key="*this"
-          class="season-chip {{category === item ? 'season-active' : ''}}"
+          class="season-chip category-chip {{category === item ? 'season-active' : ''}}"
           data-value="{{item}}" bindtap="onCategoryTap"
         >{{item}}</view>
       </view>
@@ -121,8 +121,10 @@
     </view>
   </view>
 
-  <button class="btn-primary save-btn" bindtap="onSave" disabled="{{saving || scanning || !ready}}">保存</button>
-  <button wx:if="{{id}}" class="btn-danger delete-btn" bindtap="onDelete" disabled="{{saving || !ready}}">删除</button>
+  <view class="form-actions">
+    <button class="btn-primary" bindtap="onSave" disabled="{{saving || scanning || !ready}}">保存</button>
+    <button wx:if="{{id}}" class="btn-danger" bindtap="onDelete" disabled="{{saving || !ready}}">删除</button>
+  </view>
   </block>
 
     <view wx:if="{{!id}}" class="{{mode === 'batch' ? '' : 'mode-panel-hidden'}}">

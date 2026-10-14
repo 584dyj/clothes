@@ -1,5 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const path = require('node:path')
 const { loadPage } = require('./support/page')
 const streak = require('../utils/streak')
 
@@ -8,6 +10,7 @@ global.Page = definition => { page = definition }
 require('../pages/profile/profile')
 
 const WEATHER_TEMPLATE_ID = 'gecbz6HZQxVtg7x5eMAY7ugCWXgeIQsuWK9ELJR4Xe0'
+const REPORT_TEMPLATE_ID = 'CeSjEXCpR71PZvGbIoqCDgO0H0CSHSwGbo_7o7ZgLIE'
 const pad = n => String(n).padStart(2, '0')
 const fmt = date => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 const daysAgo = n => { const date = new Date(); date.setDate(date.getDate() - n); return fmt(date) }
@@ -88,9 +91,12 @@ test('天气提醒订阅：接受积累额度，拒绝与禁用分别提示', as
     },
     showToast: options => toasts.push(options.title)
   })
+  profile.setData({ reportUnused: 7 })
   await profile.onSubscribeWeather()
   assert.equal(subscribed, 1)
-  assert.equal(toasts.at(-1), '已订阅，可接收 1 次提醒')
+  assert.equal(toasts.at(-1), '已增加1次，剩余 1 次')
+  assert.equal(profile.data.weatherUnused, 1)
+  assert.equal(profile.data.reportUnused, 7)
   state = 'reject'
   await profile.onSubscribeWeather()
   assert.equal(subscribed, 1)
@@ -101,7 +107,43 @@ test('天气提醒订阅：接受积累额度，拒绝与禁用分别提示', as
   assert.equal(profile.data.subscribingWeather, false)
 })
 
-test('天气提醒授权状态读取不会自动新增订阅，记忆选择与已拒绝分别展示', () => {
+test('个人页月报授权沿点击链触发，仅接受时更新月报次数且不改变天气次数', async () => {
+  let state = 'accept', requested = 0, subscribed = 0, weatherSubscribed = 0
+  const toasts = []
+  const profile = loadPage('profile', {
+    subscribeReport: async () => { subscribed++; return { unused: 3 } },
+    subscribeWeather: async () => { weatherSubscribed++ }
+  }, {
+    requestSubscribeMessage({ tmplIds, success }) {
+      requested++
+      assert.deepEqual(Array.from(tmplIds), [REPORT_TEMPLATE_ID])
+      success({ [REPORT_TEMPLATE_ID]: state })
+    },
+    showToast: options => toasts.push(options.title)
+  })
+  profile.setData({ weatherUnused: 5, reportUnused: 2, weatherQuotaLoading: false, reportQuotaLoading: false })
+  const pending = profile.onSubscribeReport()
+  assert.equal(requested, 1)
+  await pending
+  assert.equal(subscribed, 1)
+  assert.equal(profile.data.reportUnused, 3)
+  assert.equal(profile.data.weatherUnused, 5)
+  assert.equal(toasts.at(-1), '已增加1次，剩余 3 次')
+  state = 'reject'
+  await profile.onSubscribeReport()
+  assert.equal(subscribed, 1)
+  assert.equal(toasts.at(-1), '已取消订阅')
+  state = 'ban'
+  await profile.onSubscribeReport()
+  assert.equal(subscribed, 1)
+  assert.equal(toasts.at(-1), '请在设置中开启订阅消息')
+  assert.equal(weatherSubscribed, 0)
+  assert.equal(profile.data.weatherUnused, 5)
+  assert.equal(profile.data.reportUnused, 3)
+  assert.equal(profile.data.subscribingReport, false)
+})
+
+test('天气提醒授权偏好不作为剩余次数，读取不会自动新增订阅', () => {
   let subscribed = 0, requested = 0
   const profile = loadPage('profile', { subscribeWeather: () => { subscribed++ } }, {
     requestSubscribeMessage() { requested++ },
@@ -110,7 +152,8 @@ test('天气提醒授权状态读取不会自动新增订阅，记忆选择与�
     }
   })
   profile.refreshWeatherState()
-  assert.equal(profile.data.weatherStateText, '已记住选择，点击订阅')
+  assert.equal(profile.data.weatherStateText, '')
+  assert.equal(profile.data.weatherUnused, null)
   assert.equal(subscribed, 0)
   assert.equal(requested, 0)
   const rejected = loadPage('profile', {}, {
@@ -119,7 +162,7 @@ test('天气提醒授权状态读取不会自动新增订阅，记忆选择与�
     }
   })
   rejected.refreshWeatherState()
-  assert.equal(rejected.data.weatherStateText, '已拒绝提醒，点击重新订阅')
+  assert.equal(rejected.data.weatherStateText, '你已拒绝订阅，可重新授权')
 })
 
 test('订阅成功反馈实际可接收次数，兼容旧响应并优先使用服务端实际次数', async () => {
@@ -134,8 +177,109 @@ test('订阅成功反馈实际可接收次数，兼容旧响应并优先使用�
       showToast: options => toasts.push(options.title)
     })
     await profile.onSubscribeWeather()
-    assert.equal(toasts.at(-1), `已订阅，可接收 ${expected} 次提醒`)
+    assert.equal(toasts.at(-1), `已增加1次，剩余 ${expected} 次`)
+    assert.equal(profile.data.weatherUnused, expected)
   }
+})
+
+test('每次进入个人页或下拉刷新单次查询更新两类剩余次数，包含零次', async () => {
+  let weatherUnused = 3, reportUnused = 8, reads = 0, stopped = 0
+  const profile = loadPage('profile', {
+    listItems: async () => [], listWearRecords: async () => [],
+    cleanupStatus: async () => ({ pendingCleanup: false }),
+    getSubscriptionStatus: async () => { reads++; return { weatherUnused, reportUnused } }
+  }, { stopPullDownRefresh() { stopped++ } }, { profile: async () => ({ username: 'alice' }) })
+  await profile.onShow()
+  assert.equal(profile.data.weatherUnused, 3)
+  assert.equal(profile.data.reportUnused, 8)
+  weatherUnused = 2
+  reportUnused = 7
+  await profile.onShow()
+  assert.equal(profile.data.weatherUnused, 2)
+  assert.equal(profile.data.reportUnused, 7)
+  weatherUnused = 0
+  reportUnused = 0
+  await profile.onPullDownRefresh()
+  assert.equal(profile.data.weatherUnused, 0)
+  assert.equal(profile.data.reportUnused, 0)
+  assert.equal(profile.data.weatherQuotaError, false)
+  assert.equal(profile.data.weatherQuotaLoading, false)
+  assert.equal(profile.data.reportQuotaError, false)
+  assert.equal(profile.data.reportQuotaLoading, false)
+  assert.equal(reads, 3)
+  assert.equal(stopped, 1)
+})
+
+test('两类次数读取失败显示未知并可重试，恢复为零时不影响个人资料', async () => {
+  let failed = true
+  const profile = loadPage('profile', {
+    listItems: async () => [], listWearRecords: async () => [],
+    cleanupStatus: async () => ({ pendingCleanup: false }),
+    getSubscriptionStatus: async () => {
+      if (failed) throw new Error('offline')
+      return { weatherUnused: 0, reportUnused: 0 }
+    }
+  }, {}, { profile: async () => ({ username: 'alice' }) })
+  profile.setData({ weatherUnused: 4, reportUnused: 6 })
+  await profile.onShow()
+  assert.equal(profile.data.username, 'alice')
+  assert.equal(profile.data.loadError, '')
+  assert.equal(profile.data.weatherUnused, null)
+  assert.equal(profile.data.weatherQuotaError, true)
+  assert.equal(profile.data.weatherQuotaLoading, false)
+  assert.equal(profile.data.reportUnused, null)
+  assert.equal(profile.data.reportQuotaError, true)
+  assert.equal(profile.data.reportQuotaLoading, false)
+  failed = false
+  await profile.loadSubscriptionStatus()
+  assert.equal(profile.data.weatherUnused, 0)
+  assert.equal(profile.data.weatherQuotaError, false)
+  assert.equal(profile.data.reportUnused, 0)
+  assert.equal(profile.data.reportQuotaError, false)
+})
+
+test('个人页旧查询与天气或月报订阅交错，各自保留新次数且不悬挂另一类加载', async () => {
+  for (const kinds of [['weather'], ['report'], ['weather', 'report']]) {
+    let finish
+    const profile = loadPage('profile', {
+      getSubscriptionStatus: () => new Promise(resolve => { finish = resolve }),
+      subscribeWeather: async () => ({ unused: 3 }),
+      subscribeReport: async () => ({ unused: 9 })
+    }, {
+      requestSubscribeMessage: ({ tmplIds, success }) => success({ [tmplIds[0]]: 'accept' })
+    })
+    const reading = profile.loadSubscriptionStatus()
+    assert.equal(profile.data.weatherQuotaLoading, true)
+    assert.equal(profile.data.reportQuotaLoading, true)
+    if (kinds.includes('weather')) await profile.onSubscribeWeather()
+    if (kinds.includes('report')) await profile.onSubscribeReport()
+    finish({ weatherUnused: 2, reportUnused: 8 })
+    await reading
+    assert.equal(profile.data.weatherUnused, kinds.includes('weather') ? 3 : 2)
+    assert.equal(profile.data.reportUnused, kinds.includes('report') ? 9 : 8)
+    assert.equal(profile.data.weatherQuotaLoading, false)
+    assert.equal(profile.data.weatherQuotaError, false)
+    assert.equal(profile.data.reportQuotaLoading, false)
+    assert.equal(profile.data.reportQuotaError, false)
+  }
+})
+
+test('天气和月报剩余次数达到或超过十二次时均不再请求授权', async () => {
+  let requested = 0, subscribed = 0
+  const profile = loadPage('profile', {
+    subscribeWeather: async () => { subscribed++ }, subscribeReport: async () => { subscribed++ }
+  }, {
+    requestSubscribeMessage: () => { requested++ }
+  })
+  for (const unused of [12, 13]) {
+    profile.setData({ weatherUnused: unused, reportUnused: unused })
+    await profile.onSubscribeWeather()
+    await profile.onSubscribeReport()
+    assert.equal(profile.data.weatherUnused, unused)
+    assert.equal(profile.data.reportUnused, unused)
+  }
+  assert.equal(requested, 0)
+  assert.equal(subscribed, 0)
 })
 
 test('天气授权请求失败不会新增订阅，解除提交状态并允许重试', async () => {
@@ -158,6 +302,96 @@ test('天气授权请求失败不会新增订阅，解除提交状态并允许�
   await profile.onSubscribeWeather()
   assert.equal(subscribed, 1)
   assert.equal(profile.data.subscribingWeather, false)
+})
+
+test('取消对应提醒清零次数，旧查询不会覆盖取消结果且另一类正常结束加载', async () => {
+  for (const scene of ['weather', 'report']) {
+    const kind = scene === 'weather' ? 'Weather' : 'Report'
+    let finishCancel, finishQuery, cancelled = 0
+    const profile = loadPage('profile', {
+      [`cancel${kind}`]: () => { cancelled++; return new Promise(resolve => { finishCancel = resolve }) },
+      getSubscriptionStatus: () => new Promise(resolve => { finishQuery = resolve })
+    })
+    profile.setData({ weatherUnused: 4, reportUnused: 6, weatherQuotaLoading: false, reportQuotaLoading: false })
+    const pending = profile.onCancelReminder({ currentTarget: { dataset: { scene } } })
+    assert.equal(cancelled, 1)
+    assert.equal(profile.data[`canceling${kind}`], true)
+    assert.equal(profile.data[`${scene}Unused`], scene === 'weather' ? 4 : 6)
+    const reading = profile.loadSubscriptionStatus()
+    finishCancel({ success: true, unused: 0 })
+    await pending
+    finishQuery({ weatherUnused: 4, reportUnused: 6 })
+    await reading
+    assert.equal(profile.data.weatherUnused, scene === 'weather' ? 0 : 4)
+    assert.equal(profile.data.reportUnused, scene === 'report' ? 0 : 6)
+    assert.equal(profile.data[`canceling${kind}`], false)
+    assert.equal(profile.data.weatherQuotaLoading, false)
+    assert.equal(profile.data.reportQuotaLoading, false)
+    assert.equal(profile.data.weatherQuotaError, false)
+    assert.equal(profile.data.reportQuotaError, false)
+  }
+})
+
+test('取消失败保留次数可重试，零次和未知状态不可取消，同类操作互斥且另一类独立', async () => {
+  for (const scene of ['weather', 'report']) {
+    const kind = scene === 'weather' ? 'Weather' : 'Report'
+    const otherKind = scene === 'weather' ? 'Report' : 'Weather'
+    const templateId = scene === 'weather' ? WEATHER_TEMPLATE_ID : REPORT_TEMPLATE_ID
+    const event = { currentTarget: { dataset: { scene } } }
+    let rejectCancel, finishAuthorization, cancelled = 0, requested = 0, retry = false, holdAuthorization = false
+    const toasts = []
+    const profile = loadPage('profile', {
+      [`cancel${kind}`]: () => {
+        cancelled++
+        return retry ? Promise.resolve({ success: true, unused: 0 }) : new Promise((resolve, reject) => { rejectCancel = reject })
+      },
+      subscribeWeather: async () => ({ unused: 5 }),
+      subscribeReport: async () => ({ unused: 7 })
+    }, {
+      requestSubscribeMessage({ tmplIds, success }) {
+        requested++
+        if (holdAuthorization && tmplIds[0] === templateId) finishAuthorization = () => success({ [templateId]: 'accept' })
+        else success({ [tmplIds[0]]: 'accept' })
+      },
+      showToast: options => toasts.push(options.title)
+    })
+    for (const state of [
+      { unused: 0, loading: false, error: false },
+      { unused: null, loading: false, error: false },
+      { unused: 4, loading: true, error: false },
+      { unused: 4, loading: false, error: true }
+    ]) {
+      profile.setData({ [`${scene}Unused`]: state.unused, [`${scene}QuotaLoading`]: state.loading, [`${scene}QuotaError`]: state.error })
+      await profile.onCancelReminder(event)
+    }
+    assert.equal(cancelled, 0)
+    profile.setData({ weatherUnused: 4, reportUnused: 6, weatherQuotaLoading: false, reportQuotaLoading: false,
+      weatherQuotaError: false, reportQuotaError: false })
+    const pending = profile.onCancelReminder(event)
+    await profile.onCancelReminder(event)
+    await profile[`onSubscribe${kind}`]()
+    assert.equal(cancelled, 1)
+    assert.equal(requested, 0)
+    await profile[`onSubscribe${otherKind}`]()
+    assert.equal(requested, 1)
+    rejectCancel(new Error('取消失败，请重试'))
+    await pending
+    assert.equal(profile.data[`${scene}Unused`], scene === 'weather' ? 4 : 6)
+    assert.equal(profile.data[`canceling${kind}`], false)
+    assert.equal(toasts.at(-1), '取消失败，请重试')
+    holdAuthorization = true
+    const subscribing = profile[`onSubscribe${kind}`]()
+    await profile.onCancelReminder(event)
+    assert.equal(cancelled, 1)
+    finishAuthorization()
+    await subscribing
+    retry = true
+    await profile.onCancelReminder(event)
+    assert.equal(cancelled, 2)
+    assert.equal(profile.data[`${scene}Unused`], 0)
+    assert.equal(profile.data[`${scene === 'weather' ? 'report' : 'weather'}Unused`], scene === 'weather' ? 7 : 5)
+    assert.equal(profile.data[`canceling${kind}`], false)
+  }
 })
 
 test('城市设置：确认后调用云端并回显，失败提示原因', async () => {

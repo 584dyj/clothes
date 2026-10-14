@@ -42,10 +42,38 @@ async function subscribe({ db, openid, scene = 'idle-monthly' }) {
     const quotaData = { _openid: openid, scene: config.quotaScene, unused: unused + 1, updatedAt: createdAt }
     if (quota) await quotaRef.update({ data: quotaData })
     else await quotaRef.set({ data: { ...quotaData, createdAt } })
-    await tx.collection(COLLECTION).doc(recordId).set({ data: { _openid: openid, scene, createdAt } })
+    await tx.collection(COLLECTION).doc(recordId).set({ data: {
+      _openid: openid, scene, createdAt, generation: quota && quota.generation || 0
+    } })
     return { success: true, unused: unused + 1, remaining: MAX_UNUSED - unused - 1 }
   })
 }
 
-module.exports = { subscribe, quotaId: SCENES['idle-monthly'].quotaId, SCENES,
+async function cancel({ db, openid, scene = 'idle-monthly' }) {
+  const config = SCENES[scene]
+  if (!config) throw new Error('订阅场景无效')
+  const updatedAt = db.serverDate()
+  return db.runTransaction(async tx => {
+    const ref = tx.collection(COLLECTION).doc(config.quotaId(openid))
+    const quota = await readDoc(ref)
+    // 换代使旧授权失效，并防止在途发送失败后恢复已取消的次数。
+    const data = { _openid: openid, scene: config.quotaScene, unused: 0,
+      generation: (quota && quota.generation || 0) + 1, updatedAt }
+    if (quota) await ref.update({ data })
+    else await ref.set({ data: { ...data, createdAt: updatedAt } })
+    return { success: true, unused: 0 }
+  })
+}
+
+async function status({ db, openid }) {
+  const [weatherUnused, reportUnused] = await Promise.all(['weather-alert', 'idle-monthly'].map(async scene => {
+    const config = SCENES[scene]
+    const quota = await readDoc(db.collection(COLLECTION).doc(config.quotaId(openid)))
+    return quota && quota._openid === openid && quota.scene === config.quotaScene &&
+      Number.isInteger(quota.unused) && quota.unused >= 0 ? quota.unused : 0
+  }))
+  return { success: true, weatherUnused, reportUnused }
+}
+
+module.exports = { subscribe, cancel, status, quotaId: SCENES['idle-monthly'].quotaId, SCENES,
   SCENE: 'idle-monthly', QUOTA_SCENE: 'idle-monthly-quota', MAX_UNUSED }

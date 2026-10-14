@@ -6,17 +6,6 @@
   <block wx:else>
     <view wx:if="{{undatedTotal > 0}}" class="calendar-note">未填有效日期的 ¥{{undatedTotal}} 未计入月历。</view>
 
-    <!-- 开销分段 -->
-    <view class="segment-row">
-      <view
-        wx:for="{{segments}}"
-        wx:key="value"
-        class="segment-chip {{segment === item.value ? 'segment-active' : ''}}"
-        data-value="{{item.value}}"
-        bindtap="onSegmentTap"
-      >{{item.label}}</view>
-    </view>
-
     <!-- 汇总区 -->
     <view class="summary card">
       <view class="summary-item">
@@ -73,13 +62,13 @@
     <view class="details-head">
       <view class="section-title">{{selectedDate}} · ¥{{selectedTotal}}</view>
       <view class="details-actions">
-        <button class="mini-btn" bindtap="onAddExpense" wx:if="{{segment !== 'clothes'}}">记一笔</button>
+        <button class="mini-btn" bindtap="onAddExpense">记一笔</button>
         <button class="mini-btn" bindtap="onAddPlan">安排穿搭</button>
         <button class="mini-btn" bindtap="onAddWear">记录穿着</button>
       </view>
     </view>
 
-    <!-- 开销（按分段口径） -->
+    <!-- 衣物与账本开销 -->
     <view wx:if="{{dayItems.length > 0}}" class="details-section">
       <view class="details-subtitle">衣物</view>
       <button wx:for="{{dayItems}}" wx:key="_id" class="day-item" data-id="{{item._id}}" bindtap="onItemTap">{{item.name}} · ¥{{item.price}} ›</button>

@@ -1,7 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { loadCloud } = require('./support/cloud')
-const { loadPage } = require('./support/page')
 const report = require('../cloudfunctions/monthly-report/report')
 
 const TEMPLATE_ID = 'CeSjEXCpR71PZvGbIoqCDgO0H0CSHSwGbo_7o7ZgLIE'
@@ -11,29 +10,6 @@ const subscription = (id, openid, patch = {}) => ({ _id: id, _openid: openid, sc
 const quota = (openid, unused) => ({ _id: require('../cloudfunctions/auth/subscription').quotaId(openid), _openid: openid, scene: 'idle-monthly-quota', unused, createdAt: NOW })
 const item = (id, openid, name, purchaseDate) => ({ _id: id, _openid: openid, name, purchaseDate })
 const wear = (id, openid, date, itemIds = []) => ({ _id: id, _openid: openid, date, itemIds })
-
-test('统计页仅在用户接受后登记一次月报额度', async () => {
-  let state = 'accept', subscribed = 0
-  const toasts = []
-  const page = loadPage('stats', { subscribeReport: async () => { subscribed++ } }, {
-    requestSubscribeMessage({ tmplIds, success }) {
-      assert.deepEqual(Array.from(tmplIds), [TEMPLATE_ID])
-      success({ [TEMPLATE_ID]: state })
-    },
-    showToast: options => toasts.push(options.title)
-  })
-  await page.onSubscribeReport()
-  assert.equal(subscribed, 1)
-  assert.equal(toasts.at(-1), '已增加一次月报额度')
-  state = 'reject'
-  await page.onSubscribeReport()
-  assert.equal(subscribed, 1)
-  assert.equal(toasts.at(-1), '已取消订阅')
-  state = 'ban'
-  await page.onSubscribeReport()
-  assert.equal(toasts.at(-1), '请在设置中开启订阅消息')
-  assert.equal(page.data.subscribing, false)
-})
 
 test('订阅登记需要登录，并发写入不会超过十二条未消耗额度', async () => {
   const subscriptions = [quota('openid-1', 11), ...Array.from({ length: 11 }, (_, index) => subscription(`s${index}`, 'openid-1'))]
@@ -50,6 +26,83 @@ test('订阅登记需要登录，并发写入不会超过十二条未消耗额�
   assert.equal(cloud.records.subscriptions.find(row => row.scene === 'idle-monthly-quota').unused, 12)
   await cloud.main({ action: 'logout' })
   assert.match((await cloud.main({ action: 'subscribeReport' })).error, /登录状态已失效/)
+})
+
+test('取消月报隔离旧授权，旧数据有无额度文档均可重新订阅', async () => {
+  for (const hasQuota of [false, true]) {
+    const cloud = loadCloud({
+      users: [user()],
+      subscriptions: [subscription('old-1', 'openid-1'), subscription('old-2', 'openid-1'), ...(hasQuota ? [quota('openid-1', 2)] : [])],
+      clothes: [item('idle', 'openid-1', '旧衣物', '2025-01-01')],
+      wear_records: [wear('recent', 'openid-1', '2026-10-01', ['deleted'])]
+    })
+    const args = { db: cloud.db, cloud: cloud.cloudService, templateId: TEMPLATE_ID, now: NOW }
+    assert.equal((await cloud.main({ action: 'cancelReport' })).success, true)
+    const currentQuota = cloud.records.subscriptions.find(row => row.scene === 'idle-monthly-quota')
+    assert.equal(currentQuota.unused, 0)
+    assert.equal(currentQuota.generation, 1)
+    assert.equal((await report.handle(args)).sent, 0)
+    assert.equal((await cloud.main({ action: 'subscribeReport' })).success, true)
+    const fresh = cloud.records.subscriptions.find(row => row.scene === 'idle-monthly' && row.generation === 1)
+    assert.ok(fresh)
+    assert.equal((await report.handle(args)).sent, 1)
+    assert.ok(fresh.consumedAt)
+    assert.equal(currentQuota.unused, 0)
+    assert.equal((await report.handle({ ...args, now: new Date('2026-11-01T01:00:00.000Z') })).sent, 0)
+    assert.equal(cloud.sentMessages.length, 1)
+    for (const id of ['old-1', 'old-2']) assert.equal(cloud.records.subscriptions.find(row => row._id === id).consumedAt, undefined)
+  }
+})
+
+test('月报发送失败期间取消，有无重新订阅均不恢复旧代额度', async () => {
+  for (const resubscribe of [false, true]) {
+    const cloud = loadCloud({
+      users: [user()],
+      subscriptions: [subscription('old-1', 'openid-1'), subscription('old-2', 'openid-1'), quota('openid-1', 2)],
+      clothes: [item('idle', 'openid-1', '旧衣物', '2025-01-01')],
+      wear_records: [wear('recent', 'openid-1', '2026-10-01', ['deleted'])]
+    })
+    const args = { db: cloud.db, cloud: cloud.cloudService, templateId: TEMPLATE_ID, now: NOW }
+    cloud.faults.send = async () => {
+      assert.equal((await cloud.main({ action: 'cancelReport' })).success, true)
+      if (resubscribe) assert.equal((await cloud.main({ action: 'subscribeReport' })).success, true)
+      const error = new Error('openapi failed: 50031')
+      error.errCode = 50031
+      throw error
+    }
+    assert.equal((await report.handle(args)).failed, 1)
+    const currentQuota = cloud.records.subscriptions.find(row => row.scene === 'idle-monthly-quota')
+    assert.equal(currentQuota.generation, 1)
+    assert.equal(currentQuota.unused, resubscribe ? 1 : 0)
+    assert.equal(cloud.records.subscriptions.some(row => row.scene === 'idle-monthly-sent'), false)
+    assert.equal(cloud.records.subscriptions.find(row => row._id === 'old-1').consumedAt, undefined)
+    cloud.faults.send = null
+    assert.equal((await report.handle(args)).sent, resubscribe ? 1 : 0)
+    assert.equal(currentQuota.unused, 0)
+    assert.equal((await report.handle({ ...args, now: new Date('2026-11-01T01:00:00.000Z') })).sent, 0)
+    assert.equal(cloud.sentMessages.length, resubscribe ? 1 : 0)
+  }
+})
+
+test('月报成功后取消并重新订阅仍保留同月发送标记', async () => {
+  const cloud = loadCloud({
+    users: [user()],
+    subscriptions: [subscription('old-1', 'openid-1'), subscription('old-2', 'openid-1'), quota('openid-1', 2)],
+    clothes: [item('idle', 'openid-1', '旧衣物', '2025-01-01')],
+    wear_records: [wear('recent', 'openid-1', '2026-10-01', ['deleted'])]
+  })
+  const args = { db: cloud.db, cloud: cloud.cloudService, templateId: TEMPLATE_ID, now: NOW }
+  assert.equal((await report.handle(args)).sent, 1)
+  const marker = structuredClone(cloud.records.subscriptions.find(row => row.scene === 'idle-monthly-sent'))
+  assert.equal((await cloud.main({ action: 'cancelReport' })).success, true)
+  assert.equal((await cloud.main({ action: 'subscribeReport' })).success, true)
+  assert.deepEqual(cloud.records.subscriptions.find(row => row._id === marker._id), marker)
+  assert.equal((await report.handle(args)).sent, 0)
+  assert.equal(cloud.sentMessages.length, 1)
+  assert.equal(cloud.records.subscriptions.find(row => row.scene === 'idle-monthly-quota').unused, 1)
+  assert.equal(cloud.records.subscriptions.find(row => row._id === 'old-2').consumedAt, undefined)
+  assert.equal((await report.handle({ ...args, now: new Date('2026-11-01T01:00:00.000Z') })).sent, 1)
+  assert.equal(cloud.sentMessages.length, 2)
 })
 
 test('月报按购入与穿着口径发送，同账号每月最多一条并保留成功额度标记', async () => {
@@ -139,6 +192,51 @@ test('同账号同月重复运行只发送一次，跨月可再次发送', async
   assert.equal(third.sent, 1)
   assert.equal(cloud.sentMessages.length, 2)
   assert.equal(cloud.records.subscriptions.find(row => row.scene === 'idle-monthly-quota').unused, 0)
+})
+
+test('SDK 对缺失幂等文档抛错时月报首次可发送且同月去重', async () => {
+  const cloud = loadCloud({
+    subscriptions: [subscription('s1', 'u1'), subscription('s2', 'u1'), quota('u1', 2)],
+    clothes: [item('u1-idle', 'u1', '旧衣物', '2025-01-01')],
+    wear_records: [wear('u1-recent', 'u1', '2026-10-01', ['deleted'])]
+  })
+  cloud.faults.before = (collection, operation, id) => {
+    if (collection === 'subscriptions' && operation === 'doc.get' &&
+        !cloud.records.subscriptions.some(row => row._id === id)) {
+      throw new Error(`document.get:fail document with _id ${id} does not exist`)
+    }
+  }
+  const first = await report.handle({ db: cloud.db, cloud: cloud.cloudService, templateId: TEMPLATE_ID, now: NOW })
+  assert.equal(first.sent, 1)
+  assert.equal(first.failed, 0)
+  const second = await report.handle({ db: cloud.db, cloud: cloud.cloudService, templateId: TEMPLATE_ID, now: NOW })
+  assert.equal(second.sent, 0)
+  assert.equal(second.failed, 0)
+  assert.equal(cloud.sentMessages.length, 1)
+  assert.ok(cloud.records.subscriptions.find(row => row._id === 'sent-u1-2026-10'))
+  assert.equal(cloud.records.subscriptions.find(row => row._id === 's2').consumedAt, undefined)
+  assert.equal(cloud.records.subscriptions.find(row => row.scene === 'idle-monthly-quota').unused, 1)
+})
+
+test('月报授权、幂等与额度读取的真实错误计入失败且不消耗授权', async () => {
+  for (const failedId of ['s1', 'sent-u1-2026-10', quota('u1', 1)._id]) {
+    const cloud = loadCloud({
+      subscriptions: [subscription('s1', 'u1'), quota('u1', 1)],
+      clothes: [item('u1-idle', 'u1', '旧衣物', '2025-01-01')],
+      wear_records: [wear('u1-recent', 'u1', '2026-10-01', ['deleted'])]
+    })
+    const before = structuredClone(cloud.records.subscriptions)
+    cloud.faults.before = (collection, operation, id) => {
+      if (collection === 'subscriptions' && operation === 'doc.get' && id === failedId) {
+        throw new Error('database permission denied')
+      }
+    }
+    const result = await report.handle({ db: cloud.db, cloud: cloud.cloudService, templateId: TEMPLATE_ID, now: NOW })
+    assert.equal(result.failed, 1, failedId)
+    assert.equal(result.sent, 0, failedId)
+    assert.equal(cloud.sentMessages.length, 0, failedId)
+    assert.deepEqual(cloud.records.subscriptions, before, failedId)
+  }
 })
 
 test('发送失败恢复后同月重跑仍可发送，成功后不再重复', async () => {

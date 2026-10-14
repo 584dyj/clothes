@@ -160,6 +160,48 @@ test('幂等标记存在时同账号同日只发一次且不消耗额度', async
   assert.equal(cloud.records.subscriptions.find(row => row.scene === 'weather-alert-quota').unused, 1)
 })
 
+test('SDK 缺文档抛错时首次发送成功，同日重跑仍按标记去重', async () => {
+  const cloud = loadCloud({
+    users: [cityUser('u1')],
+    subscriptions: [sub('w1', 'u1'), sub('w2', 'u1'), quota('u1', { unused: 2 })]
+  })
+  cloud.faults.before = (name, operation, id) => {
+    if (name === 'subscriptions' && operation === 'doc.get' && !cloud.records.subscriptions.some(row => row._id === id)) {
+      throw new Error(`document.get:fail document with _id ${id} does not exist`)
+    }
+  }
+  const request = stubWeather({ ['city=' + CITY]: NORMAL_FORECAST })
+  const first = await run(cloud, request)
+  assert.equal(first.failed, 0)
+  assert.equal(first.sent, 1)
+  assert.equal(cloud.sentMessages.length, 1)
+  assert.equal(cloud.records.subscriptions.find(row => row._id === alert.quotaId('u1')).unused, 1)
+  assert.ok(cloud.records.subscriptions.some(row => row._id === alert.sentId('u1', '2026-10-09')))
+
+  const again = await run(cloud, request)
+  assert.equal(again.failed, 0)
+  assert.equal(again.sent, 0)
+  assert.equal(again.skipped, 1)
+  assert.equal(cloud.sentMessages.length, 1)
+  assert.equal(cloud.records.subscriptions.find(row => row._id === alert.quotaId('u1')).unused, 1)
+  assert.equal(cloud.records.subscriptions.filter(row => row.scene === 'weather-alert' && row.consumedAt).length, 1)
+})
+
+test('数据库读取异常保留为失败，不发送也不消耗授权', async () => {
+  for (const message of ['document.get:fail permission denied', 'document.get:fail network timeout']) {
+    const cloud = loadCloud({ users: [cityUser('u1')], subscriptions: [sub('w1', 'u1'), quota('u1')] })
+    const before = structuredClone(cloud.records.subscriptions)
+    cloud.faults.before = (name, operation, id) => {
+      if (name === 'subscriptions' && operation === 'doc.get' && id === alert.sentId('u1', '2026-10-09')) throw new Error(message)
+    }
+    const summary = await run(cloud, stubWeather({ ['city=' + CITY]: NORMAL_FORECAST }))
+    assert.equal(summary.failed, 1)
+    assert.equal(summary.sent, 0)
+    assert.equal(cloud.sentMessages.length, 0)
+    assert.deepEqual(cloud.records.subscriptions, before)
+  }
+})
+
 test('普通天气发送，未设城市与天气接口失败不发送也不消耗额度', async () => {
   const cloud = loadCloud({
     users: [cityUser('u1'), cityUser('u2', { cityId: '', cityName: '' }), cityUser('u3', { cityId: 'bad-city' })],
@@ -303,6 +345,83 @@ test('发送在途新增订阅后失败，恢复全部已接受额度并限制�
   assert.equal(cloud.records.subscriptions.filter(row => row.scene === 'weather-alert' && !row.consumedAt).length, 12)
   assert.equal(cloud.records.subscriptions.find(row => row._id === alert.quotaId(openid)).unused, 12)
   assert.equal(cloud.records.subscriptions.some(row => row._id === alert.sentId(openid, '2026-10-09')), true)
+})
+
+test('取消天气后旧授权不发送，重新订阅的新代可发送且耗尽后旧授权不复活', async () => {
+  const openid = 'openid-1'
+  const cloud = loadCloud({
+    users: [cityUser(openid)],
+    subscriptions: [sub('000-old-1', openid), sub('001-old-2', openid), quota(openid, { unused: 2 })]
+  })
+  const request = stubWeather({ ['city=' + CITY]: NORMAL_FORECAST })
+  assert.equal((await cloud.main({ action: 'cancelWeather' })).success, true)
+  assert.equal((await run(cloud, request)).sent, 0)
+  assert.equal(cloud.sentMessages.length, 0)
+  assert.equal(cloud.records.subscriptions.find(row => row._id === alert.quotaId(openid)).unused, 0)
+
+  assert.equal((await cloud.main({ action: 'subscribeWeather' })).unused, 1)
+  const grant = cloud.records.subscriptions.find(row => row.scene === 'weather-alert' && row.generation === 1)
+  assert.ok(grant)
+  assert.equal((await run(cloud, request)).sent, 1)
+  assert.ok(cloud.records.subscriptions.find(row => row._id === grant._id).consumedAt)
+  assert.ok(cloud.records.subscriptions.filter(row => row._id.startsWith('00')).every(row => !row.consumedAt))
+  assert.equal((await run(cloud, request, new Date(NOW.getTime() + 86400000))).sent, 0)
+  assert.equal(cloud.sentMessages.length, 1)
+  assert.equal(cloud.records.subscriptions.find(row => row._id === alert.quotaId(openid)).unused, 0)
+})
+
+test('天气发送在途取消后失败，旧代恢复不增加取消后或重新订阅的额度', async () => {
+  for (const resubscribe of [false, true]) {
+    const openid = 'openid-1'
+    const cloud = loadCloud({
+      users: [cityUser(openid)],
+      subscriptions: [sub('000-old-claim', openid), sub('001-old-unused', openid), quota(openid, { unused: 2 })]
+    })
+    const request = stubWeather({ ['city=' + CITY]: NORMAL_FORECAST })
+    cloud.faults.send = async () => {
+      assert.equal((await cloud.main({ action: 'cancelWeather' })).success, true)
+      if (resubscribe) assert.equal((await cloud.main({ action: 'subscribeWeather' })).unused, 1)
+      throw new Error('50031 system busy')
+    }
+    const failed = await run(cloud, request)
+    assert.equal(failed.sent, 0)
+    assert.equal(failed.failed, 1)
+    const quotaRow = cloud.records.subscriptions.find(row => row._id === alert.quotaId(openid))
+    assert.equal(quotaRow.unused, resubscribe ? 1 : 0)
+    assert.equal(quotaRow.generation, 1)
+    assert.equal(cloud.records.subscriptions.some(row => row._id === alert.sentId(openid, '2026-10-09')), false)
+
+    cloud.faults.send = null
+    const retry = await run(cloud, request)
+    assert.equal(retry.failed, 0)
+    assert.equal(retry.sent, resubscribe ? 1 : 0)
+    assert.equal(cloud.sentMessages.length, resubscribe ? 1 : 0)
+    assert.equal(cloud.records.subscriptions.find(row => row._id === alert.quotaId(openid)).unused, 0)
+    if (resubscribe) assert.ok(cloud.records.subscriptions.some(row => row.scene === 'weather-alert' && row.generation === 1 && row.consumedAt))
+    assert.equal((await run(cloud, request, new Date(NOW.getTime() + 86400000))).sent, 0)
+  }
+})
+
+test('天气成功发送后取消和重新订阅保留当日标记，不重复发送', async () => {
+  const openid = 'openid-1'
+  const cloud = loadCloud({
+    users: [cityUser(openid)],
+    subscriptions: [sub('000-old-1', openid), sub('001-old-2', openid), quota(openid, { unused: 2 })]
+  })
+  const request = stubWeather({ ['city=' + CITY]: NORMAL_FORECAST })
+  assert.equal((await run(cloud, request)).sent, 1)
+  const markerId = alert.sentId(openid, '2026-10-09')
+  const marker = structuredClone(cloud.records.subscriptions.find(row => row._id === markerId))
+  assert.ok(marker)
+  assert.equal((await cloud.main({ action: 'cancelWeather' })).success, true)
+  assert.deepEqual(cloud.records.subscriptions.find(row => row._id === markerId), marker)
+  assert.equal((await cloud.main({ action: 'subscribeWeather' })).unused, 1)
+  assert.equal((await run(cloud, request)).sent, 0)
+  assert.equal(cloud.sentMessages.length, 1)
+  assert.equal(cloud.records.subscriptions.find(row => row._id === alert.quotaId(openid)).unused, 1)
+  assert.equal((await run(cloud, request, new Date(NOW.getTime() + 86400000))).sent, 1)
+  assert.equal(cloud.sentMessages.length, 2)
+  assert.equal(cloud.records.subscriptions.find(row => row._id === alert.quotaId(openid)).unused, 0)
 })
 
 test('同城多账号只请求一次预报并各发一条', async () => {

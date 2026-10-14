@@ -3,6 +3,7 @@ const db = require('../../utils/db')
 const streak = require('../../utils/streak')
 
 const WEATHER_TEMPLATE_ID = 'gecbz6HZQxVtg7x5eMAY7ugCWXgeIQsuWK9ELJR4Xe0'
+const REPORT_TEMPLATE_ID = 'CeSjEXCpR71PZvGbIoqCDgO0H0CSHSwGbo_7o7ZgLIE'
 
 Page({
   async onRetry() {
@@ -10,7 +11,8 @@ Page({
       this.setData({ loading: false, loadError: '登录校验未完成，请重试' })
       return
     }
-    return this.loadData(true)
+    this.refreshWeatherState()
+    return Promise.all([this.loadData(true), this.loadSubscriptionStatus()])
   },
 
   data: {
@@ -27,8 +29,17 @@ Page({
     mostExpensive: null,
     favoriteBrand: null,
     cityName: '',
-    weatherStateText: '点击订阅下次提醒',
+    weatherStateText: '',
+    weatherUnused: null,
+    weatherQuotaLoading: true,
+    weatherQuotaError: false,
     subscribingWeather: false,
+    cancelingWeather: false,
+    reportUnused: null,
+    reportQuotaLoading: true,
+    reportQuotaError: false,
+    subscribingReport: false,
+    cancelingReport: false,
     hasWearRecords: false,
     streakDays: 0,
     monthCheckins: 0
@@ -40,7 +51,7 @@ Page({
       return
     }
     this.refreshWeatherState()
-    this.loadData()
+    return Promise.all([this.loadData(), this.loadSubscriptionStatus()])
   },
 
   async onPullDownRefresh() {
@@ -146,7 +157,29 @@ Page({
     }
   },
 
-  // itemSettings 只表示授权选择已记住；每次点击接受后才增加一次提醒。
+  async loadSubscriptionStatus() {
+    const versions = {
+      weather: this._weatherQuotaVersion = (this._weatherQuotaVersion || 0) + 1,
+      report: this._reportQuotaVersion = (this._reportQuotaVersion || 0) + 1
+    }
+    this.setData({ weatherUnused: null, weatherQuotaLoading: true, weatherQuotaError: false,
+      reportUnused: null, reportQuotaLoading: true, reportQuotaError: false })
+    let result
+    try {
+      result = await db.getSubscriptionStatus()
+    } catch (e) {
+      console.error('读取提醒次数失败', e)
+    }
+    for (const scene of ['weather', 'report']) {
+      if (versions[scene] !== this[`_${scene}QuotaVersion`]) continue
+      const unused = result && result[`${scene}Unused`]
+      const valid = Number.isInteger(unused) && unused >= 0
+      this.setData({ [`${scene}Unused`]: valid ? unused : null,
+        [`${scene}QuotaLoading`]: false, [`${scene}QuotaError`]: !valid })
+    }
+  },
+
+  // 微信设置仅用于关闭或拒绝提示，剩余次数由服务端单独读取。
   refreshWeatherState() {
     if (typeof wx.getSetting !== 'function') return
     wx.getSetting({
@@ -155,9 +188,8 @@ Page({
         const setting = res.subscriptionsSetting || {}
         const state = (setting.itemSettings || {})[WEATHER_TEMPLATE_ID]
         const text = setting.mainSwitch === false ? '订阅消息总开关已关闭，请在设置中开启'
-          : state === 'accept' ? '已记住选择，点击订阅'
-          : state === 'reject' ? '已拒绝提醒，点击重新订阅'
-          : '点击订阅下次提醒'
+          : state === 'reject' ? '你已拒绝订阅，可重新授权'
+          : ''
         this.setData({ weatherStateText: text })
       },
       fail: () => {}
@@ -187,7 +219,11 @@ Page({
   },
 
   async onSubscribeWeather() {
-    if (this.data.subscribingWeather) return
+    if (this.data.subscribingWeather || this.data.cancelingWeather) return
+    if (this.data.weatherUnused >= 12) {
+      wx.showToast({ title: '提醒次数已充足，消耗后可再增加', icon: 'none' })
+      return
+    }
     this.setData({ subscribingWeather: true })
     try {
       const result = await new Promise((resolve, reject) => wx.requestSubscribeMessage({
@@ -200,13 +236,63 @@ Page({
       }
       const subscribed = await db.subscribeWeather()
       const reminders = Number.isInteger(subscribed.unused) ? subscribed.unused : 12 - subscribed.remaining
-      wx.showToast({ title: `已订阅，可接收 ${reminders} 次提醒`, icon: 'none' })
+      this._weatherQuotaVersion = (this._weatherQuotaVersion || 0) + 1
+      this.setData({ weatherUnused: reminders, weatherQuotaLoading: false, weatherQuotaError: false })
+      wx.showToast({ title: `已增加1次，剩余 ${reminders} 次`, icon: 'none' })
     } catch (e) {
       console.error(e)
       wx.showToast({ title: e && e.message || '订阅失败，请重试', icon: 'none' })
     } finally {
       this.setData({ subscribingWeather: false })
       this.refreshWeatherState()
+    }
+  },
+
+  async onSubscribeReport() {
+    if (this.data.subscribingReport || this.data.cancelingReport) return
+    if (this.data.reportUnused >= 12) {
+      wx.showToast({ title: '提醒次数已充足，消耗后可再增加', icon: 'none' })
+      return
+    }
+    this.setData({ subscribingReport: true })
+    try {
+      const result = await new Promise((resolve, reject) => wx.requestSubscribeMessage({
+        tmplIds: [REPORT_TEMPLATE_ID], success: resolve, fail: reject
+      }))
+      const state = result[REPORT_TEMPLATE_ID]
+      if (state !== 'accept') {
+        wx.showToast({ title: state === 'ban' ? '请在设置中开启订阅消息' : '已取消订阅', icon: 'none' })
+        return
+      }
+      const { unused } = await db.subscribeReport()
+      this._reportQuotaVersion = (this._reportQuotaVersion || 0) + 1
+      this.setData({ reportUnused: unused, reportQuotaLoading: false, reportQuotaError: false })
+      wx.showToast({ title: `已增加1次，剩余 ${unused} 次`, icon: 'none' })
+    } catch (e) {
+      console.error(e)
+      wx.showToast({ title: e && e.message || '订阅失败，请重试', icon: 'none' })
+    } finally {
+      this.setData({ subscribingReport: false })
+    }
+  },
+
+  async onCancelReminder(e) {
+    const scene = e.currentTarget.dataset.scene
+    if (!['weather', 'report'].includes(scene)) return
+    const kind = scene === 'weather' ? 'Weather' : 'Report'
+    if (this.data[`subscribing${kind}`] || this.data[`canceling${kind}`] ||
+      this.data[`${scene}QuotaLoading`] || this.data[`${scene}QuotaError`] || !(this.data[`${scene}Unused`] > 0)) return
+    this.setData({ [`canceling${kind}`]: true })
+    try {
+      await db[`cancel${kind}`]()
+      this[`_${scene}QuotaVersion`] = (this[`_${scene}QuotaVersion`] || 0) + 1
+      this.setData({ [`${scene}Unused`]: 0, [`${scene}QuotaLoading`]: false, [`${scene}QuotaError`]: false })
+      wx.showToast({ title: '已取消提醒，剩余 0 次', icon: 'none' })
+    } catch (e) {
+      console.error(e)
+      wx.showToast({ title: e && e.message || '取消失败，请重试', icon: 'none' })
+    } finally {
+      this.setData({ [`canceling${kind}`]: false })
     }
   },
 

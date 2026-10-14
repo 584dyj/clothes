@@ -2,16 +2,11 @@ const db = require('../../utils/db')
 const auth = require('../../utils/auth')
 const swipeBack = require('../../utils/swipe-back')
 
-// 月历：开销（衣物购买 + 独立账本，可按 全部/衣物/账本 分段统计）+
+// 月历：统一合计衣物购买与独立账本开销，
 // 穿搭计划与实穿记录叠加展示。数据在客户端内存过滤，与既有口径一致。
 
 const { validDate, MIN_YEAR, MAX_YEAR } = require('../../utils/date')
 const WEEK_LABELS = ['日', '一', '二', '三', '四', '五', '六']
-const SEGMENTS = [
-  { value: 'all', label: '全部' },
-  { value: 'clothes', label: '衣物' },
-  { value: 'expenses', label: '账本' }
-]
 
 Page({
   ...swipeBack,
@@ -31,8 +26,6 @@ Page({
   data: {
     loadError: '',
     weekLabels: WEEK_LABELS,
-    segments: SEGMENTS,
-    segment: 'all',          // 开销统计口径：all/clothes/expenses
     year: 0,
     month: 0,                // 1-12
     title: '',               // 如「2026年8月」
@@ -99,37 +92,32 @@ Page({
   // 渲染当前年月
   render() {
     const { _year: year, _month: month, _items, _expenses, _plans, _wears } = this
-    const segment = this.data.segment
-    // 每日开销映射：'YYYY-MM-DD' -> 总金额（按分段口径）
+    // 每日开销映射：'YYYY-MM-DD' -> 衣物购买与账本总金额
     const dayTotal = {}
     let monthTotal = 0
     let yearTotal = 0
     let undatedTotal = 0
     const pad = n => String(n).padStart(2, '0')
-    if (segment !== 'expenses') {
-      _items.forEach(item => {
-        const date = item.purchaseDate || ''
-        const price = Math.round(Number(item.price) * 100)
-        if (!Number.isFinite(price) || price <= 0) return
-        if (!validDate(date)) { undatedTotal += price; return }
-        const [y, m] = date.split('-').map(Number)
-        dayTotal[date] = (dayTotal[date] || 0) + price
-        if (y === year && m === month) monthTotal += price
-        if (y === year) yearTotal += price
-      })
-    }
-    if (segment !== 'clothes') {
-      // 账本开销：日期与金额由云端强校验，直接按日期并入合计
-      ;(_expenses || []).forEach(expense => {
-        const amount = Math.round(Number(expense.amount) * 100)
-        if (!Number.isFinite(amount) || amount <= 0 || !validDate(expense.date)) return
-        const [y, m] = expense.date.split('-').map(Number)
-        dayTotal[expense.date] = (dayTotal[expense.date] || 0) + amount
-        if (y === year && m === month) monthTotal += amount
-        if (y === year) yearTotal += amount
-      })
-    }
-    // 计划与实穿标记（与开销分段无关）
+    _items.forEach(item => {
+      const date = item.purchaseDate || ''
+      const price = Math.round(Number(item.price) * 100)
+      if (!Number.isFinite(price) || price <= 0) return
+      if (!validDate(date)) { undatedTotal += price; return }
+      const [y, m] = date.split('-').map(Number)
+      dayTotal[date] = (dayTotal[date] || 0) + price
+      if (y === year && m === month) monthTotal += price
+      if (y === year) yearTotal += price
+    })
+    // 账本开销：日期与金额由云端强校验，直接按日期并入合计
+    ;(_expenses || []).forEach(expense => {
+      const amount = Math.round(Number(expense.amount) * 100)
+      if (!Number.isFinite(amount) || amount <= 0 || !validDate(expense.date)) return
+      const [y, m] = expense.date.split('-').map(Number)
+      dayTotal[expense.date] = (dayTotal[expense.date] || 0) + amount
+      if (y === year && m === month) monthTotal += amount
+      if (y === year) yearTotal += amount
+    })
+    // 计划与实穿标记
     const planDates = {}
     const wornDates = {}
     ;(_plans || []).forEach(plan => { if (validDate(plan.date)) planDates[plan.date] = true })
@@ -174,15 +162,10 @@ Page({
 
   selectDate(date) {
     if (!validDate(date)) return
-    const segment = this.data.segment
-    const dayItems = segment !== 'expenses'
-      ? (this._items || []).filter(item => item.purchaseDate === date && Number.isFinite(Number(item.price)) && Number(item.price) > 0)
-        .map(item => ({ ...item, price: Math.round(Number(item.price) * 100) / 100 }))
-      : []
-    const dayExpenses = segment !== 'clothes'
-      ? (this._expenses || []).filter(expense => expense.date === date && Number(expense.amount) > 0)
-        .map(expense => ({ ...expense, amount: Math.round(Number(expense.amount) * 100) / 100 }))
-      : []
+    const dayItems = (this._items || []).filter(item => item.purchaseDate === date && Number.isFinite(Number(item.price)) && Number(item.price) > 0)
+      .map(item => ({ ...item, price: Math.round(Number(item.price) * 100) / 100 }))
+    const dayExpenses = (this._expenses || []).filter(expense => expense.date === date && Number(expense.amount) > 0)
+      .map(expense => ({ ...expense, amount: Math.round(Number(expense.amount) * 100) / 100 }))
     const dayWears = (this._wears || []).filter(wear => wear.date === date)
       .map(wear => ({ ...wear, outfitName: this.outfitNameOf(wear.outfitId), itemCount: (wear.itemIds || []).length }))
     // 一键打卡状态：已打卡 > 未来日期 > 穿搭已删除 > 穿搭无单品 > 可打卡
@@ -202,13 +185,6 @@ Page({
     const cents = dayItems.reduce((total, item) => total + Math.round(item.price * 100), 0) +
       dayExpenses.reduce((total, expense) => total + Math.round(expense.amount * 100), 0)
     this.setData({ selectedDate: date, dayItems, dayExpenses, dayPlans, dayWears, selectedTotal: cents / 100 })
-  },
-
-  onSegmentTap(e) {
-    const segment = e.currentTarget.dataset.value
-    if (!['all', 'clothes', 'expenses'].includes(segment) || segment === this.data.segment) return
-    this.setData({ segment })
-    this.render()
   },
 
   onDayTap(e) { this.selectDate(e.currentTarget.dataset.date) },

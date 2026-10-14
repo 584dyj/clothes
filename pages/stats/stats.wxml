@@ -81,8 +81,6 @@
         </view>
       </view>
       <view wx:if="{{wearRank.length === 0 && idleRank.length === 0}}" class="wear-empty">记录穿着后可查看频次与闲置情况</view>
-      <button class="report-btn" bindtap="onSubscribeReport" loading="{{subscribing}}" disabled="{{subscribing}}">开启闲置月报</button>
-      <view class="report-hint">一次授权可接收一期月报，可重复开启以增加后续月份额度</view>
     </view>
 
     <!-- 季节分布 -->

@@ -116,18 +116,42 @@
   color: #9a958c;
 }
 
-.weather-hint {
+.reminder-actions {
+  display: flex;
+  margin-top: 20rpx;
+}
+
+.reminder-subscribe {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 70rpx;
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0 8rpx;
+  border-radius: 12rpx;
+  font-size: 26rpx;
+  white-space: nowrap;
+}
+
+.reminder-subscribe + .reminder-subscribe {
+  margin-left: 16rpx;
+}
+
+.reminder-hint {
   padding: 16rpx 0 20rpx;
   color: #6b675f;
   font-size: 24rpx;
   line-height: 1.6;
 }
 
-.weather-hint view {
+.reminder-hint view {
   margin-bottom: 8rpx;
 }
 
-.weather-hint view:last-child {
+.reminder-hint view:last-child {
   margin-bottom: 0;
 }
 
@@ -158,6 +182,7 @@
 .insight-row {
   display: flex;
   justify-content: space-between;
+  margin-bottom: 32rpx;
 }
 
 .insight-card {

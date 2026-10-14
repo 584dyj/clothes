@@ -1,5 +1,5 @@
-// 天气触发穿搭提醒：每日傍晚比较「明天 vs 今天」预报，命中降温/降水/高温/升温规则时
-// 推送一条订阅消息。额度、幂等与失败恢复沿用 monthly-report 的 subscriptions 模式，
+// 明日天气与穿搭提醒：有授权额度时每日发送一条，特殊天气调整建议重点。
+// 额度、幂等与失败恢复沿用 monthly-report 的 subscriptions 模式，
 // scene 完全独立。本文件不 require wx-server-sdk，db/cloud/天气请求均由入口或测试注入。
 const crypto = require('crypto')
 const https = require('https')
@@ -72,8 +72,25 @@ async function listAll(db, collection, where) {
   }
 }
 
-function docData(res) {
-  return Array.isArray(res.data) ? res.data[0] || null : res.data || null
+async function readDoc(ref) {
+  try {
+    const res = await ref.get()
+    return Array.isArray(res.data)
+      ? res.data[0] || null
+      : res.data || null
+  } catch (error) {
+    const message = String(
+      error.errMsg || error.message || ''
+    )
+    // 兼容微信云数据库文档不存在的错误
+    if (
+      /does not exist|not found|not exist|文档不存在/i.test(message)
+    ) {
+      return null
+    }
+    // 其他错误继续抛出
+    throw error
+  }
 }
 
 // ---------- 天气接口（高德 Web 服务） ----------
@@ -182,13 +199,14 @@ async function claim(db, id, now) {
   const day = shanghaiDate(now)
   return db.runTransaction(async tx => {
     const ref = tx.collection('subscriptions').doc(id)
-    const row = docData(await ref.get())
+    const row = await readDoc(ref)
     if (!row || row.consumedAt) return false
     const markerRef = tx.collection('subscriptions').doc(sentId(row._openid, day))
-    if (docData(await markerRef.get())) return false
+    if (await readDoc(markerRef)) return false
     const quotaRef = tx.collection('subscriptions').doc(quotaId(row._openid))
-    const quota = docData(await quotaRef.get())
+    const quota = await readDoc(quotaRef)
     if (!quota || quota.scene !== QUOTA_SCENE || !Number.isInteger(quota.unused) || quota.unused <= 0) return false
+    if ((row.generation || 0) !== (quota.generation || 0)) return false
     await ref.update({ data: { consumedAt: now } })
     await markerRef.set({ data: { _openid: row._openid, scene: SENT_SCENE, day, createdAt: now } })
     await quotaRef.update({ data: { unused: quota.unused - 1, updatedAt: now } })
@@ -200,14 +218,14 @@ async function restoreClaim(db, id, now) {
   const day = shanghaiDate(now)
   return db.runTransaction(async tx => {
     const ref = tx.collection('subscriptions').doc(id)
-    const row = docData(await ref.get())
+    const row = await readDoc(ref)
     if (!row || !row.consumedAt) return
     const quotaRef = tx.collection('subscriptions').doc(quotaId(row._openid))
-    const quota = docData(await quotaRef.get())
+    const quota = await readDoc(quotaRef)
     await ref.update({ data: { consumedAt: db.command.remove() } })
     // 删除当日幂等标记，同日重跑可再次尝试发送
     await tx.collection('subscriptions').doc(sentId(row._openid, day)).remove()
-    if (quota && quota.scene === QUOTA_SCENE) {
+    if (quota && quota.scene === QUOTA_SCENE && (row.generation || 0) === (quota.generation || 0)) {
       const unused = Number.isInteger(quota.unused) ? quota.unused : 0
       // 发送在途时可能又接受了订阅，恢复须保留所有已获授权。
       await quotaRef.update({ data: { unused: unused + 1, updatedAt: now } })
@@ -263,6 +281,7 @@ async function handle({ db, cloud, templateId, now = new Date(), request = reque
   // 1. 收集候选授权记录（同账号一次运行只处理一条）
   const candidates = []
   const seen = new Set()
+  const quotas = new Map()
   let cursor = ''
   for (;;) {
     const where = cursor ? { _id: db.command.gt(cursor) } : {}
@@ -271,8 +290,19 @@ async function handle({ db, cloud, templateId, now = new Date(), request = reque
       if (subscription.scene !== SCENE) continue
       summary.scanned++
       if (subscription.consumedAt || !subscription._openid || seen.has(subscription._openid)) continue
-      seen.add(subscription._openid)
-      candidates.push(subscription)
+      try {
+        if (!quotas.has(subscription._openid)) {
+          quotas.set(subscription._openid, await readDoc(db.collection('subscriptions').doc(quotaId(subscription._openid))))
+        }
+        const quota = quotas.get(subscription._openid)
+        if ((subscription.generation || 0) !== (quota && quota.generation || 0)) continue
+        seen.add(subscription._openid)
+        candidates.push(subscription)
+      } catch (error) {
+        seen.add(subscription._openid)
+        summary.failed++
+        console.error('天气提醒额度读取失败', subscription._openid, error)
+      }
     }
     if (res.data.length < PAGE_SIZE) break
     cursor = res.data[res.data.length - 1]._id

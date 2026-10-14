@@ -64,6 +64,16 @@ async function listAll(db, collection, where) {
   }
 }
 
+async function readDoc(ref) {
+  try {
+    const res = await ref.get()
+    return Array.isArray(res.data) ? res.data[0] || null : res.data || null
+  } catch (error) {
+    if (/document.*(not exist|not found)|文档不存在/i.test(error.message || error.errMsg || '')) return null
+    throw error
+  }
+}
+
 async function buildReport(db, openid, now) {
   const cutoff = cutoffDate(now)
   const today = shanghaiDate(now)
@@ -89,16 +99,14 @@ async function claim(db, id, consumedAt) {
   const month = formatShanghai(consumedAt).slice(0, 7)
   return db.runTransaction(async tx => {
     const ref = tx.collection('subscriptions').doc(id)
-    const res = await ref.get()
-    const row = Array.isArray(res.data) ? res.data[0] : res.data
+    const row = await readDoc(ref)
     if (!row || row.consumedAt) return false
     const markerRef = tx.collection('subscriptions').doc(sentId(row._openid, month))
-    const markerRes = await markerRef.get()
-    const marker = Array.isArray(markerRes.data) ? markerRes.data[0] : markerRes.data
-    if (marker) return false
+    if (await readDoc(markerRef)) return false
     const quotaRef = tx.collection('subscriptions').doc(quotaId(row._openid))
-    const quotaRes = await quotaRef.get()
-    const quota = Array.isArray(quotaRes.data) ? quotaRes.data[0] : quotaRes.data
+    const quota = await readDoc(quotaRef)
+    if (quota && (quota.scene !== QUOTA_SCENE || !Number.isInteger(quota.unused) || quota.unused <= 0)) return false
+    if ((row.generation || 0) !== (quota && quota.generation || 0)) return false
     await ref.update({ data: { consumedAt } })
     await markerRef.set({ data: { _openid: row._openid, scene: SENT_SCENE, month, createdAt: consumedAt } })
     if (quota && quota.scene === QUOTA_SCENE) {
@@ -113,16 +121,14 @@ async function restoreClaim(db, id, restoredAt) {
   const month = formatShanghai(restoredAt).slice(0, 7)
   return db.runTransaction(async tx => {
     const ref = tx.collection('subscriptions').doc(id)
-    const res = await ref.get()
-    const row = Array.isArray(res.data) ? res.data[0] : res.data
+    const row = await readDoc(ref)
     if (!row || !row.consumedAt) return
     const quotaRef = tx.collection('subscriptions').doc(quotaId(row._openid))
-    const quotaRes = await quotaRef.get()
-    const quota = Array.isArray(quotaRes.data) ? quotaRes.data[0] : quotaRes.data
+    const quota = await readDoc(quotaRef)
     await ref.update({ data: { consumedAt: db.command.remove() } })
     // 删除月度幂等记录，同月重跑可再次尝试发送
     await tx.collection('subscriptions').doc(sentId(row._openid, month)).remove()
-    if (quota && quota.scene === QUOTA_SCENE) {
+    if (quota && quota.scene === QUOTA_SCENE && (row.generation || 0) === (quota.generation || 0)) {
       const unused = Number.isInteger(quota.unused) ? quota.unused : 0
       await quotaRef.update({ data: { unused: Math.min(12, unused + 1), updatedAt: restoredAt } })
     }
@@ -169,6 +175,7 @@ async function sendReport({ db, cloud, subscription, report, templateId, now }) 
 async function handle({ db, cloud, templateId, now = new Date() }) {
   if (!templateId) throw new Error('REPORT_TMPL_ID 未配置')
   const seen = new Set()
+  const quotas = new Map()
   const summary = { success: true, scanned: 0, sent: 0, skipped: 0, expired: 0, failed: 0 }
   let cursor = ''
   for (;;) {
@@ -178,8 +185,13 @@ async function handle({ db, cloud, templateId, now = new Date() }) {
       if (subscription.scene !== SCENE) continue
       summary.scanned++
       if (subscription.consumedAt || !subscription._openid || seen.has(subscription._openid)) continue
-      seen.add(subscription._openid)
       try {
+        if (!quotas.has(subscription._openid)) {
+          quotas.set(subscription._openid, await readDoc(db.collection('subscriptions').doc(quotaId(subscription._openid))))
+        }
+        const quota = quotas.get(subscription._openid)
+        if ((subscription.generation || 0) !== (quota && quota.generation || 0)) continue
+        seen.add(subscription._openid)
         const report = await buildReport(db, subscription._openid, now)
         if (!report) {
           summary.skipped++
@@ -189,6 +201,7 @@ async function handle({ db, cloud, templateId, now = new Date() }) {
         if (state === 'sent') summary.sent++
         if (state === 'expired') summary.expired++
       } catch (error) {
+        seen.add(subscription._openid)
         summary.failed++
         console.error('闲置月报发送失败', subscription._openid, error)
       }

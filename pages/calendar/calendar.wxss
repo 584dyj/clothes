@@ -178,33 +178,6 @@
   background: #3a3835;
 }
 
-/* 开销分段 */
-.segment-row {
-  display: flex;
-  margin-bottom: 20rpx;
-}
-
-.segment-chip {
-  flex: 1;
-  height: 64rpx;
-  line-height: 64rpx;
-  text-align: center;
-  border-radius: 32rpx;
-  background: #ffffff;
-  color: #6b675f;
-  font-size: 26rpx;
-  margin-right: 16rpx;
-}
-
-.segment-chip:last-child {
-  margin-right: 0;
-}
-
-.segment-active {
-  background: #3a3835;
-  color: #ffffff;
-}
-
 .calendar-note { color: #6b675f; font-size: 24rpx; line-height: 1.6; margin-bottom: 16rpx; }
 .day-empty-note { text-align: center; }
 .day-selected { background: #e9e4db; }

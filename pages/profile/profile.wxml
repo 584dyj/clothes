@@ -31,32 +31,6 @@
           <text class="info-value code-value">{{registerCode}}</text>
         </view>
       </view>
-
-      <view class="section-title">提醒</view>
-      <view class="account-card card">
-        <view class="info-row tappable" bindtap="onCityTap">
-          <text class="info-label">城市</text>
-          <text class="info-value {{cityName ? '' : 'muted'}}">{{cityName || '未设置，无法接收天气提醒'}}</text>
-        </view>
-        <view class="info-row tappable" bindtap="onSubscribeWeather">
-          <text class="info-label">明日天气与穿搭</text>
-          <text class="info-value">{{weatherStateText}}</text>
-        </view>
-        <view class="weather-hint">
-          <view>每天 21:30，为你送上明日天气与穿搭建议。</view>
-          <view>每次订阅可收到一条提醒，若已过今日发送时间，则顺延至明晚 21:30。</view>
-          <view>订阅前，请先选择城市。</view>
-        </view>
-      </view>
-
-      <block wx:if="{{hasWearRecords}}">
-        <view class="section-title">穿搭记录</view>
-        <view class="account-card card streak-card">
-          <view class="streak-num">{{streakDays}}</view>
-          <view class="streak-label">连续记录天数 · 本月打卡 {{monthCheckins}} 天</view>
-        </view>
-      </block>
-
       <view class="section-title">衣橱偏好</view>
       <view class="insight-row">
         <view class="insight-card card">
@@ -73,7 +47,6 @@
             <view wx:if="{{mostExpensive}}" class="insight-meta">¥{{mostExpensive.price}}</view>
           </view>
         </view>
-
         <view class="insight-card card">
           <view class="insight-image insight-placeholder brand-placeholder">{{favoriteBrand ? favoriteBrand.initial : 'B'}}</view>
           <view class="insight-body">
@@ -83,6 +56,54 @@
           </view>
         </view>
       </view>
+
+      <view class="section-title">提醒</view>
+      <view class="account-card card">
+        <view class="info-row tappable" bindtap="onCityTap">
+          <text class="info-label">城市</text>
+          <text class="info-value {{cityName ? '' : 'muted'}}">{{cityName || '未设置，无法接收天气提醒'}}</text>
+        </view>
+        <view class="info-row">
+          <text class="info-label">明日天气与穿搭</text>
+          <text wx:if="{{weatherQuotaLoading}}" class="info-value muted">次数加载中…</text>
+          <text wx:elif="{{weatherQuotaError}}" class="info-value tappable" bindtap="loadSubscriptionStatus">次数读取失败，点此重试</text>
+          <text wx:else class="info-value">剩余 {{weatherUnused}} 次</text>
+        </view>
+        <view class="reminder-actions">
+          <button class="btn-primary reminder-subscribe" bindtap="onSubscribeWeather" loading="{{subscribingWeather}}" disabled="{{subscribingWeather || cancelingWeather || weatherQuotaLoading || weatherQuotaError || weatherUnused >= 12}}">{{weatherUnused >= 12 ? '次数已充足' : '增加1次天气提醒'}}</button>
+          <button class="btn-danger reminder-subscribe" data-scene="weather" bindtap="onCancelReminder" loading="{{cancelingWeather}}" disabled="{{subscribingWeather || cancelingWeather || weatherQuotaLoading || weatherQuotaError || weatherUnused <= 0}}">取消提醒</button>
+        </view>
+        <view class="reminder-hint">
+          <view wx:if="{{weatherStateText}}">{{weatherStateText}}</view>
+          <view>每天 21:30，为你送上明日天气与穿搭建议</view>
+          <view>每次订阅可收到一条提醒，若已过今日发送时间，则顺延至明晚</view>
+          <view>订阅前，请先设置城市</view>
+          <view>取消提醒将清空对应的剩余次数</view>
+        </view>
+        <view class="info-row">
+          <text class="info-label">闲置月报</text>
+          <text wx:if="{{reportQuotaLoading}}" class="info-value muted">次数加载中…</text>
+          <text wx:elif="{{reportQuotaError}}" class="info-value tappable" bindtap="loadSubscriptionStatus">次数读取失败，点此重试</text>
+          <text wx:else class="info-value">剩余 {{reportUnused}} 次</text>
+        </view>
+        <view class="reminder-actions">
+          <button class="btn-primary reminder-subscribe" bindtap="onSubscribeReport" loading="{{subscribingReport}}" disabled="{{subscribingReport || cancelingReport || reportQuotaLoading || reportQuotaError || reportUnused >= 12}}">{{reportUnused >= 12 ? '次数已充足' : '增加1次月报提醒'}}</button>
+          <button class="btn-danger reminder-subscribe" data-scene="report" bindtap="onCancelReminder" loading="{{cancelingReport}}" disabled="{{subscribingReport || cancelingReport || reportQuotaLoading || reportQuotaError || reportUnused <= 0}}">取消提醒</button>
+        </view>
+        <view class="reminder-hint">
+          <view>每月 1 日 09:00，为你检查闲置衣物</view>
+          <view>每次授权增加 1 次，成功发送后扣除 1 次，用完后将暂停提醒</view>
+          <view>取消提醒将清空对应的剩余次数</view>
+        </view>
+      </view>
+
+      <block wx:if="{{hasWearRecords}}">
+        <view class="section-title">穿搭记录</view>
+        <view class="account-card card streak-card">
+          <view class="streak-num">{{streakDays}}</view>
+          <view class="streak-label">连续记录天数 · 本月打卡 {{monthCheckins}} 天</view>
+        </view>
+      </block>
     </view>
 
     <block wx:if="{{pendingCleanup}}">

@@ -112,6 +112,12 @@ async function getBoundUser(openid) {
   return res.data[0] || null
 }
 
+async function requireLoggedInUser(openid) {
+  const user = await getBoundUser(openid)
+  if (!user || user.autoLoginEnabled === false) throw new Error('登录状态已失效')
+  return user
+}
+
 async function main(event = {}) {
   const { action } = event
   const openid = cloud.getWXContext().OPENID
@@ -273,15 +279,23 @@ async function main(event = {}) {
   }
 
   if (action === 'subscribeReport') {
-    const user = await getBoundUser(openid)
-    if (!user || user.autoLoginEnabled === false) throw new Error('登录状态已失效')
+    await requireLoggedInUser(openid)
     return subscriptionApi.subscribe({ db, openid })
   }
 
   if (action === 'subscribeWeather') {
-    const user = await getBoundUser(openid)
-    if (!user || user.autoLoginEnabled === false) throw new Error('登录状态已失效')
+    await requireLoggedInUser(openid)
     return subscriptionApi.subscribe({ db, openid, scene: 'weather-alert' })
+  }
+
+  if (action === 'cancelWeather' || action === 'cancelReport') {
+    await requireLoggedInUser(openid)
+    return subscriptionApi.cancel({ db, openid, scene: action === 'cancelWeather' ? 'weather-alert' : 'idle-monthly' })
+  }
+
+  if (action === 'subscriptionStatus') {
+    await requireLoggedInUser(openid)
+    return subscriptionApi.status({ db, openid })
   }
 
   if (action === 'chatList' || action === 'chatGet' || action === 'chatSend' || action === 'chatDelete' || action === 'chatRename' ||

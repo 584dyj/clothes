@@ -263,6 +263,9 @@ const purchaseVisual = (candidate, imageFileID) => call('purchaseVisual', { cand
 const itemScan = imageFileID => call('itemScan', { imageFileID }).then(result => result.item)
 const subscribeReport = () => call('subscribeReport')
 const subscribeWeather = () => call('subscribeWeather')
+const cancelReport = () => call('cancelReport')
+const cancelWeather = () => call('cancelWeather')
+const getSubscriptionStatus = () => call('subscriptionStatus')
 
 // 天气提醒云函数（城市设置等），与 auth 分离部署，错误处理同构
 function callWeather(data) {
@@ -282,4 +285,4 @@ module.exports = { chooseImage, uploadImage, removeImage, retryCleanup, cleanupS
   listExpenses, addExpense, updateExpense, deleteExpense,
   listWearRecords, addWearRecord, updateWearRecord, deleteWearRecord,
   listPlans, addPlan, updatePlan, deletePlan,
-  chatList, chatGet, chatSend, chatDelete, chatRename, purchaseAssess, purchaseVisual, itemScan, subscribeReport, subscribeWeather, setCity }
+  chatList, chatGet, chatSend, chatDelete, chatRename, purchaseAssess, purchaseVisual, itemScan, subscribeReport, subscribeWeather, cancelReport, cancelWeather, getSubscriptionStatus, setCity }

@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { loadPage } = require('./support/page')
 
-// ---------- calendar 月历：分段 + 计划/实穿 ----------
+// calendar 月历：全部开销与计划、实穿
 
 // 月历打开的是当前月份，夹具日期须落在当月，避免跨月后断言失效
 const thisMonth = day => {
@@ -10,8 +10,8 @@ const thisMonth = day => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
-test('月历分段切换与计划实穿标记、明细', async () => {
-  const day20 = thisMonth(20)
+test('月历统一合计全部开销，切月保留计划实穿标记与明细', async () => {
+  const day20 = thisMonth(new Date().getDate())
   const page = loadPage('calendar', {
     listItems: async () => [{ _id: 'i1', name: '衬衫', price: 100, purchaseDate: day20 }],
     listExpenses: async () => [{ _id: 'e1', category: '洗护', amount: 50, date: day20 }],
@@ -22,7 +22,10 @@ test('月历分段切换与计划实穿标记、明细', async () => {
   page.onLoad()
   await page.loadData()
   assert.equal(page.data.monthTotal, 150) // 全部 = 衣物 + 账本
+  assert.equal(page.data.yearTotal, 150)
+  assert.equal(page.data.todayTotal, 150)
   const cell = page.data.cells.find(row => row.date === day20)
+  assert.equal(cell.total, 150)
   assert.equal(cell.hasPlan, true)
   assert.equal(cell.hasWorn, true)
 
@@ -30,17 +33,18 @@ test('月历分段切换与计划实穿标记、明细', async () => {
   assert.equal(page.data.dayPlans[0].outfitName, '通勤')
   assert.equal(page.data.dayWears[0].itemCount, 1)
   assert.equal(page.data.selectedTotal, 150)
-
-  page.onSegmentTap({ currentTarget: { dataset: { value: 'clothes' } } })
-  assert.equal(page.data.monthTotal, 100)
-  assert.equal(page.data.dayExpenses.length, 0)
   assert.equal(page.data.dayItems.length, 1)
-  assert.equal(page.data.selectedTotal, 100)
-
-  page.onSegmentTap({ currentTarget: { dataset: { value: 'expenses' } } })
-  assert.equal(page.data.monthTotal, 50)
-  assert.equal(page.data.dayItems.length, 0)
   assert.equal(page.data.dayExpenses.length, 1)
+
+  page.onPrevMonth()
+  assert.equal(page.data.monthTotal, 0)
+  page.onNextMonth()
+  assert.equal(page.data.monthTotal, 150)
+  assert.equal(page.data.selectedTotal, 150)
+  assert.equal(page.data.dayItems.length, 1)
+  assert.equal(page.data.dayExpenses.length, 1)
+  assert.equal(page.data.dayPlans.length, 1)
+  assert.equal(page.data.dayWears.length, 1)
 })
 
 // ---------- 一键打卡 ----------

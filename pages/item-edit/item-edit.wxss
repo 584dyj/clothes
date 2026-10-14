@@ -119,6 +119,13 @@
   row-gap: 16rpx;
 }
 
+.category-chip {
+  width: auto;
+  min-width: 112rpx;
+  padding: 0 24rpx;
+  box-sizing: border-box;
+}
+
 .textarea {
   width: 100%;
   height: 140rpx;
@@ -127,8 +134,15 @@
   box-sizing: border-box;
 }
 
-.save-btn {
-  margin-bottom: 24rpx;
+.form-actions {
+  display: flex;
+  gap: 24rpx;
+}
+
+.form-actions button {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
 }
 
 .mode-switch {
