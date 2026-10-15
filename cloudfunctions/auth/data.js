@@ -1,4 +1,5 @@
 const crypto = require('crypto')
+const { CATEGORIES, ACCESSORY_TYPES } = require('./categories')
 
 async function readDoc(ref) {
   try {
@@ -67,8 +68,9 @@ function cleanData(collection, input) {
   }
   if (collection === 'clothes') {
     if (!data.name) throw new Error('名称不能为空')
-    if (!['上衣', '下装', '连衣裙', '配饰', '挂件', '包', '鞋'].includes(data.category)) throw new Error('类别无效')
-    if (data.category === '配饰' && !['袜子', '帽子', '围巾', '首饰', '其他'].includes(data.subcategory)) throw new Error('配饰类型无效')
+    if (!CATEGORIES.includes(data.category)) throw new Error('类别无效')
+    if (data.category === '配饰' && !ACCESSORY_TYPES.includes(data.subcategory)) throw new Error('配饰类型无效')
+    if (data.category !== '配饰') data.subcategory = ''
     if (!Array.isArray(input.seasons) || input.seasons.some(s => !['春秋', '夏', '冬'].includes(s))) throw new Error('季节无效')
     data.seasons = [...new Set(input.seasons)]
     if (typeof input.price !== 'number' || !Number.isFinite(input.price) || input.price < 0 || input.price > 1e9) throw new Error('价格无效')

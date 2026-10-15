@@ -326,3 +326,54 @@ test('前页删除失效授权后游标翻页仍处理后续账号', async () =>
   assert.equal(result.sent, 1)
   assert.deepEqual(cloud.sentMessages.map(message => message.touser), ['target'])
 })
+
+test('月报内容与数量排除一级其他，混合实穿记录保留合格单品与日期', async () => {
+  const cloud = loadCloud({
+    subscriptions: [subscription('s1', 'u1'), quota('u1', 1)],
+    clothes: [
+      item('idle-pants', 'u1', '闲置长裤', '2025-01-01'),
+      { ...item('idle-misc', 'u1', '闲置摆件', '2025-01-01'), category: '其他' },
+      item('worn-shirt', 'u1', '常穿衬衫', '2025-01-01'),
+      { ...item('worn-misc', 'u1', '常穿摆件', '2025-01-01'), category: '其他' }
+    ],
+    wear_records: [wear('mixed', 'u1', '2026-10-01', ['worn-shirt', 'worn-misc'])]
+  })
+  const result = await report.handle({ db: cloud.db, cloud: cloud.cloudService, templateId: TEMPLATE_ID, now: NOW })
+  assert.equal(result.sent, 1)
+  const message = cloud.sentMessages[0]
+  assert.equal(message.data.number16.value, 1)
+  assert.ok(message.data.thing29.value.includes('闲置长裤'))
+  assert.ok(!message.data.thing29.value.includes('摆件'))
+  // 混合记录中的合格单品按日期参与计算，常穿衬衫不判闲置
+  assert.ok(!message.data.thing29.value.includes('常穿衬衫'))
+})
+
+test('只有其他衣物且实穿记录仅含其他时，月报跳过且不消耗额度', async () => {
+  const cloud = loadCloud({
+    subscriptions: [subscription('s1', 'u1'), quota('u1', 1)],
+    clothes: [{ ...item('misc', 'u1', '摆件', '2025-01-01'), category: '其他' }],
+    wear_records: [wear('only-misc', 'u1', '2026-10-01', ['misc'])]
+  })
+  const result = await report.handle({ db: cloud.db, cloud: cloud.cloudService, templateId: TEMPLATE_ID, now: NOW })
+  assert.equal(result.sent, 0)
+  assert.equal(result.skipped, 1)
+  assert.equal(cloud.sentMessages.length, 0)
+  assert.equal(cloud.records.subscriptions.find(row => row._id === 's1').consumedAt, undefined)
+  assert.equal(cloud.records.subscriptions.find(row => row.scene === 'idle-monthly-quota').unused, 1)
+})
+
+test('闲置候选只含其他时月报跳过，原始实穿记录完整保留', async () => {
+  const cloud = loadCloud({
+    subscriptions: [subscription('s1', 'u1'), quota('u1', 1)],
+    clothes: [
+      item('new-shirt', 'u1', '新衬衫', '2026-09-01'),
+      { ...item('idle-misc', 'u1', '闲置摆件', '2025-01-01'), category: '其他' }
+    ],
+    wear_records: [wear('recent', 'u1', '2026-10-01', ['new-shirt', 'idle-misc'])]
+  })
+  const result = await report.handle({ db: cloud.db, cloud: cloud.cloudService, templateId: TEMPLATE_ID, now: NOW })
+  assert.equal(result.sent, 0)
+  assert.equal(result.skipped, 1)
+  assert.deepEqual(Array.from(cloud.records.wear_records[0].itemIds), ['new-shirt', 'idle-misc'])
+  assert.equal(cloud.records.subscriptions.find(row => row.scene === 'idle-monthly-quota').unused, 1)
+})

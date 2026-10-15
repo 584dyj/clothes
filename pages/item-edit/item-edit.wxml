@@ -44,6 +44,7 @@
         <view wx:for="{{categories}}" wx:key="*this"
           class="season-chip category-chip {{category === item ? 'season-active' : ''}}"
           data-value="{{item}}" bindtap="onCategoryTap"
+          role="button" aria-pressed="{{category === item}}"
         >{{item}}</view>
       </view>
     </view>

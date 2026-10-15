@@ -240,7 +240,9 @@ function errorCode(error) {
 }
 
 async function sendAlert({ db, cloud, subscription, trigger, forecast, tomorrow, templateId, now }) {
-  const items = await listAll(db, 'clothes', { _openid: subscription._openid })
+  // 一级「其他」仅作基础记录，不进入天气穿搭候选；本函数独立部署，使用本地最小过滤，不引用 auth。
+  // 配饰子类「其他」仍属配饰，不受一级排除影响；只剩其他时按既有空候选规则发送通用提示。
+  const items = (await listAll(db, 'clothes', { _openid: subscription._openid })).filter(item => item.category !== '其他')
   if (!await claim(db, subscription._id, now)) return 'claimed'
   try {
     const result = await cloud.openapi.subscribeMessage.send({

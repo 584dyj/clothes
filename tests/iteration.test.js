@@ -1,13 +1,76 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const crypto = require('node:crypto')
+const fs = require('node:fs')
+const path = require('node:path')
+const vm = require('node:vm')
 const { loadCloud } = require('./support/cloud')
 const { loadPage } = require('./support/page')
 const { validDate } = require('../utils/date')
+const { CATEGORIES, ACCESSORY_TYPES, isRecommendable } = require('../cloudfunctions/auth/categories')
 
 const user = () => ({ _id: 'user', openid: 'openid-1', username: 'alice', salt: 'salt', passwordHash: crypto.scryptSync('secret1', 'salt', 64).toString('hex') })
-const item = () => ({ name: '衬衫', category: '上衣', seasons: ['春秋'], price: 10, imageFileID: '' })
+const item = () => ({ name: '衬衫', category: '衬衫', seasons: ['春秋'], price: 10, imageFileID: '' })
 const dataCall = (operation, collection = 'clothes', extra = {}) => ({ action: 'data', operation, collection, ...extra })
+
+test('客户端与云端 18 类顺序、配饰子类及推荐资格一致', () => {
+  let app
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8'), { App(value) { app = value } })
+  assert.deepEqual(CATEGORIES, ['外套', '短袖', '长袖', '衬衫', '羽绒服', '保暖衣', '毛衣', '家居服', '连衣裙', '长裙', '短裙', '长裤', '短裤', '配饰', '挂件', '包袋', '鞋', '其他'])
+  assert.deepEqual(Array.from(app.globalData.categories), CATEGORIES)
+  assert.deepEqual(ACCESSORY_TYPES, ['袜子', '帽子', '围巾', '首饰', '其他'])
+  assert.deepEqual(Array.from(app.globalData.accessoryTypes), ACCESSORY_TYPES)
+  for (const category of CATEGORIES) assert.equal(isRecommendable({ category }), category !== '其他', category)
+  assert.equal(isRecommendable({ category: '配饰', subcategory: '其他' }), true)
+  for (const value of [null, undefined, {}, { category: '未知' }, { category: '上衣' }]) assert.equal(isRecommendable(value), false)
+})
+
+test('18 类均可新增与更新，非配饰清空子类并保留原 ID 与历史引用', async () => {
+  const c = loadCloud({ users: [user()], clothes: [{ _id: 'one', _openid: 'openid-1', ...item() }],
+    outfits: [{ _id: 'look', _openid: 'openid-1', itemIds: ['one'] }],
+    wear_records: [{ _id: 'wear', _openid: 'openid-1', date: '2026-10-01', itemIds: ['one'] }] })
+  for (const category of CATEGORIES) {
+    const data = { ...item(), category, subcategory: '其他' }
+    const added = await c.main(dataCall('add', 'clothes', { data }))
+    assert.equal(added.success, true, category)
+    const updated = await c.main(dataCall('update', 'clothes', { id: 'one', data }))
+    assert.equal(updated.success, true, category)
+    for (const id of [added._id, 'one']) {
+      const saved = c.records.clothes.find(row => row._id === id)
+      assert.equal(saved.category, category)
+      assert.equal(saved.subcategory, category === '配饰' ? '其他' : '')
+      assert.equal(saved._openid, 'openid-1')
+      assert.equal(saved.price, 10)
+    }
+  }
+  assert.deepEqual(c.records.outfits[0].itemIds, ['one'])
+  assert.deepEqual(c.records.wear_records[0].itemIds, ['one'])
+  assert.equal(c.records.wardrobe_meta[0].version, CATEGORIES.length * 2)
+})
+
+test('旧大类和非法类别不能新增或更新，配饰仅接受五个合法子类', async () => {
+  const c = loadCloud({ users: [user()], clothes: [{ _id: 'one', _openid: 'openid-1', ...item() }] })
+  for (const category of ['上衣', '下装', '裤子', '裙子', '鞋子', '包', '旗袍', '未知', '']) {
+    for (const operation of ['add', 'update']) {
+      const result = await c.main(dataCall(operation, 'clothes', { id: 'one', data: { ...item(), category } }))
+      assert.equal(result.success, false, category)
+      assert.match(result.error, /类别无效/)
+    }
+  }
+  for (const subcategory of ACCESSORY_TYPES) {
+    const result = await c.main(dataCall('update', 'clothes', { id: 'one', data: { ...item(), category: '配饰', subcategory } }))
+    assert.equal(result.success, true, subcategory)
+    assert.equal(c.records.clothes[0].subcategory, subcategory)
+  }
+  for (const subcategory of ['', '手套']) {
+    const result = await c.main(dataCall('update', 'clothes', { id: 'one', data: { ...item(), category: '配饰', subcategory } }))
+    assert.equal(result.success, false)
+    assert.match(result.error, /配饰类型无效/)
+  }
+  assert.equal(c.records.clothes.length, 1)
+  assert.equal(c.records.clothes[0].subcategory, '其他')
+  assert.equal(c.records.wardrobe_meta[0].version, ACCESSORY_TYPES.length)
+})
 
 test('清理入口只展示当前账号的 pending 任务，重试完成后隐藏', async () => {
   const c = loadCloud({ users: [user()], cleanup_jobs: [
@@ -173,7 +236,8 @@ test('数据库提交后尺码存储失败保留新图；提交失败仅清理�
     updateItem: async () => { if (fail) throw Error('write failed'); return {} },
     removeImage: id => deleted.push(id)
   }, { setStorageSync() { throw Error('disk full') } })
-  Object.assign(page.data, { ...item(), id: 'one', ready: true, size: 'M', imagePath: '/tmp/new.jpg', imageFileID: 'cloud://old' })
+  Object.assign(page.data, { ...item(), id: 'one', ready: true, size: 'M', imagePath: '/tmp/new.jpg', imageFileID: 'cloud://old',
+    categories: CATEGORIES, accessoryTypes: ACCESSORY_TYPES })
   await page.onSave()
   assert.deepEqual(deleted, [])
   page.data.saving = false

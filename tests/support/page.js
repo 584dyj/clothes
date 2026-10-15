@@ -4,6 +4,7 @@ const path = require('node:path')
 const { createRequire } = require('node:module')
 
 function loadPage(name, db = {}, wx = {}, auth = {}) {
+  db = { getWardrobeVersion: () => 0, ...db }
   const file = path.resolve(__dirname, `../../pages/${name}/${name}.js`)
   const localRequire = createRequire(file)
   let page, app

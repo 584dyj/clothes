@@ -500,3 +500,30 @@ test('setCity 拒绝已退出登录的账号', async () => {
     alert.setCity({ db: cloud.db, openid: 'openid-1', name: '武隆', request: stubWeather({}), env: ENV }),
     /登录状态已失效/)
 })
+
+test('天气候选先排除一级其他：混合衣橱不含其他，只剩其他用通用建议，配饰子类其他仍参与', async () => {
+  const mixed = loadCloud({
+    users: [cityUser('u1')],
+    subscriptions: [sub('w1', 'u1'), quota('u1')],
+    clothes: [
+      item('down', 'u1', '羽绒服', { seasons: ['冬'], category: '羽绒服' }),
+      item('misc', 'u1', '旧摆件', { seasons: ['冬'], category: '其他' }),
+      item('acc-other', 'u1', '杂件配饰', { seasons: ['冬'], category: '配饰', subcategory: '其他' })
+    ]
+  })
+  const first = await run(mixed, stubWeather({ ['city=' + CITY]: DROP_FORECAST }))
+  assert.equal(first.sent, 1)
+  const advice = mixed.sentMessages[0].data.thing2.value
+  assert.ok(advice.includes('羽绒服'), advice)
+  assert.ok(!advice.includes('旧摆件'), advice)
+  assert.ok(advice.includes('杂件配饰'), advice)
+
+  const onlyMisc = loadCloud({
+    users: [cityUser('u1')],
+    subscriptions: [sub('w1', 'u1'), quota('u1')],
+    clothes: [item('misc', 'u1', '旧摆件', { seasons: ['冬'], category: '其他' })]
+  })
+  const second = await run(onlyMisc, stubWeather({ ['city=' + CITY]: DROP_FORECAST }))
+  assert.equal(second.sent, 1)
+  assert.equal(onlyMisc.sentMessages[0].data.thing2.value, '降温8度，注意添衣')
+})

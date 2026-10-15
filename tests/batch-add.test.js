@@ -19,7 +19,7 @@ test('F5 串行识别、逐卡校验保存并清理未入库图片', async () =>
     itemScan: async fileID => {
       order.push(`scan:${fileID}`)
       await new Promise(resolve => setImmediate(resolve))
-      return { name: `衣物${fileID.at(-5)}`, category: '上衣', color: '白色', seasons: ['春秋'] }
+      return { name: `衣物${fileID.at(-5)}`, category: '衬衫', color: '白色', seasons: ['春秋'] }
     },
     addItem: async payload => {
       savedPayloads.push(payload)
@@ -80,7 +80,7 @@ test('F5 识别失败保留重试入口，保存失败按阶段单独重试，�
     uploadImage: async file => `cloud://${file}`,
     itemScan: async fileID => {
       if (fileID.endsWith('a.jpg') && scanFails-- > 0) throw Error('识别失败，请重试')
-      return { name: 'T恤', category: '上衣', color: '白色', seasons: ['春秋'] }
+      return { name: 'T恤', category: '长袖', color: '白色', seasons: ['春秋'] }
     },
     addItem: async payload => {
       if (payload.imageFileID.endsWith('a.jpg') && saveFails-- > 0) throw Error('保存失败，请重试')
@@ -187,4 +187,148 @@ test('F5 添加页切换入口和移除卡片清理票据', async () => {
   itemEditPage.onModeTap({ currentTarget: { dataset: { mode: 'single' } } })
   assert.equal(itemEditPage.data.mode, 'single')
   assert.deepEqual(titles, ['批量添加', '添加衣物'])
+})
+
+test('批量类别滚轮可手选保存全部 18 类，配饰保留袜子且非配饰清空子类', async () => {
+  const saved = []
+  const page = loadComponent('batch-panel', {
+    uploadImage: async () => 'cloud://manual',
+    itemScan: async () => ({}),
+    addItem: async data => saved.push(data),
+    listItems: async () => []
+  }, { chooseMedia: options => options.success({ tempFiles: [{ tempFilePath: '/tmp/manual.jpg' }] }) })
+  await page.attached()
+  assert.equal(page.data.categories.length, 18)
+  for (const category of page.data.categories) {
+    await page.onChooseImages()
+    const key = page.data.cards[0].key
+    page.onInput({ currentTarget: { dataset: { key, field: 'name' } }, detail: { value: category } })
+    page.openPicker({ currentTarget: { dataset: { key, target: 'category' } } })
+    assert.deepEqual(Array.from(page.data.picker.columns[0]), Array.from(page.data.categories))
+    page.onPickerConfirm({ detail: { values: [page.data.categories.indexOf(category)] } })
+    assert.equal(page.card(key).category, category)
+    if (category === '配饰') {
+      page.openPicker({ currentTarget: { dataset: { key, target: 'subcategory' } } })
+      page.onPickerConfirm({ detail: { values: [page.data.accessoryTypes.indexOf('袜子')] } })
+    } else {
+      page.patchCard(key, { subcategory: '帽子' })
+    }
+    page.openPicker({ currentTarget: { dataset: { key, target: 'category' } } })
+    assert.equal(page.data.picker.values[0], page.data.categories.indexOf(category))
+    page.onPickerCancel()
+    await page.onSaveAll()
+    assert.equal(page.data.cards.length, 0)
+    assert.equal(saved.at(-1).category, category)
+    assert.equal(saved.at(-1).subcategory, category === '配饰' ? '袜子' : '')
+  }
+  assert.equal(saved.length, 18)
+})
+
+test('批量九张上限保持，移除卡片后只开放剩余名额并清理票据', async () => {
+  const counts = [], removed = []
+  const page = loadComponent('batch-panel', {
+    uploadImage: async file => `cloud://${path.basename(file)}`,
+    itemScan: async () => ({ name: '衬衫', category: '衬衫' }),
+    removeImage: async fileID => removed.push(fileID)
+  }, { chooseMedia: options => {
+    counts.push(options.count)
+    options.success({ tempFiles: Array.from({ length: options.count }, (_, index) => ({ tempFilePath: `/tmp/${counts.length}-${index}.jpg` })) })
+  } })
+  await page.attached()
+  await page.onChooseImages()
+  assert.equal(page.data.cards.length, 9)
+  assert.equal(page.data.remainingSlots, 0)
+  await page.onChooseImages()
+  assert.deepEqual(counts, [9])
+  const first = page.data.cards[0]
+  await page.onRemoveCard({ currentTarget: { dataset: { key: first.key } } })
+  assert.deepEqual(removed, [first.imageFileID])
+  await page.onChooseImages()
+  assert.deepEqual(counts, [9, 1])
+  assert.equal(page.data.cards.length, 9)
+  assert.equal(new Set(page.data.cards.map(card => card.key)).size, 9)
+  await page.detached()
+  assert.equal(removed.length, 10)
+})
+
+test('批量识别保留在途手填字段，不把模型其他类别的子类填入配饰', async () => {
+  let finish
+  const page = loadComponent('batch-panel', {
+    uploadImage: async () => 'cloud://editing',
+    itemScan: () => new Promise(resolve => { finish = resolve })
+  }, { chooseMedia: options => options.success({ tempFiles: [{ tempFilePath: '/tmp/editing.jpg' }] }) })
+  await page.attached()
+  const scanning = page.onChooseImages()
+  await new Promise(resolve => setImmediate(resolve))
+  const key = page.data.cards[0].key
+  for (const [field, value] of [['name', '手填名称'], ['color', '自定义蓝'], ['price', '88']]) {
+    page.onInput({ currentTarget: { dataset: { key, field } }, detail: { value } })
+  }
+  page.onCategoryTap({ currentTarget: { dataset: { key, value: '配饰' } } })
+  page.onSizeTap({ currentTarget: { dataset: { key, value: 'M' } } })
+  page.onSeasonTap({ currentTarget: { dataset: { key, value: '冬' } } })
+  finish({ name: '模型名称', category: '衬衫', subcategory: '帽子', color: '白色', seasons: ['夏'], price: 1 })
+  await scanning
+  const card = page.card(key)
+  assert.equal(card.status, 'pending')
+  assert.equal(card.name, '手填名称')
+  assert.equal(card.category, '配饰')
+  assert.equal(card.subcategory, '')
+  assert.equal(card.color, '自定义蓝')
+  assert.equal(card.colorCustom, true)
+  assert.equal(card.price, '88')
+  assert.equal(card.size, 'M')
+  assert.deepEqual(Array.from(card.seasons), ['冬'])
+  assert.deepEqual(Array.from(card.seasonStates.filter(state => state.active), state => state.value), ['冬'])
+  for (const subcategory of page.data.accessoryTypes) {
+    page.openPicker({ currentTarget: { dataset: { key, target: 'subcategory' } } })
+    page.onPickerConfirm({ detail: { values: [page.data.accessoryTypes.indexOf(subcategory)] } })
+    assert.equal(page.validate(page.card(key)), '')
+    assert.equal(page.buildPayload(page.card(key)).subcategory, subcategory)
+  }
+  page.onCategoryTap({ currentTarget: { dataset: { key, value: '鞋' } } })
+  assert.equal(page.card(key).subcategory, '')
+  assert.equal(page.card(key).size, '')
+  page.openPicker({ currentTarget: { dataset: { key, target: 'shoeSize' } } })
+  page.onPickerConfirm({ detail: { values: [page.data.picker.columns[0].indexOf('42')] } })
+  assert.equal(page.card(key).size, '42')
+  page.onCategoryTap({ currentTarget: { dataset: { key, value: '长袖' } } })
+  assert.equal(page.card(key).size, '')
+  assert.equal(page.buildPayload(page.card(key)).subcategory, '')
+})
+
+test('批量回填拒绝旧类别及非法模型字段，保存前拦截非法类别和配饰子类', async () => {
+  let result, writes = 0
+  const page = loadComponent('batch-panel', {
+    uploadImage: async () => 'cloud://invalid',
+    itemScan: async () => result,
+    addItem: async () => { writes++ },
+    listItems: async () => [],
+    removeImage: async () => {}
+  }, { chooseMedia: options => options.success({ tempFiles: [{ tempFilePath: '/tmp/invalid.jpg' }] }) })
+  await page.attached()
+  for (const raw of [
+    { category: '上衣', name: {}, subcategory: '帽子', color: {}, seasons: '冬' },
+    { category: '下装', name: 1, subcategory: '帽子', color: '非法', seasons: [] },
+    null,
+    { category: '配饰', name: '模型配饰', subcategory: '手套', color: '非法', seasons: ['冬', '冬', '非法'] }
+  ]) {
+    result = raw
+    await page.onChooseImages()
+    const card = page.data.cards[0]
+    assert.equal(card.status, 'pending')
+    assert.equal(card.category, raw && raw.category === '配饰' ? '配饰' : '')
+    assert.equal(card.subcategory, '')
+    assert.equal(card.color, '')
+    assert.deepEqual(Array.from(card.seasons), raw && raw.category === '配饰' ? ['冬'] : [])
+    assert.equal(card.name, raw && raw.category === '配饰' ? '模型配饰' : '')
+    page.patchCard(card.key, { name: '手填名称', category: '上衣' })
+    await page.onSaveAll()
+    assert.equal(page.card(card.key).error, '请选择类别')
+    page.patchCard(card.key, { category: '配饰', subcategory: '手套' })
+    await page.onSaveAll()
+    assert.equal(page.card(card.key).error, '请选择配饰类型')
+    assert.equal(writes, 0)
+    await page.onRemoveCard({ currentTarget: { dataset: { key: card.key } } })
+  }
 })

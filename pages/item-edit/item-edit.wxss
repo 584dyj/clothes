@@ -115,8 +115,14 @@
 }
 
 .category-row {
+  width: 100%;
   flex-wrap: wrap;
-  row-gap: 16rpx;
+  gap: 16rpx;
+}
+
+.category-row .season-chip {
+  flex-shrink: 0;
+  margin-right: 0;
 }
 
 .category-chip {
@@ -124,6 +130,7 @@
   min-width: 112rpx;
   padding: 0 24rpx;
   box-sizing: border-box;
+  white-space: nowrap;
 }
 
 .textarea {

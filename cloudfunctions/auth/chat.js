@@ -1,7 +1,7 @@
 const crypto = require('crypto')
 const { readDoc } = require('./data')
 const { requestChat } = require('./ai-http')
-const { getInventory, STYLING_RULES } = require('./recommend')
+const { getInventory, getWardrobeVersion, INVENTORY_CACHE_VERSION, STYLING_RULES } = require('./recommend')
 
 // AI 对话助手：会话存 ai_chats（每会话一个文档，messages 数组），多轮上下文截断后发送。
 // 图片经上传票据校验后下载转 base64，以 image_url 发给多模态模型（deepseek-flash 支持图像）。
@@ -59,14 +59,21 @@ async function claimChatImage({ db, cloud, openid, imageFileID }) {
 }
 
 async function buildInventory(db, openid) {
-  try {
-    const { items } = await getInventory(db, openid)
-    const available = items.filter(item => item.category !== '挂件')
-    return available.length ? JSON.stringify(available) : '（衣橱暂无可搭配单品）'
-  } catch (e) {
-    console.error('读取衣橱画像失败', e)
-    return '（衣橱数据读取失败）'
+  const { items, clothesVersion, strategyVersion } = await getInventory(db, openid)
+  const available = items.filter(item => item.category !== '挂件')
+  return { inventoryText: available.length ? JSON.stringify(available) : '（衣橱暂无可搭配单品）',
+    clothesVersion, strategyVersion, contextVersion: `${strategyVersion}:${clothesVersion}` }
+}
+
+async function checkRequest(db, openid, token, contextVersion) {
+  const ref = db.collection('auth_attempts').doc(sha256('chat:' + openid))
+  const current = await readDoc(ref)
+  if (!current || current.requestToken !== token || (contextVersion && current.contextVersion !== contextVersion)) {
+    throw new Error('会话已失效，请重新发送')
   }
+  const clothesVersion = await getWardrobeVersion(db, openid)
+  if (current.contextVersion !== `${INVENTORY_CACHE_VERSION}:${clothesVersion}`) throw new Error('衣橱已更新，请重新发送')
+  return { ref, clothesVersion, strategyVersion: INVENTORY_CACHE_VERSION, contextVersion: current.contextVersion }
 }
 
 async function selectedItemOf(db, openid, itemId) {
@@ -74,12 +81,14 @@ async function selectedItemOf(db, openid, itemId) {
   if (!id) return null
   if (id.length > 100) throw new Error('所选衣物无效')
   const item = await readDoc(db.collection('clothes').doc(id))
-  const category = item && ({ '裤子': '下装', '外套': '上衣', '裙子': '下装', '鞋子': '鞋' }[item.category] || item.category)
-  if (!item || item._openid !== openid || category === '挂件') throw new Error('所选衣物已删除或无权使用')
+  if (!item || item._openid !== openid || item.category === '挂件') throw new Error('所选衣物已删除或无权使用')
+  // 一级「其他」仅作基础记录，不能作为指定单品进入模型上下文
+  if (item.category === '其他') throw new Error('「其他」仅作基础记录，不参与穿搭建议')
   return {
     id: item._id,
     name: String(item.name || '').slice(0, 60),
-    category,
+    category: String(item.category || '').slice(0, 20),
+    subcategory: item.category === '配饰' ? String(item.subcategory || '').slice(0, 30) : '',
     size: String(item.size || '').slice(0, 20),
     color: String(item.color || '').slice(0, 30),
     brand: String(item.brand || '').slice(0, 30),
@@ -105,7 +114,9 @@ ${STYLING_RULES}
 衣橱画像：${inventoryText}`
 }
 
-function historyMessage(msg) {
+function historyMessage(msg, contextVersion) {
+  // 普通编辑也隔离旧上下文，保留原消息供历史展示。
+  if (msg.contextVersion !== contextVersion) return null
   const text = typeof msg.text === 'string' ? msg.text.trim() : ''
   if (!text) return null
   return { role: msg.role === 'assistant' ? 'assistant' : 'user', content: text }
@@ -135,6 +146,7 @@ async function chatStart({ db, openid, event }, env = process.env) {
   const chatId = typeof event.chatId === 'string' ? event.chatId.trim().slice(0, 100) : ''
   if (!text || event.imageFileID) throw new Error('流式对话只接受文字消息')
   if (!env.AI_API_KEY || !env.CHAT_STREAM_SECRET || env.CHAT_STREAM_SECRET.length < 32) throw new Error('流式对话尚未配置')
+  const snapshot = await buildInventory(db, openid)
   const selectedItem = await selectedItemOf(db, openid, event.itemId)
   const now = Date.now()
   const recordId = sha256('chat:' + openid)
@@ -143,14 +155,16 @@ async function chatStart({ db, openid, event }, env = process.env) {
     const ref = tx.collection('auth_attempts').doc(recordId)
     const current = await readDoc(ref)
     if (current && new Date(current.busyUntil).getTime() > now) throw new Error('正在生成回答，请稍候')
-    const data = { key: recordId, action: 'chat', requestToken, busyUntil: new Date(now + BUSY_MS), streamUsed: false }
+    const data = { key: recordId, action: 'chat', requestToken, contextVersion: snapshot.contextVersion,
+      busyUntil: new Date(now + BUSY_MS), streamUsed: false }
     if (current) await ref.update({ data })
     else await ref.set({ data })
   })
   try {
-    const userMsg = { role: 'user', text, imageFileID: '', createdAt: new Date(now) }
+    const userMsg = { role: 'user', text, imageFileID: '', contextVersion: snapshot.contextVersion, createdAt: new Date(now) }
     let chat
     await db.runTransaction(async tx => {
+      await checkRequest(tx, openid, requestToken, snapshot.contextVersion)
       if (chatId) {
         const ref = tx.collection('ai_chats').doc(chatId)
         const current = await readDoc(ref)
@@ -167,17 +181,18 @@ async function chatStart({ db, openid, event }, env = process.env) {
         chat = { _id: id, title, messages }
       }
     })
-    const inventoryText = await buildInventory(db, openid)
-    const history = chat.messages.slice(0, -1).slice(-MAX_HISTORY).map(historyMessage).filter(Boolean)
+    await checkRequest(db, openid, requestToken, snapshot.contextVersion)
+    const history = chat.messages.slice(0, -1).slice(-MAX_HISTORY).map(message => historyMessage(message, snapshot.contextVersion)).filter(Boolean)
     // 有效期从签发时刻起算：不能用函数入口时间作基准。
     const ticket = signStream({ openid, chatId: chat._id, requestToken, expiresAt: Date.now() + BUSY_MS,
       request: { base: env.AI_API_BASE || 'https://api.deepseek.com', model: env.AI_MODEL || 'deepseek-flash',
         json: false,
         disableThinking: env.AI_THINKING !== '1', maxTokens: env.AI_THINKING === '1' ? 1600 : 800,
-        messages: [{ role: 'system', content: systemPrompt(inventoryText) },
+        messages: [{ role: 'system', content: systemPrompt(snapshot.inventoryText) },
           ...history, { role: 'user', content: withSelectedItem(text, selectedItem) }] }
     }, env.CHAT_STREAM_SECRET)
-    return { success: true, chatId: chat._id, title: chat.title, ticket }
+    return { success: true, chatId: chat._id, title: chat.title, ticket,
+      clothesVersion: snapshot.clothesVersion, strategyVersion: snapshot.strategyVersion }
   } catch (e) {
     await releaseBusy(db, recordId, requestToken)
     throw e
@@ -189,20 +204,23 @@ async function chatFinish({ db, openid, event }, env = process.env) {
   const result = readStream(event.proof, env.CHAT_STREAM_SECRET)
   const replyText = typeof result.replyText === 'string' ? result.replyText.trim().slice(0, MAX_TEXT) : ''
   if (result.openid !== openid || !result.chatId || !result.requestToken || !replyText) throw new Error('流式回复无效')
-  let messages, title
-  await db.runTransaction(async tx => {
-    const lock = tx.collection('auth_attempts').doc(sha256('chat:' + openid))
-    const currentLock = await readDoc(lock)
-    if (!currentLock || currentLock.requestToken !== result.requestToken) throw new Error('流式会话已失效')
-    const ref = tx.collection('ai_chats').doc(result.chatId)
-    const chat = await readDoc(ref)
-    if (!chat || chat._openid !== openid || chat.messages?.at(-1)?.role !== 'user') throw new Error('会话不存在或无权访问')
-    messages = [...chat.messages, { role: 'assistant', text: replyText, createdAt: new Date() }].slice(-MAX_STORED)
-    title = chat.title
-    await ref.update({ data: { messages, updatedAt: new Date() } })
-    await lock.update({ data: { busyUntil: null, requestToken: '' } })
-  })
-  return { success: true, chatId: result.chatId, title, messages }
+  try {
+    return await db.runTransaction(async tx => {
+      const current = await checkRequest(tx, openid, result.requestToken)
+      const ref = tx.collection('ai_chats').doc(result.chatId)
+      const chat = await readDoc(ref)
+      if (!chat || chat._openid !== openid || chat.messages?.at(-1)?.role !== 'user') throw new Error('会话不存在或无权访问')
+      if (chat.messages.at(-1).contextVersion !== current.contextVersion) throw new Error('衣橱已更新，请重新发送')
+      const messages = [...chat.messages, { role: 'assistant', text: replyText, contextVersion: current.contextVersion, createdAt: new Date() }].slice(-MAX_STORED)
+      await ref.update({ data: { messages, updatedAt: new Date() } })
+      await current.ref.update({ data: { busyUntil: null, requestToken: '' } })
+      return { success: true, chatId: result.chatId, title: chat.title, messages,
+        clothesVersion: current.clothesVersion, strategyVersion: current.strategyVersion }
+    })
+  } catch (e) {
+    await releaseBusy(db, sha256('chat:' + openid), result.requestToken)
+    throw e
+  }
 }
 
 async function chatCancel({ db, openid, event }, env = process.env) {
@@ -225,6 +243,7 @@ async function chatSend(context, request = requestChat, env = process.env) {
   const model = env.AI_MODEL || 'deepseek-flash'
   const key = env.AI_API_KEY
   if (!key) throw new Error('AI 助手尚未配置')
+  const snapshot = await buildInventory(db, openid)
   const selectedItem = await selectedItemOf(db, openid, event.itemId)
 
   const now = Date.now()
@@ -236,7 +255,7 @@ async function chatSend(context, request = requestChat, env = process.env) {
     const ref = tx.collection('auth_attempts').doc(recordId)
     const current = await readDoc(ref)
     if (current && new Date(current.busyUntil).getTime() > now) throw new Error('正在生成回答，请稍候')
-    const data = { key: recordId, action: 'chat', requestToken: token,
+    const data = { key: recordId, action: 'chat', requestToken: token, contextVersion: snapshot.contextVersion,
       busyUntil: new Date(now + BUSY_MS), streamUsed: false }
     if (current) await ref.update({ data })
     else await ref.set({ data })
@@ -246,9 +265,10 @@ async function chatSend(context, request = requestChat, env = process.env) {
     const imageData = imageFileID ? await claimChatImage({ db, cloud, openid, imageFileID }) : null
 
     // 会话归属校验 + 追加用户消息（模型失败也保留，可重试）
-    const userMsg = { role: 'user', text, imageFileID, createdAt: new Date(now) }
+    const userMsg = { role: 'user', text, imageFileID, contextVersion: snapshot.contextVersion, createdAt: new Date(now) }
     let chat
     await db.runTransaction(async tx => {
+      await checkRequest(tx, openid, token, snapshot.contextVersion)
       if (chatId) {
         const ref = tx.collection('ai_chats').doc(chatId)
         const current = await readDoc(ref)
@@ -268,29 +288,31 @@ async function chatSend(context, request = requestChat, env = process.env) {
     })
 
     // 模型调用：最近历史 + 本次输入（图片为 image_url）
-    const inventoryText = await buildInventory(db, openid)
-    const history = chat.messages.slice(0, -1).slice(-MAX_HISTORY).map(historyMessage).filter(Boolean)
+    await checkRequest(db, openid, token, snapshot.contextVersion)
+    const history = chat.messages.slice(0, -1).slice(-MAX_HISTORY).map(message => historyMessage(message, snapshot.contextVersion)).filter(Boolean)
     const currentContent = imageData
       ? [{ type: 'text', text: text || '帮我看一下这件衣服，并给我搭配建议' }, { type: 'image_url', image_url: { url: imageData } }]
       : withSelectedItem(text || '请根据我的衣橱给穿搭建议', selectedItem)
     const response = await request({
       base, key, model, json: false, disableThinking: env.AI_THINKING !== '1', maxTokens: env.AI_THINKING === '1' ? 1600 : 800,
-      messages: [{ role: 'system', content: systemPrompt(inventoryText) }, ...history,
+      messages: [{ role: 'system', content: systemPrompt(snapshot.inventoryText) }, ...history,
         { role: 'user', content: currentContent }]
     })
     const replyText = cleanReply(response).slice(0, MAX_TEXT)
 
     // 追加助手回复，返回完整会话
     const messages = await db.runTransaction(async tx => {
+      const lock = await checkRequest(tx, openid, token, snapshot.contextVersion)
       const ref = tx.collection('ai_chats').doc(chat._id)
       const current = await readDoc(ref)
-      const base = current && current._openid === openid ? current : chat
-      const merged = [...(base.messages || []), { role: 'assistant', text: replyText, createdAt: new Date() }].slice(-MAX_STORED)
+      if (!current || current._openid !== openid) throw new Error('会话不存在或无权访问')
+      const merged = [...(current.messages || []), { role: 'assistant', text: replyText, contextVersion: snapshot.contextVersion, createdAt: new Date() }].slice(-MAX_STORED)
       await ref.update({ data: { messages: merged, updatedAt: new Date() } })
+      await lock.ref.update({ data: { busyUntil: null, requestToken: '' } })
       return merged
     })
-    await releaseBusy(db, recordId, token)
-    return { success: true, chatId: chat._id, title: chat.title, messages }
+    return { success: true, chatId: chat._id, title: chat.title, messages,
+      clothesVersion: snapshot.clothesVersion, strategyVersion: snapshot.strategyVersion }
   } catch (e) {
     await releaseBusy(db, recordId, token)
     throw e

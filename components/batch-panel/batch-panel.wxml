@@ -35,13 +35,9 @@
             <text class="label">名称</text>
             <input class="input" value="{{item.name}}" placeholder="请输入名称" data-key="{{item.key}}" data-field="name" bindinput="onInput" />
           </view>
-          <view class="field field-column">
+          <view class="field">
             <text class="label">类别</text>
-            <view class="chip-row">
-              <view wx:for="{{categories}}" wx:key="*this" wx:for-item="option"
-                class="chip {{item.category === option ? 'chip-active' : ''}}"
-                data-key="{{item.key}}" data-value="{{option}}" bindtap="onCategoryTap">{{option}}</view>
-            </view>
+            <view class="picker-value {{item.category ? '' : 'placeholder'}}" data-key="{{item.key}}" data-target="category" bindtap="openPicker">{{item.category || '请选择'}}</view>
           </view>
           <view wx:if="{{item.category === '配饰'}}" class="field">
             <text class="label">配饰类型</text>

@@ -1,5 +1,6 @@
 const db = require('../../utils/db')
 const auth = require('../../utils/auth')
+const { cleanScanFields } = require('../../utils/item-fields')
 const app = getApp()
 
 const SHOE_SIZES = Array.from({ length: 21 }, (_, index) => String(index + 30))
@@ -160,16 +161,16 @@ Component({
           }
           this.patchCard(key, { imageFileID: fileID })
         }
-        const result = await db.itemScan(fileID)
+        const result = cleanScanFields(await db.itemScan(fileID), app.globalData)
         if (this._unloaded) return
         const current = this.card(key)
         if (!current) return
-        const category = current.category || (this.data.categories.includes(result.category) ? result.category : '')
-        const seasons = current.seasons.length ? current.seasons : (result.seasons || []).filter(value => this.data.seasons.includes(value))
+        const category = current.category || result.category
+        const seasons = current.seasons.length ? current.seasons : result.seasons
         this.patchCard(key, {
           name: current.name || result.name || '',
           category,
-          subcategory: current.subcategory || (category === '配饰' && this.data.accessoryTypes.includes(result.subcategory) ? result.subcategory : ''),
+          subcategory: category === '配饰' ? current.subcategory || result.subcategory : '',
           color: current.color || result.color || '',
           colorCustom: !!(current.color || result.color) && !this.data.colors.includes(current.color || result.color),
           seasons,
@@ -215,7 +216,7 @@ Component({
       const sizes = value === '鞋' ? this.data.shoeSizes : this.data.sizes
       this.patchCard(key, {
         category: value,
-        subcategory: value === '配饰' ? card.subcategory : '',
+        subcategory: value === '配饰' && card.category === '配饰' && this.data.accessoryTypes.includes(card.subcategory) ? card.subcategory : '',
         size: sizes.includes(card.size) ? card.size : '',
         error: ''
       })
@@ -241,7 +242,9 @@ Component({
       const card = this.card(key)
       if (!card) return
       let title, options, current
-      if (target === 'subcategory') {
+      if (target === 'category') {
+        title = '选择类别'; options = this.data.categories; current = card.category
+      } else if (target === 'subcategory') {
         title = '选择配饰类型'; options = this.data.accessoryTypes; current = card.subcategory
       } else if (target === 'shoeSize') {
         title = '选择鞋码'; options = ['不填写'].concat(this.data.shoeSizes); current = card.size || '37'
@@ -256,6 +259,11 @@ Component({
     onPickerConfirm(e) {
       const { picker } = this.data
       const value = picker.columns[0][e.detail.values[0]]
+      if (picker.target === 'category') {
+        this.onCategoryTap({ currentTarget: { dataset: { key: picker.key, value } } })
+        this.setData({ 'picker.show': false })
+        return
+      }
       const patch = { error: '' }
       if (picker.target === 'subcategory') patch.subcategory = value
       if (picker.target === 'shoeSize') patch.size = value === '不填写' ? '' : value
@@ -273,8 +281,8 @@ Component({
     validate(card) {
       if (!card.imageFileID) return '请先重试图片上传'
       if (!(card.name || '').trim()) return '请填写名称'
-      if (!card.category) return '请选择类别'
-      if (card.category === '配饰' && !card.subcategory) return '请选择配饰类型'
+      if (!this.data.categories.includes(card.category)) return '请选择类别'
+      if (card.category === '配饰' && !this.data.accessoryTypes.includes(card.subcategory)) return '请选择配饰类型'
       const price = card.price === '' || card.price === undefined ? 0 : Number(card.price)
       if (!Number.isFinite(price) || price < 0) return '请输入有效价格'
       return ''

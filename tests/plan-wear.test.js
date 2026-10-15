@@ -201,6 +201,41 @@ test('统计页穿着频次与闲置榜按记录计算，删除单品不计入',
   assert.ok(page.data.idleRank[0].days > 0)
 })
 
+test('穿着页按 18 类分组选品，其他与配饰袜子跨分类选择不丢失并保存', async () => {
+  const saved = []
+  const page = loadPage('wear-edit', {
+    listItems: async () => [
+      { _id: 'shirt', name: '白衬衫', category: '衬衫' },
+      { _id: 'socks', name: '棉袜', category: '配饰', subcategory: '袜子' },
+      { _id: 'misc', name: '摆件', category: '其他' },
+      { _id: 'dress', name: '连体裙', category: '连衣裙' }
+    ],
+    listOutfits: async () => [],
+    listWearRecords: async () => [],
+    addWearRecord: async data => { saved.push(data); return 'new' }
+  }, { showToast() {} })
+  await page.onLoad({ date: '2026-10-15' })
+  const { CATEGORIES } = require('../cloudfunctions/auth/categories')
+  assert.deepEqual(Array.from(page.data.categories), ['全部', '已选', ...CATEGORIES])
+
+  const tap = value => page.onCategoryTap({ currentTarget: { dataset: { value } } })
+  const toggle = id => page.onItemToggle({ currentTarget: { dataset: { id } } })
+  tap('配饰')
+  assert.deepEqual(page.data.viewItems.map(item => item._id), ['socks'])
+  toggle('socks')
+  tap('其他')
+  assert.deepEqual(page.data.viewItems.map(item => item._id), ['misc'])
+  toggle('misc')
+  tap('衬衫')
+  toggle('shirt')
+  tap('已选')
+  assert.deepEqual(page.data.viewItems.map(item => item._id).sort(), ['misc', 'shirt', 'socks'])
+  assert.ok(page.data.viewItems.every(item => item.selected))
+  await page.onSave()
+  assert.equal(saved.length, 1)
+  assert.deepEqual(Array.from(saved[0].itemIds).sort(), ['misc', 'shirt', 'socks'])
+})
+
 test('穿着编辑加载已有记录并展示件数', async () => {
   const page = loadPage('wear-edit', {
     listItems: async () => [{ _id: 'a', name: '衬衫', category: '上衣' }, { _id: 'b', name: '长裤', category: '下装' }],
@@ -216,4 +251,78 @@ test('穿着编辑加载已有记录并展示件数', async () => {
   assert.equal(page.data.selectedIds.length, 1)
   const selected = page.data.viewItems.find(item => item._id === 'a')
   assert.equal(selected.selected, true)
+})
+
+test('原挂件连衣裙及历史关联读取保持，其他可保存手工关联且全部计入月历', async () => {
+  const date = thisMonth(new Date().getDate())
+  const original = {
+    clothes: [
+      { _id: 'pendant', name: '原挂件', category: '挂件', price: 9.9, imageFileID: `cloud://env/wardrobe/${'1'.repeat(32)}.jpg` },
+      { _id: 'dress', name: '原连衣裙', category: '连衣裙', price: 199.99, imageFileID: `cloud://env/wardrobe/${'2'.repeat(32)}.jpg` }
+    ].map(item => ({ ...item, _openid: 'openid-1', purchaseDate: date, seasons: ['春秋'], subcategory: '' })),
+    outfits: [{ _id: 'look', _openid: 'openid-1', name: '原穿搭', itemIds: ['dress', 'pendant'] }],
+    outfit_plans: [{ _id: 'plan', _openid: 'openid-1', date, outfitId: 'look', note: '原计划' }],
+    wear_records: [{ _id: 'wear', _openid: 'openid-1', date, outfitId: 'look', itemIds: ['dress', 'pendant'], note: '原实穿' }],
+    expenses: [
+      { _id: 'dress-care', _openid: 'openid-1', category: '洗护', date, itemId: 'dress', amount: 20.05 },
+      { _id: 'pendant-care', _openid: 'openid-1', category: '修改', date, itemId: 'pendant', amount: 5.01 }
+    ]
+  }
+  const { loadCloud } = require('./support/cloud')
+  const cloud = loadCloud({ ...structuredClone(original), users: [{ _id: 'user', openid: 'openid-1', username: 'alice' }] })
+  const client = { exports: {} }
+  require('node:vm').runInNewContext(require('node:fs').readFileSync(require.resolve('../utils/db'), 'utf8'), {
+    module: client, wx: { cloud: { callFunction: async ({ data }) => ({ result: await cloud.main(data) }) } }, console, Date
+  })
+  const db = client.exports
+  assert.deepEqual(structuredClone(await db.listItems()), original.clothes)
+
+  const miscId = await db.addItem({ name: '基础其他', category: '其他', seasons: [], price: 30.12, purchaseDate: date })
+  const itemIds = ['dress', miscId, 'pendant']
+  const outfitId = await db.addOutfit({ name: '手工组合', itemIds })
+  const planId = await db.addPlan({ date, outfitId })
+  const wearId = await db.addWearRecord({ date, outfitId, itemIds })
+  const expenseId = await db.addExpense({ category: '其他', date, itemId: miscId, amount: 3.03 })
+
+  const gallery = loadPage('outfits', db)
+  await gallery.loadData()
+  const cards = [...gallery.data.left, ...gallery.data.right]
+  const legacy = cards.find(outfit => outfit._id === 'look')
+  assert.equal(legacy.count, 2)
+  assert.deepEqual(Array.from(legacy.thumbs, item => item._id), ['dress', 'pendant'])
+  assert.equal(legacy.coverFileID, original.clothes[1].imageFileID)
+  assert.equal(cards.find(outfit => outfit._id === outfitId).count, 3)
+
+  const plan = loadPage('plan-edit', db)
+  await plan.onLoad({ id: 'plan' })
+  assert.equal(plan.data.outfitId, 'look')
+  assert.equal(plan.data.outfitName, '原穿搭')
+  const wear = loadPage('wear-edit', db)
+  await wear.onLoad({ id: 'wear' })
+  assert.deepEqual(Array.from(wear.data.selectedIds), original.wear_records[0].itemIds)
+  assert.equal(wear.data.outfitId, 'look')
+  for (const expense of original.expenses) {
+    const ledger = loadPage('expense-edit', db)
+    await ledger.onLoad({ id: expense._id })
+    assert.equal(ledger.data.itemId, expense.itemId)
+    assert.equal(ledger.data.itemName, original.clothes.find(item => item._id === expense.itemId).name)
+    assert.equal(Number(ledger.data.amount), expense.amount)
+  }
+
+  const calendar = loadPage('calendar', db)
+  calendar.onLoad()
+  await calendar.loadData()
+  calendar.onDayTap({ currentTarget: { dataset: { date } } })
+  assert.equal(calendar.data.selectedTotal, 268.1)
+  assert.equal(calendar.data.monthTotal, 268.1)
+  assert.equal(calendar.data.dayItems.length, 3)
+  assert.equal(calendar.data.dayPlans.find(row => row._id === 'plan').outfitName, '原穿搭')
+  assert.equal(calendar.data.dayWears.find(row => row._id === 'wear').itemCount, 2)
+  assert.equal(calendar.data.dayPlans.find(row => row._id === planId).outfitId, outfitId)
+  assert.deepEqual(Array.from(calendar.data.dayWears.find(row => row._id === wearId).itemIds), itemIds)
+  assert.equal(calendar.data.dayExpenses.find(row => row._id === expenseId).itemId, miscId)
+  for (const [collection, rows] of Object.entries(original)) {
+    for (const row of rows) assert.deepEqual(cloud.records[collection].find(current => current._id === row._id), row)
+  }
+  assert.deepEqual(cloud.deletedFiles, [])
 })

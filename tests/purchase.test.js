@@ -4,8 +4,8 @@ const purchase = require('../cloudfunctions/auth/purchase')
 const { loadCloud } = require('./support/cloud')
 const { loadPage } = require('./support/page')
 
-const candidate = patch => ({ category: '上衣', subcategory: '', color: '蓝色', seasons: ['夏'], price: 199, ...patch })
-const item = (_id, patch = {}) => ({ _id, _openid: 'openid-1', name: '蓝色短袖', category: '上衣', subcategory: '',
+const candidate = patch => ({ category: '短袖', subcategory: '', color: '蓝色', seasons: ['夏'], price: 199, ...patch })
+const item = (_id, patch = {}) => ({ _id, _openid: 'openid-1', name: '蓝色短袖', category: '短袖', subcategory: '',
   color: '蓝色', seasons: ['夏'], price: 99, purchaseDate: '', ...patch })
 const fileID = number => `cloud://env/wardrobe/${number.toString(16).padStart(32, '0')}.jpg`
 const ticket = (number, patch = {}) => ({ _id: number.toString(16).padStart(32, '0'), _openid: 'openid-1',
@@ -14,12 +14,12 @@ const visualResponse = value => ({ choices: [{ finish_reason: 'stop', message: {
 
 test('购买评估按重复、缺口和预算给出确定结果', () => {
   const now = new Date('2026-10-07T08:00:00Z')
-  const duplicate = purchase.evaluate(candidate({}), [item('top'), item('pants', { category: '下装', color: '黑色' })], [], [], now)
+  const duplicate = purchase.evaluate(candidate({}), [item('top'), item('pants', { category: '长裤', color: '黑色' })], [], [], now)
   assert.equal(duplicate.verdict.code, 'skip')
   assert.equal(duplicate.duplicateRisk.level, 'high')
   assert.equal(duplicate.similarItems[0].wearCount90, 0)
 
-  const fillsGap = purchase.evaluate(candidate({ color: '白色' }), [item('pants', { category: '下装', color: '黑色' }),
+  const fillsGap = purchase.evaluate(candidate({ color: '白色' }), [item('pants', { category: '长裤', color: '黑色' }),
     item('shoes', { category: '鞋', color: '白色' })], [], [], now)
   assert.equal(fillsGap.verdict.code, 'buy')
   assert.deepEqual(fillsGap.filledGaps, ['夏季缺少上衣'])
@@ -46,7 +46,7 @@ test('购买评估与视觉复核需要登录，规则评估只读取本人数�
 })
 
 test('规则结果生成后可调用模型补充自然语言建议，模型失败不影响评估', async () => {
-  const cloud = loadCloud({ clothes: [item('pants', { category: '下装', color: '黑色' })] })
+  const cloud = loadCloud({ clothes: [item('pants', { category: '长裤', color: '黑色' })] })
   const request = async args => {
     assert.equal(args.base, 'https://api.deepseek.com')
     assert.equal(args.key, 'test-key')
@@ -73,7 +73,7 @@ test('购买评估页校验输入并展示服务端结果', async () => {
   page.onModeTap({ currentTarget: { dataset: { mode: 'purchase' } } })
   await page.onPurchaseSubmit()
   assert.match(page.data.purchaseError, /分类/)
-  page.onPurchaseCategoryTap({ currentTarget: { dataset: { value: '上衣' } } })
+  page.onPurchaseCategoryTap({ currentTarget: { dataset: { value: '衬衫' } } })
   page.onPurchaseColorChange({ detail: { value: 11 } })
   page.onPurchaseSeasonTap({ currentTarget: { dataset: { value: '夏' } } })
   page.onPurchaseFieldInput({ currentTarget: { dataset: { field: 'price' } }, detail: { value: '199' } })
@@ -90,7 +90,7 @@ test('购买评估选图后自动识别，仅填空字段并保留图片供视�
     uploadImage: async path => { calls.push(['upload', path]); return 'cloud://env/wardrobe/top.jpg' },
     itemScan: async fileID => {
       calls.push(['scan', fileID])
-      return { name: '白衬衫', category: '上衣', subcategory: '', color: '白色', seasons: ['夏'], brand: '不应填入' }
+      return { name: '白衬衫', category: '衬衫', subcategory: '', color: '白色', seasons: ['夏'], brand: '不应填入' }
     },
     removeImage: async fileID => { calls.push(['remove', fileID]); return true }
   }, { showToast: options => toasts.push(options.title) })
@@ -104,7 +104,7 @@ test('购买评估选图后自动识别，仅填空字段并保留图片供视�
     ['choose', 'camera'], ['upload', '/tmp/top.jpg'], ['scan', 'cloud://env/wardrobe/top.jpg']
   ])
   assert.equal(page.data.purchaseForm.name, '已有名称')
-  assert.equal(page.data.purchaseForm.category, '上衣')
+  assert.equal(page.data.purchaseForm.category, '衬衫')
   assert.equal(page.data.purchaseForm.color, '蓝色')
   assert.deepEqual(Array.from(page.data.purchaseForm.seasons), ['夏'])
   assert.equal(page.data.purchaseForm.price, '199')
@@ -164,7 +164,7 @@ test('视觉复核限制图片数量并按一级范围合成结论', async () =>
   const clothes = []
   for (let index = 0; index < 6; index++) clothes.push(item(`similar-${index}`, { imageFileID: fileID(index + 2) }))
   for (let index = 0; index < 3; index++) clothes.push(item(`match-${index}`, {
-    category: index === 2 ? '鞋' : '下装', color: '黑色', imageFileID: fileID(index + 20)
+    category: index === 2 ? '鞋' : '长裤', color: '黑色', imageFileID: fileID(index + 20)
   }))
   const cloud = loadCloud({ clothes, upload_tickets: [ticket(1)] })
   let requestArgs
@@ -199,7 +199,7 @@ test('视觉复核非法调整归零、端点钳制且预算超支不可推翻',
 
 test('视觉复核校验本人票据，关联图片单张失败时跳过', async () => {
   const cloud = loadCloud({
-    clothes: [item('similar', { imageFileID: fileID(2) }), item('match', { category: '下装', color: '黑色', imageFileID: fileID(3) })],
+    clothes: [item('similar', { imageFileID: fileID(2) }), item('match', { category: '长裤', color: '黑色', imageFileID: fileID(3) })],
     upload_tickets: [ticket(1)]
   })
   cloud.faults.download = async id => {
@@ -252,7 +252,7 @@ test('客户端仅在有照片时异步复核，失败后保留规则结果', as
     removeImage: async fileID => { removedFileID = fileID }
   })
   page.onModeTap({ currentTarget: { dataset: { mode: 'purchase' } } })
-  page.setData({ purchaseForm: candidate({}) })
+  page.setData({ purchaseForm: candidate({ category: '衬衫' }) })
   await page.onPurchaseSubmit()
   assert.equal(visualCalls, 0)
   assert.equal(page.data.purchaseResult, rules)
@@ -268,7 +268,7 @@ test('客户端仅在有照片时异步复核，失败后保留规则结果', as
   assert.equal(page.data.purchaseResult, rules)
 
   page.onPurchaseEdit()
-  assert.deepEqual(page.data.purchaseForm, candidate({}))
+  assert.deepEqual(page.data.purchaseForm, candidate({ category: '衬衫' }))
   assert.equal(page.data.purchaseImagePath, '/tmp/top.jpg')
   assert.equal(page.data.purchaseScanFileID, fileID(1))
 
@@ -286,4 +286,149 @@ test('客户端仅在有照片时异步复核，失败后保留规则结果', as
   assert.match(markup, /规则基准/)
   assert.match(markup, /purchaseImagePath \|\| purchaseScanFileID/)
   assert.match(markup, /onPurchaseRestart/)
+})
+
+test('购买评估拦截一级其他候选，非法类别与配饰子类校验严格', () => {
+  assert.throws(() => purchase.validate(candidate({ category: '其他' })), /不参与购买评估/)
+  assert.throws(() => purchase.validate(candidate({ category: '上衣' })), /有效分类/)
+  assert.throws(() => purchase.validate(candidate({ category: '配饰', subcategory: '' })), /配饰类型/)
+  assert.throws(() => purchase.validate(candidate({ category: '配饰', subcategory: '手套' })), /配饰类型/)
+  assert.equal(purchase.validate(candidate({ category: '配饰', subcategory: '袜子' })).subcategory, '袜子')
+  assert.equal(purchase.validate(candidate({ category: '衬衫', subcategory: '袜子' })).subcategory, '')
+})
+
+test('其他衣物计入预算但不参与相似互补与缺口，袜子按细类子类判重，家居服无结构互补', () => {
+  const now = new Date('2026-10-07T08:00:00Z')
+  const wardrobe = [
+    item('misc', { category: '其他', purchaseDate: '2026-10-02', price: 500 }),
+    item('socks', { category: '配饰', subcategory: '袜子', name: '蓝袜' }),
+    item('hat', { category: '配饰', subcategory: '帽子', name: '蓝帽' }),
+    item('pants', { category: '长裤', color: '黑色' })
+  ]
+  const result = purchase.evaluate(candidate({}), wardrobe, [], [], now)
+  assert.equal(result.duplicateRisk.similarCount, 0)
+  assert.equal(result.spending.monthSpent, 500)
+
+  const socksResult = purchase.evaluate(candidate({ category: '配饰', subcategory: '袜子' }), wardrobe, [], [], now)
+  assert.equal(socksResult.duplicateRisk.similarCount, 1)
+  assert.deepEqual(socksResult.similarItems.map(row => row.id), ['socks'])
+  assert.equal(socksResult.matchCount, null)
+
+  const homeResult = purchase.evaluate(candidate({ category: '家居服' }), wardrobe, [], [], now)
+  assert.equal(homeResult.matchCount, null)
+  assert.deepEqual(homeResult.filledGaps, [])
+})
+
+test('购买换图识别为其他保留手选类别，重新确认类别前拦截规则及视觉评估', async () => {
+  let assessments = 0, visuals = 0
+  const page = loadPage('assistant', {
+    chooseImage: async () => '/tmp/other.jpg', uploadImage: async () => fileID(2), removeImage: async () => true,
+    itemScan: async () => ({ name: '摆件', category: '其他', color: '白色', seasons: ['夏'] }),
+    purchaseAssess: async () => { assessments++; return { marker: 'rules' } },
+    purchaseVisual: async () => { visuals++; return { marker: 'visual' } }
+  })
+  page.setData({ activeMode: 'purchase', purchaseForm: candidate({ name: '手选衬衫', category: '衬衫' }), purchaseScanFileID: fileID(1) })
+  await page.onPurchaseChooseAlbum()
+  assert.equal(page.data.purchaseForm.category, '衬衫')
+  assert.equal(page.data.purchaseForm.name, '手选衬衫')
+  await page.onPurchaseSubmit()
+  await page.startPurchaseVisual(page.data.purchaseForm, fileID(2))
+  assert.equal(assessments, 0)
+  assert.equal(visuals, 0)
+  assert.match(page.data.purchaseError, /其他.*基础记录|基础记录.*其他/)
+
+  page.onPurchaseFieldInput({ currentTarget: { dataset: { field: 'name' } }, detail: { value: '改名' } })
+  page.onPurchaseFieldInput({ currentTarget: { dataset: { field: 'price' } }, detail: { value: '299' } })
+  await page.onPurchaseSubmit()
+  assert.equal(assessments, 0)
+  page.onPurchaseCategoryTap({ currentTarget: { dataset: { value: '其他' } } })
+  await page.onPurchaseSubmit()
+  assert.equal(assessments, 0)
+
+  page.onPurchaseCategoryTap({ currentTarget: { dataset: { value: '衬衫' } } })
+  await page.onPurchaseSubmit()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(assessments, 1)
+  assert.equal(visuals, 1)
+
+  page.onPurchaseEdit()
+  await page.onPurchaseScanPhoto()
+  await page.onPurchaseRestart()
+  page.setData({ purchaseForm: candidate({ name: '重新填写' }) })
+  await page.onPurchaseSubmit()
+  assert.equal(assessments, 2)
+})
+
+test('规则评估期间识别为其他后，旧成功和失败均不回填或启动视觉复核', async () => {
+  for (const fails of [false, true]) {
+    let settle, visuals = 0
+    const page = loadPage('assistant', {
+      purchaseAssess: () => new Promise((resolve, reject) => { settle = () => fails ? reject(Error('旧评估失败')) : resolve({ marker: 'old' }) }),
+      purchaseVisual: async () => { visuals++; return { marker: 'old-visual' } },
+      itemScan: async () => ({ category: '其他' })
+    })
+    page.setData({ activeMode: 'purchase', purchaseForm: candidate({ name: '旧候选' }), purchaseScanFileID: fileID(1) })
+    const request = page.onPurchaseSubmit()
+    await page.onPurchaseScanPhoto()
+    const error = page.data.purchaseError
+    assert.match(error, /其他/)
+    settle()
+    await request
+    assert.equal(page.data.purchaseResult, null)
+    assert.equal(page.data.purchaseError, error)
+    assert.equal(page.data.purchaseAssessing, false)
+    assert.equal(page.data.purchaseVisualLoading, false)
+    assert.equal(visuals, 0)
+  }
+})
+
+test('修改条件、识别、换图和离开使旧规则及视觉请求失效，旧失败不影响新请求', async () => {
+  const snapshot = page => JSON.stringify([
+    page.data.purchaseResult, page.data.purchaseError, page.data.purchaseAssessing,
+    page.data.purchaseVisualReview, page.data.purchaseVisualLoading
+  ])
+  const edit = page => page.onPurchaseFieldInput({ currentTarget: { dataset: { field: 'price' } }, detail: { value: '299' } })
+  const actions = [edit, page => page.onPurchaseScanPhoto(), page => page.onPurchaseChooseAlbum(),
+    page => page.onHide(), page => page.onPurchaseRestart()]
+  for (const phase of ['rules', 'visual']) {
+    for (const action of actions) {
+      for (const fails of [false, true]) {
+        let settle, visuals = 0
+        const waiting = new Promise((resolve, reject) => { settle = () => fails ? reject(Error('过时失败')) : resolve({ marker: 'stale' }) })
+        const page = loadPage('assistant', {
+          chooseImage: async () => '/tmp/new.jpg', uploadImage: async () => fileID(2), removeImage: async () => true,
+          itemScan: async () => ({ category: '衬衫' }),
+          purchaseAssess: () => waiting,
+          purchaseVisual: () => { visuals++; return waiting }
+        })
+        page.setData({ activeMode: 'purchase', purchaseForm: candidate({ name: '候选' }), purchaseScanFileID: fileID(1) })
+        const request = phase === 'rules' ? page.onPurchaseSubmit() : page.startPurchaseVisual(page.data.purchaseForm, fileID(1))
+        await action(page)
+        const current = snapshot(page)
+        settle()
+        await request
+        await new Promise(resolve => setImmediate(resolve))
+        assert.equal(snapshot(page), current, `${phase}/${action.name || 'action'}/${fails}`)
+        assert.equal(visuals, phase === 'visual' ? 1 : 0)
+      }
+    }
+
+    const requests = []
+    const pending = () => new Promise((resolve, reject) => requests.push({ resolve, reject }))
+    const page = loadPage('assistant', { purchaseAssess: pending, purchaseVisual: pending })
+    page.setData({ activeMode: 'purchase', purchaseForm: candidate({ name: '候选' }), purchaseScanFileID: fileID(1) })
+    const start = () => phase === 'rules' ? page.onPurchaseSubmit() : page.startPurchaseVisual(page.data.purchaseForm, fileID(1))
+    const old = start()
+    edit(page)
+    const latest = start()
+    assert.equal(requests.length, 2)
+    const current = snapshot(page)
+    requests[0].reject(Error('旧失败'))
+    await old
+    assert.equal(snapshot(page), current)
+    if (phase === 'rules') page.setData({ purchaseScanFileID: '' })
+    requests[1].resolve({ marker: 'latest' })
+    await latest
+    assert.equal((phase === 'rules' ? page.data.purchaseResult : page.data.purchaseVisualReview).marker, 'latest')
+  }
 })

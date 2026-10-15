@@ -14,9 +14,15 @@ const ticketId = 'a'.repeat(32)
 const fileID = `cloud://env/wardrobe/${ticketId}.jpg`
 const ticket = () => ({ _id: ticketId, _openid: 'openid-1', cloudPath: `wardrobe/${ticketId}.jpg` })
 const reply = text => ({ choices: [{ finish_reason: 'stop', message: { content: text } }] })
+const streamProof = (start, text, secret) => {
+  const ticket = streamApi.verify(start.ticket, secret)
+  const payload = Buffer.from(JSON.stringify({ openid: ticket.openid, chatId: ticket.chatId,
+    requestToken: ticket.requestToken, replyText: text, expiresAt: Date.now() + 60000 })).toString('base64url')
+  return payload + '.' + require('node:crypto').createHmac('sha256', secret).update(payload).digest('hex')
+}
 
 test('对话发送新建会话，带衣橱画像并保存多轮上下文', async () => {
-  const cloud = loadCloud({ users: [user()], clothes: [item('own', '上衣'), item('lower', '下装'), item('foreign', '上衣')] })
+  const cloud = loadCloud({ users: [user()], clothes: [item('own', '衬衫'), item('lower', '长裤'), item('foreign', '衬衫')] })
   cloud.records.clothes[2]._openid = 'openid-2'
   const seen = []
   const request = async args => {
@@ -49,7 +55,7 @@ test('对话发送新建会话，带衣橱画像并保存多轮上下文', async
 test('对话可指定本人非挂件单品，模型收到精确 ID 且衣橱画像排除挂件', async () => {
   const shoe = { ...item('shoe-1', '鞋'), name: '黑色乐福鞋', size: '42' }
   const hanger = { ...item('charm-1', '挂件'), name: '玩偶挂件' }
-  const foreign = { ...item('foreign-1', '上衣'), _openid: 'openid-2' }
+  const foreign = { ...item('foreign-1', '衬衫'), _openid: 'openid-2' }
   const cloud = loadCloud({ users: [user()], clothes: [shoe, hanger, foreign] })
   const streamEnv = { ...env, CHAT_STREAM_SECRET: 's'.repeat(32) }
   const result = await chatApi.handle({ db: cloud.db, cloud, openid: 'openid-1',
@@ -120,7 +126,7 @@ test('对话模型失败释放忙锁并保留用户消息，可重试', async ()
 })
 
 test('文字对话经签名凭证流式输出并保存最终回复', async () => {
-  const cloud = loadCloud({ users: [user()], clothes: [item('own', '上衣')] })
+  const cloud = loadCloud({ users: [user()], clothes: [item('own', '衬衫')] })
   const streamEnv = { ...env, CHAT_STREAM_SECRET: 'test-stream-secret-at-least-32-bytes' }
   const start = await chatApi.handle({ db: cloud.db, cloud, openid: 'openid-1',
     event: { action: 'chatStart', text: '今天怎么搭配？' } }, undefined, streamEnv)
@@ -165,7 +171,7 @@ test('文字对话经签名凭证流式输出并保存最终回复', async () =>
     assert.equal(cloud.records.auth_attempts[0].busyUntil, null)
     await assert.rejects(streamApi.consumeTicket(streamApi.verify(start.ticket, streamEnv.CHAT_STREAM_SECRET), null, cloud.db), /已失效或已使用/)
     await assert.rejects(chatApi.handle({ db: cloud.db, cloud, openid: 'openid-1',
-      event: { action: 'chatFinish', proof } }, undefined, streamEnv), /流式会话已失效/)
+      event: { action: 'chatFinish', proof } }, undefined, streamEnv), /会话已失效/)
   } finally {
     https.request = original
     if (oldKey === undefined) delete process.env.AI_API_KEY; else process.env.AI_API_KEY = oldKey
@@ -266,12 +272,13 @@ test('助手页加载会话、发送、切换与删除', async () => {
 
 test('助手页发送带图片时先上传再交给云函数', async () => {
   const sources = []
+  let finishUpload
   const page = loadPage('assistant', {
     chatList: async () => [],
     chatGet: async () => ({ title: 'x', messages: [] }),
     chatSend: async payload => ({ chatId: 'n1', title: 'x', messages: [{ role: 'user', text: payload.text, imageFileID: payload.imageFileID }] }),
     chatDelete: async () => {},
-    uploadImage: async () => 'cloud://env/wardrobe/uploaded.jpg',
+    uploadImage: () => new Promise(resolve => { finishUpload = resolve }),
     chooseImage: async source => { sources.push(source[0]); return '/tmp/pic.jpg' }
   }, { showToast() {} })
   await page.onShow()
@@ -279,8 +286,40 @@ test('助手页发送带图片时先上传再交给云函数', async () => {
   assert.deepEqual(sources, ['album'])
   assert.equal(page.data.imagePath, '/tmp/pic.jpg')
   page.onInput({ detail: { value: '看看这件' } })
-  await page.onSend()
+  const sending = page.onSend()
+  assert.equal(page.data.imagePath, '')
+  assert.equal(page.data.messages[0].imageFileID, '/tmp/pic.jpg')
+  finishUpload('cloud://env/wardrobe/uploaded.jpg')
+  await sending
+  assert.equal(page.data.imagePath, '')
   assert.equal(page.data.messages[0].imageFileID, 'cloud://env/wardrobe/uploaded.jpg')
+})
+
+test('助手图片上传失败后恢复输入栏预览供重试', async () => {
+  let failUpload
+  const page = loadPage('assistant', {
+    uploadImage: () => new Promise((resolve, reject) => { failUpload = reject })
+  })
+  page.setData({ imagePath: '/tmp/pic.jpg', input: '看看这件', canSend: true })
+  const sending = page.onSend()
+  assert.equal(page.data.imagePath, '')
+  failUpload(new Error('上传失败'))
+  await sending
+  assert.equal(page.data.imagePath, '/tmp/pic.jpg')
+  assert.equal(page.data.input, '看看这件')
+  assert.equal(page.data.canSend, true)
+})
+
+test('发送中选图器返回不重新挂上图片预览', async () => {
+  let finishChoose
+  const page = loadPage('assistant', {
+    chooseImage: () => new Promise(resolve => { finishChoose = resolve })
+  })
+  const choosing = page.onChooseAlbum()
+  page.setData({ sending: true })
+  finishChoose('/tmp/late.jpg')
+  await choosing
+  assert.equal(page.data.imagePath, '')
 })
 
 test('助手图片上传中切换会话仍发送到原会话且不覆盖当前视图', async t => {
@@ -360,13 +399,14 @@ test('附件入口提供拍照、相册和衣橱选择', async () => {
   assert.deepEqual(sources, ['camera', 'album'])
 })
 
-test('助手可从衣橱选择单品发起穿搭建议，选择列表排除挂件', async () => {
+test('助手可从衣橱选择单品发起穿搭建议，选择列表排除挂件与一级其他', async () => {
   let sent
   const page = loadPage('assistant', {
     listItems: async () => [
-      { _id: 'top-1', name: '白衬衫', category: '上衣', color: '白色' },
+      { _id: 'top-1', name: '白衬衫', category: '衬衫', color: '白色' },
       { _id: 'shoe-1', name: '乐福鞋', category: '鞋', color: '黑色' },
-      { _id: 'charm-1', name: '玩偶', category: '挂件', color: '粉色' }
+      { _id: 'charm-1', name: '玩偶', category: '挂件', color: '粉色' },
+      { _id: 'misc-1', name: '摆件', category: '其他', color: '灰色' }
     ],
     chatSend: async payload => {
       sent = payload
@@ -375,7 +415,7 @@ test('助手可从衣橱选择单品发起穿搭建议，选择列表排除挂�
     chatList: async () => []
   })
   await page.onChooseWardrobeItem()
-  assert.deepEqual(Array.from(page.data.itemPicker.columns[0]), ['白衬衫 · 上衣 · 白色', '乐福鞋 · 鞋 · 黑色'])
+  assert.deepEqual(Array.from(page.data.itemPicker.columns[0]), ['白衬衫 · 衬衫 · 白色', '乐福鞋 · 鞋 · 黑色'])
   page.onItemPickerConfirm({ detail: { values: [1] } })
   assert.equal(page.data.selectedItemId, 'shoe-1')
   await page.onSend()
@@ -703,4 +743,126 @@ test('auth 入口校验登录后路由到对话模块', async () => {
     assert.match((await cloud.main({ action: 'chatList' })).error, /登录状态已失效/)
     assert.deepEqual(seen, ['openid-1'])
   } finally { chatApi.handle = original }
+})
+
+test('对话画像排除一级其他，指定其他单品被拦截，袜子保留配饰子类语义', async () => {
+  const socks = { ...item('socks-1', '配饰'), name: '棉袜', subcategory: '袜子' }
+  const misc = { ...item('misc-1', '其他'), name: '摆件' }
+  const cloud = loadCloud({ users: [user()], clothes: [socks, misc] })
+  const seen = []
+  const request = async args => { seen.push(args); return reply('好的') }
+  await chatApi.handle({ db: cloud.db, cloud, openid: 'openid-1', event: { action: 'chatSend', text: '日常怎么搭？' } }, request, env)
+  const system = seen[0].messages[0].content
+  assert.equal(system.includes('misc-1'), false)
+  assert.equal(system.includes('摆件'), false)
+  assert.equal(system.includes('socks-1'), true)
+  assert.equal(system.includes('袜子'), true)
+  await assert.rejects(chatApi.handle({ db: cloud.db, cloud, openid: 'openid-1',
+    event: { action: 'chatSend', text: '搭这个', itemId: 'misc-1' } }, request, env), /不参与穿搭建议/)
+  const withSocks = await chatApi.handle({ db: cloud.db, cloud, openid: 'openid-1',
+    event: { action: 'chatSend', text: '这双袜子怎么配？', itemId: 'socks-1' } }, request, env)
+  assert.equal(withSocks.success, true)
+  const last = seen.at(-1).messages.at(-1).content
+  assert.match(last, /socks-1/)
+  assert.match(last, /"subcategory":"袜子"/)
+})
+
+test('流式及非流式隔离旧策略和编辑前上下文，历史仍展示，同版本保留多轮', async () => {
+  const streamEnv = { ...env, CHAT_STREAM_SECRET: 's'.repeat(32) }
+  for (const action of ['chatSend', 'chatStart']) {
+    const legacy = [{ role: 'user', text: '旧版问题' }, { role: 'assistant', text: '旧版推荐其他物品', contextVersion: '2:0' }]
+    const cloud = loadCloud({ users: [user()], clothes: [item('own', '衬衫')],
+      ai_chats: [{ _id: 'conversation', _openid: 'openid-1', title: '历史', messages: legacy }] })
+    const ctx = { db: cloud.db, cloud, openid: 'openid-1' }
+    const seen = []
+    const send = async text => {
+      const start = await chatApi.handle({ ...ctx, event: { action, chatId: 'conversation', text } },
+        async args => { seen.push(args); return reply(`回复${text}`) }, streamEnv)
+      if (action === 'chatSend') return start
+      seen.push(streamApi.verify(start.ticket, streamEnv.CHAT_STREAM_SECRET).request)
+      return chatApi.handle({ ...ctx, event: { action: 'chatFinish', proof: streamProof(start, `回复${text}`, streamEnv.CHAT_STREAM_SECRET) } }, undefined, streamEnv)
+    }
+    const first = await send('本轮问题')
+    assert.equal(seen[0].messages.length, 2)
+    assert.ok(first.messages.slice(-2).every(message => message.contextVersion === '3:0'))
+    await send('同版本追问')
+    assert.deepEqual(seen.at(-1).messages.slice(1).map(message => message.content), ['本轮问题', '回复本轮问题', '同版本追问'])
+    let version = 0
+    for (const patch of [{ category: '其他' }, { category: '衬衫' }, { name: '普通改名' }]) {
+      await cloud.main({ action: 'data', collection: 'clothes', operation: 'update', id: 'own',
+        data: { ...cloud.records.clothes[0], ...patch } })
+      const result = await send(`编辑后${++version}`)
+      assert.equal(seen.at(-1).messages.length, 2)
+      assert.ok(result.messages.slice(-2).every(message => message.contextVersion === `3:${version}`))
+      if (patch.category === '其他') assert.equal(seen.at(-1).messages[0].content.includes('"id":"own"'), false)
+    }
+    const display = await chatApi.handle({ ...ctx, event: { action: 'chatGet', chatId: 'conversation' } })
+    assert.deepEqual(display.chat.messages.slice(0, 2), legacy)
+  }
+})
+
+test('非流式生成期间衣物变化或忙锁换代后，旧回复不保存不返回且不释放新锁', async () => {
+  for (const change of ['其他', '普通编辑', '新锁']) {
+    const cloud = loadCloud({ users: [user()], clothes: [item('own', '衬衫')] })
+    let entered, complete
+    const started = new Promise(resolve => { entered = resolve })
+    const request = chatApi.handle({ db: cloud.db, cloud, openid: 'openid-1', event: { action: 'chatSend', text: '搭这个', itemId: 'own' } },
+      () => { entered(); return new Promise(resolve => { complete = resolve }) }, env)
+    await started
+    const lock = cloud.records.auth_attempts.find(row => row.action === 'chat')
+    if (change === '新锁') {
+      lock.requestToken = 'new-owner'
+      lock.busyUntil = new Date(Date.now() + 50000)
+    } else {
+      await cloud.main({ action: 'data', collection: 'clothes', operation: 'update', id: 'own',
+        data: { ...cloud.records.clothes[0], ...(change === '其他' ? { category: '其他' } : { name: '改名' }) } })
+    }
+    complete(reply('过时推荐'))
+    await assert.rejects(request, /衣橱已更新|会话已失效/)
+    assert.equal(cloud.records.ai_chats[0].messages.some(message => message.role === 'assistant'), false)
+    const latestLock = cloud.records.auth_attempts.find(row => row.action === 'chat')
+    assert.equal(latestLock.requestToken, change === '新锁' ? 'new-owner' : '')
+  }
+})
+
+test('流式签发后衣物变化、旧策略锁或忙锁换代使finish拒绝，旧证明不释放新锁', async () => {
+  const streamEnv = { ...env, CHAT_STREAM_SECRET: 's'.repeat(32) }
+  for (const change of ['其他', '普通编辑', '旧策略锁', '新锁']) {
+    const cloud = loadCloud({ users: [user()], clothes: [item('own', '衬衫')] })
+    const ctx = { db: cloud.db, cloud, openid: 'openid-1' }
+    const start = await chatApi.handle({ ...ctx, event: { action: 'chatStart', text: '搭这个', itemId: 'own' } }, undefined, streamEnv)
+    const lock = cloud.records.auth_attempts.find(row => row.action === 'chat')
+    if (change === '新锁') {
+      lock.requestToken = 'new-owner'
+      lock.busyUntil = new Date(Date.now() + 50000)
+    } else if (change === '旧策略锁') {
+      delete lock.contextVersion
+    } else {
+      await cloud.main({ action: 'data', collection: 'clothes', operation: 'update', id: 'own',
+        data: { ...cloud.records.clothes[0], ...(change === '其他' ? { category: '其他' } : { name: '改名' }) } })
+    }
+    await assert.rejects(chatApi.handle({ ...ctx, event: { action: 'chatFinish',
+      proof: streamProof(start, '过时流式推荐', streamEnv.CHAT_STREAM_SECRET) } }, undefined, streamEnv), /衣橱已更新|会话已失效/)
+    assert.equal(cloud.records.ai_chats[0].messages.some(message => message.role === 'assistant'), false)
+    assert.equal(cloud.records.auth_attempts.find(row => row.action === 'chat').requestToken, change === '新锁' ? 'new-owner' : '')
+  }
+})
+
+test('指定单品与衣橱画像共享版本边界，读取期间改为其他不调用模型或签发流式凭证', async () => {
+  const metaId = require('node:crypto').createHash('sha256').update('wardrobe:openid-1').digest('hex')
+  for (const action of ['chatSend', 'chatStart']) {
+    const cloud = loadCloud({ users: [user()], clothes: [item('own', '衬衫')], wardrobe_meta: [{ _id: metaId, version: 0 }] })
+    let changed = false, calls = 0
+    cloud.faults.before = (collection, operation) => {
+      if (!changed && collection === 'wardrobe_meta' && operation === 'doc.get') {
+        changed = true
+        cloud.records.clothes[0].category = '其他'
+        cloud.records.wardrobe_meta[0].version = 1
+      }
+    }
+    await assert.rejects(chatApi.handle({ db: cloud.db, cloud, openid: 'openid-1', event: { action, text: '搭这个', itemId: 'own' } },
+      async () => { calls++; return reply('过时指定单品') }, { ...env, CHAT_STREAM_SECRET: 's'.repeat(32) }), /其他|衣橱已更新/)
+    assert.equal(calls, 0)
+    assert.equal(cloud.records.ai_chats.length, 0)
+  }
 })

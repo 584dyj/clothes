@@ -1,11 +1,13 @@
 const crypto = require('crypto')
 const { readDoc } = require('./data')
 const { requestChat } = require('./ai-http')
+const { isRecommendable, roleOf } = require('./categories')
 
 const MAX_ITEMS = 120
 const RECENT_ITEMS = 60
+const SCAN_LIMIT = 500
 const MAX_WEAR_RECORDS = 500
-const INVENTORY_CACHE_VERSION = 2
+const INVENTORY_CACHE_VERSION = 3
 const CACHE_MS = 10 * 60 * 1000
 const COOLDOWN_MS = 60 * 1000
 const BUSY_MS = 25 * 1000
@@ -20,33 +22,50 @@ const STYLING_RULES = `专业穿搭原则（必须遵守）：
 5. 场合适配：通勤求利落得体，约会求精致温柔，运动求功能轻便，正式求质感挺括。
 6. 点睛：全身只保留一个视觉焦点（一件亮色或一个配饰），避免处处是重点。`
 
+async function getWardrobeVersion(db, openid) {
+  const meta = await readDoc(db.collection('wardrobe_meta').doc(crypto.createHash('sha256').update('wardrobe:' + openid).digest('hex')))
+  return meta && meta.version || 0
+}
+
+async function assertWardrobeVersion(db, openid, version) {
+  if (await getWardrobeVersion(db, openid) !== version) throw new Error('衣橱已更新，请重新发送')
+}
+
 // 衣橱画像缓存：衣物版本未变时复用，避免每次调用都全量拉取。
 async function getInventory(db, openid) {
-  const versionOf = async () => {
-    const meta = await readDoc(db.collection('wardrobe_meta').doc(crypto.createHash('sha256').update('wardrobe:' + openid).digest('hex')))
-    return meta && meta.version || 0
-  }
-  const version = await versionOf()
-  const cacheRef = db.collection('ai_cache').doc(crypto.createHash('sha256').update('ai-cache:' + openid).digest('hex'))
+  const version = await getWardrobeVersion(db, openid)
+  const cacheId = crypto.createHash('sha256').update('ai-cache:' + openid).digest('hex')
+  const cacheRef = db.collection('ai_cache').doc(cacheId)
   const cache = await readDoc(cacheRef)
   if (cache && cache.clothesVersion === version && cache.strategyVersion === INVENTORY_CACHE_VERSION &&
       Array.isArray(cache.items) && cache.items.length > 0) {
-    return { items: cache.items, truncated: cache.truncated === true, wearTruncated: cache.wearTruncated === true }
+    await assertWardrobeVersion(db, openid, version)
+    return { items: cache.items, truncated: cache.truncated === true, wearTruncated: cache.wearTruncated === true,
+      clothesVersion: version, strategyVersion: INVENTORY_CACHE_VERSION }
   }
-  const { items: rawItems, truncated, wearTruncated } = await loadItems(db, openid)
+  // 先过滤再采样：一级其他与未知类别不占 120 件名额，也不进入画像
+  const { items: rawItems, truncated, wearTruncated } = await loadItems(db, openid, isRecommendable)
   const items = inventory(rawItems)
-  await cacheRef.set({ data: { _openid: openid, clothesVersion: version, strategyVersion: INVENTORY_CACHE_VERSION,
-    items, truncated, wearTruncated, builtAt: new Date() } })
-  return { items, truncated, wearTruncated }
+  await db.runTransaction(async tx => {
+    await assertWardrobeVersion(tx, openid, version)
+    await tx.collection('ai_cache').doc(cacheId).set({
+      data: { _openid: openid, clothesVersion: version, strategyVersion: INVENTORY_CACHE_VERSION,
+        items, truncated, wearTruncated, builtAt: new Date() }
+    })
+  })
+  return { items, truncated, wearTruncated, clothesVersion: version, strategyVersion: INVENTORY_CACHE_VERSION }
 }
 
-async function loadItems(db, openid) {
+// filter 为空时按原样分页（预算等全量口径使用）；传入过滤函数时在采样前应用，
+// ponytail: 合格衣物不足 121 件时读到末页；规模增大后可增加类别查询索引。
+// 无过滤的调用仍沿用原扫描上限，被过滤衣物不占推荐采样名额。
+async function loadItems(db, openid, filter = null) {
   const items = []
-  for (let offset = 0; offset <= MAX_ITEMS; offset += 20) {
+  for (let offset = 0; filter || offset < SCAN_LIMIT; offset += 20) {
     const res = await db.collection('clothes').where({ _openid: openid })
       .orderBy('createdAt', 'desc').orderBy('_id', 'desc').skip(offset).limit(20).get()
-    items.push(...res.data)
-    if (res.data.length < 20) break
+    items.push(...(filter ? res.data.filter(filter) : res.data))
+    if (res.data.length < 20 || items.length > MAX_ITEMS) break
   }
   if (items.length <= MAX_ITEMS) return { items, truncated: false, wearTruncated: false }
 
@@ -55,7 +74,7 @@ async function loadItems(db, openid) {
   const fixedIds = new Set(fixed.map(item => item._id))
   const { counts, wearTruncated } = await loadWearCounts(db, openid)
   const candidateIds = [...counts.keys()].filter(id => !fixedIds.has(id))
-  const candidates = await loadItemsByIds(db, openid, candidateIds)
+  const candidates = (await loadItemsByIds(db, openid, candidateIds)).filter(item => !filter || filter(item))
   const createdAt = item => {
     const value = new Date(item.createdAt || 0).getTime()
     return Number.isFinite(value) ? value : 0
@@ -102,13 +121,14 @@ async function loadItemsByIds(db, openid, ids) {
   return items
 }
 
+// 画像保留细类（不再映射旧大类），配饰保留子类语义（袜子等）
 function inventory(items) {
-  const categories = new Map([['裤子', '下装'], ['外套', '上衣'], ['裙子', '下装'], ['鞋子', '鞋']])
   const seasons = new Map([['春', '春秋'], ['秋', '春秋']])
   return items.map(item => ({
     id: item._id,
     name: String(item.name || '').slice(0, 60),
-    category: categories.get(item.category) || String(item.category || '').slice(0, 20),
+    category: String(item.category || '').slice(0, 20),
+    subcategory: item.category === '配饰' ? String(item.subcategory || '').slice(0, 30) : '',
     color: String(item.color || '').slice(0, 30),
     brand: String(item.brand || '').slice(0, 30),
     seasons: Array.isArray(item.seasons) ? [...new Set(item.seasons.map(season => seasons.get(season) || season))].slice(0, 3) : [],
@@ -116,12 +136,15 @@ function inventory(items) {
   }))
 }
 
+// 缺口按搭配角色判断，不按 18 细类逐个检查：缺少某个款式不构成补购缺口
+const GAP_ROLES = [['top', '上衣'], ['bottom', '下装'], ['shoes', '鞋']]
+
 function findGaps(items) {
   const gaps = []
   for (const season of ['春秋', '夏', '冬']) {
-    for (const category of ['上衣', '下装', '鞋']) {
-      if (!items.some(item => item.category === category && item.seasons.includes(season))) {
-        gaps.push(`${season}季缺少${category}`)
+    for (const [role, label] of GAP_ROLES) {
+      if (!items.some(item => roleOf(item.category) === role && item.seasons.includes(season))) {
+        gaps.push(`${season}季缺少${label}`)
       }
     }
   }
@@ -152,8 +175,9 @@ function cleanResult(response, items, gaps) {
         new Set(ids).size !== ids.length || ids.some(id => !ownedItems.has(id))) {
       throw new Error('推荐引用了无效衣物，请重试')
     }
-    const categories = ids.map(id => ownedItems.get(id).category)
-    if (!categories.includes('连衣裙') && !(categories.includes('上衣') && categories.includes('下装'))) {
+    // 结构完整性按角色：连衣裙单件，或内搭上装加下装；外搭、家居服、配饰不计入结构
+    const roles = ids.map(id => roleOf(ownedItems.get(id).category))
+    if (!roles.includes('dress') && !(roles.includes('top') && roles.includes('bottom'))) {
       throw new Error('推荐的衣物组合不完整，请稍后重试')
     }
     return { name, reason, itemIds: ids }
@@ -172,7 +196,7 @@ function buildSystemPrompt() {
 
 ${STYLING_RULES}
 
-工作方法（在内部完成，不要输出过程）：先基于用户衣物构思 2-3 套候选，逐套按上述原则自评色彩是否和谐、比例是否得当、是否契合场合与季节，再只保留最优的 1-3 套。每套必须有上衣加下装，或有连衣裙；鞋与配饰可选，最多 10 件。只使用提供的真实衣物 ID，不得虚构。
+工作方法（在内部完成，不要输出过程）：先基于用户衣物构思 2-3 套候选，逐套按上述原则自评色彩是否和谐、比例是否得当、是否契合场合与季节，再只保留最优的 1-3 套。每套必须有一件内搭上装（短袖、长袖、衬衫、保暖衣或毛衣）加一件下装（长裤、短裤、长裙或短裙），或一件连衣裙；外套与羽绒服只能作为叠穿外搭，不能替代内搭；家居服、鞋、配饰与包袋可选，最多 10 件。只使用提供的真实衣物 ID，不得虚构。
 
 购买建议只能针对给出的缺口，没有缺口时 shoppingTips 为空；每条建议说明缺什么、为什么补、怎么选。
 
@@ -188,15 +212,16 @@ async function handle({ db, openid, user, event }, request = requestCompletion, 
   const model = env.AI_MODEL || 'deepseek-flash'
   const key = env.AI_API_KEY
   if (!key) throw new Error('推荐服务尚未配置')
-  const { items, truncated, wearTruncated } = await getInventory(db, openid)
+  const { items, truncated, wearTruncated, clothesVersion } = await getInventory(db, openid)
   if (!items.length) throw new Error('衣橱中还没有衣物')
   const gaps = truncated ? [] : findGaps(items)
   const inputHash = crypto.createHash('sha256').update(JSON.stringify({ strategyVersion: INVENTORY_CACHE_VERSION,
-    model, occasion, items, wearTruncated })).digest('hex')
+    model, occasion, items, truncated, wearTruncated, clothesVersion })).digest('hex')
   const recordId = crypto.createHash('sha256').update(`recommend:${openid}`).digest('hex')
   const token = crypto.randomBytes(16).toString('hex')
   const now = Date.now()
   const reserved = await db.runTransaction(async tx => {
+    await assertWardrobeVersion(tx, openid, clothesVersion)
     if (user) {
       const currentUser = await readDoc(tx.collection('users').doc(user._id))
       if (!currentUser || currentUser.openid !== openid || currentUser.autoLoginEnabled === false) {
@@ -225,16 +250,14 @@ async function handle({ db, openid, user, event }, request = requestCompletion, 
     ]
     const result = cleanResult(await request({ base, key, model, messages, disableThinking: env.AI_THINKING !== '1' }), items, gaps)
     const value = { ...result, considered: items.length, truncated, wearTruncated }
-    try {
-      await db.runTransaction(async tx => {
-        const ref = tx.collection('auth_attempts').doc(recordId)
-        const current = await readDoc(ref)
-        if (current && current.requestToken === token) {
-          await ref.update({ data: { cacheHash: inputHash, cacheResult: value,
-            cacheUntil: new Date(Date.now() + CACHE_MS), busyUntil: null, requestToken: '' } })
-        }
-      })
-    } catch (e) { console.error('保存推荐缓存失败', e) }
+    await db.runTransaction(async tx => {
+      await assertWardrobeVersion(tx, openid, clothesVersion)
+      const ref = tx.collection('auth_attempts').doc(recordId)
+      const current = await readDoc(ref)
+      if (!current || current.requestToken !== token) throw new Error('推荐请求已失效，请重新发送')
+      await ref.update({ data: { cacheHash: inputHash, cacheResult: value,
+        cacheUntil: new Date(Date.now() + CACHE_MS), busyUntil: null, requestToken: '' } })
+    })
     return { success: true, ...value, cached: false }
   } catch (e) {
     await db.runTransaction(async tx => {
@@ -248,4 +271,5 @@ async function handle({ db, openid, user, event }, request = requestCompletion, 
   }
 }
 
-module.exports = { handle, cleanResult, requestCompletion, loadItems, inventory, findGaps, getInventory, STYLING_RULES }
+module.exports = { handle, cleanResult, requestCompletion, loadItems, inventory, findGaps, getInventory,
+  getWardrobeVersion, INVENTORY_CACHE_VERSION, STYLING_RULES, GAP_ROLES }

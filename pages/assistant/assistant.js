@@ -1,13 +1,16 @@
 const db = require('../../utils/db')
 const auth = require('../../utils/auth')
+const { cleanScanFields } = require('../../utils/item-fields')
 const app = getApp()
 
 // 穿搭助手（tab 页）：穿搭会话存 ai_chats，购买评估只读取现有数据，不保存评估记录。
 // 上次查看的会话持久化到本地存储，页面被系统重建后 onShow 自动恢复。
 const VIEW_KEY = 'assistantView'
+const PURCHASE_RECORD_ONLY_MESSAGE = '识别为「其他」，不参与购买评估，可到衣橱添加为基础记录；如识别有误，请重新选择分类'
 
 Page({
   async onShow() {
+    this.checkPendingReply()
     if (!await auth.ensureLogin()) {
       this.setData({ loading: false, loadError: '登录校验未完成，请重试' })
       return
@@ -37,6 +40,8 @@ Page({
   data: {
     activeMode: 'outfit',
     categories: app.globalData.categories,
+    // 购买评估入口排除一级「其他」：其他只做基础记录，不参与推荐评估
+    purchaseCategories: app.globalData.categories.filter(value => value !== '其他'),
     accessoryTypes: app.globalData.accessoryTypes,
     seasons: app.globalData.seasons,
     seasonOptions: app.globalData.seasons.map(value => ({ value, selected: false })),
@@ -45,6 +50,7 @@ Page({
     purchaseForm: { name: '', category: '', subcategory: '', color: '', seasons: [], occasion: '', price: '', monthlyBudget: '', note: '' },
     purchaseImagePath: '',
     purchaseScanFileID: '',
+    purchaseRecordOnly: false,
     purchaseScanning: false,
     purchaseAssessing: false,
     purchaseVisualLoading: false,
@@ -79,6 +85,7 @@ Page({
   },
 
   onModeTap(e) {
+    this.checkPendingReply()
     const mode = e.currentTarget.dataset.mode
     if (!['outfit', 'purchase'].includes(mode) || mode === this.data.activeMode) return
     if (mode === 'purchase') {
@@ -92,9 +99,11 @@ Page({
 
   cleanupPurchasePhoto() {
     this._purchaseScanSeq = (this._purchaseScanSeq || 0) + 1
+    this._purchaseAssessSeq = (this._purchaseAssessSeq || 0) + 1
     this._purchaseVisualSeq = (this._purchaseVisualSeq || 0) + 1
+    if (this.data.purchaseScanning) wx.hideLoading()
     const fileID = this.data.purchaseScanFileID
-    this.setData({ purchaseImagePath: '', purchaseScanFileID: '', purchaseScanning: false, purchaseVisualLoading: false })
+    this.setData({ purchaseImagePath: '', purchaseScanFileID: '', purchaseScanning: false, purchaseAssessing: false, purchaseVisualLoading: false })
     if (fileID) return db.removeImage(fileID)
   },
 
@@ -183,6 +192,13 @@ Page({
   // 新会话/切换会话不打断后台生成：序号递增后，在途回复完成时只刷新列表、不覆盖当前视图。
   detachPendingSend() {
     this._sendSeq = (this._sendSeq || 0) + 1
+  },
+
+  checkPendingReply() {
+    const pending = this._pendingReply
+    if (!pending || this._sendSeq !== pending.seq || pending.version === db.getWardrobeVersion()) return
+    this.setData({ messages: pending.messages, streaming: false, awaitingReply: false,
+      sendError: '衣橱已更新，请重新发送' })
   },
 
   onNewSession() {
@@ -274,6 +290,7 @@ Page({
   async chooseImage(sourceType) {
     try {
       const path = await db.chooseImage(sourceType)
+      if (this.data.sending) return
       this.setData({ imagePath: path, selectedItemId: '', selectedItemName: '', canSend: true })
     } catch (e) {
       const message = e.errMsg || e.message || ''
@@ -301,7 +318,8 @@ Page({
 
   async onChooseWardrobeItem() {
     try {
-      const items = (await db.listItems()).filter(item => item.category !== '挂件')
+      // AI 指定单品排除挂件（既有限制）与一级「其他」（无推荐资格）
+      const items = (await db.listItems()).filter(item => item.category !== '挂件' && item.category !== '其他')
       if (!items.length) {
         wx.showToast({ title: '衣橱暂无可选单品', icon: 'none' })
         return
@@ -340,9 +358,11 @@ Page({
     try {
       const path = await db.chooseImage(sourceType)
       const previous = this.data.purchaseScanFileID
-      this._purchaseScanSeq = (this._purchaseScanSeq || 0) + 1
+      const seq = (this._purchaseScanSeq = (this._purchaseScanSeq || 0) + 1)
+      this.onPurchaseEdit()
       this.setData({ purchaseImagePath: path, purchaseScanFileID: '', purchaseError: '' })
       if (previous) await db.removeImage(previous)
+      if (this._purchaseScanSeq !== seq) return
       return this.onPurchaseScanPhoto()
     } catch (e) {
       const message = e.errMsg || e.message || ''
@@ -369,6 +389,7 @@ Page({
     const { purchaseImagePath, purchaseScanFileID, purchaseScanning } = this.data
     if (purchaseScanning || (!purchaseImagePath && !purchaseScanFileID)) return
     const seq = (this._purchaseScanSeq = (this._purchaseScanSeq || 0) + 1)
+    this.onPurchaseEdit()
     this.setData({ purchaseScanning: true, purchaseError: '' })
     wx.showLoading({ title: '识别中…' })
     let fileID = purchaseScanFileID
@@ -381,25 +402,28 @@ Page({
         }
         this.setData({ purchaseScanFileID: fileID })
       }
-      const result = await db.itemScan(fileID)
+      const result = cleanScanFields(await db.itemScan(fileID), app.globalData)
       if (this._purchaseScanSeq !== seq) {
         await db.removeImage(fileID)
         return
       }
       const current = this.data.purchaseForm
       const patch = {}
+      // 识别为「其他」时不回填类别：其他只做基础记录，不参与购买评估
+      const isOther = result.category === '其他'
+      const recordOnly = isOther || (!result.category && this.data.purchaseRecordOnly)
       if (!current.name.trim() && result.name) patch['purchaseForm.name'] = result.name
-      if (!current.category && result.category) patch['purchaseForm.category'] = result.category
+      if (!current.category && result.category && !isOther) patch['purchaseForm.category'] = result.category
       const category = patch['purchaseForm.category'] || current.category
       if (category === '配饰' && !current.subcategory && result.subcategory) patch['purchaseForm.subcategory'] = result.subcategory
       if (!current.color && result.color) patch['purchaseForm.color'] = result.color
-      if (!current.seasons.length && Array.isArray(result.seasons) && result.seasons.length) {
+      if (!current.seasons.length && result.seasons.length) {
         patch['purchaseForm.seasons'] = result.seasons
         patch.seasonOptions = this.data.seasonOptions.map(item => ({ ...item, selected: result.seasons.includes(item.value) }))
       }
       if (this._purchaseScanSeq !== seq) return
-      this.setData({ ...patch, purchaseError: '' })
-      wx.showToast({ title: '已自动填充，请核对', icon: 'none' })
+      this.setData({ ...patch, purchaseRecordOnly: recordOnly, purchaseError: recordOnly ? PURCHASE_RECORD_ONLY_MESSAGE : '' })
+      wx.showToast({ title: isOther ? '识别为「其他」，请到衣橱基础建档' : '已自动填充，请核对', icon: 'none' })
     } catch (e) {
       console.error(e)
       if (this._purchaseScanSeq === seq) {
@@ -408,46 +432,57 @@ Page({
         wx.showToast({ title: message, icon: 'none' })
       }
     } finally {
-      wx.hideLoading()
-      if (this._purchaseScanSeq === seq) this.setData({ purchaseScanning: false })
+      if (this._purchaseScanSeq === seq) {
+        wx.hideLoading()
+        this.setData({ purchaseScanning: false })
+      }
     }
   },
 
   onPurchaseFieldInput(e) {
-    this.setData({ [`purchaseForm.${e.currentTarget.dataset.field}`]: e.detail.value, purchaseError: '' })
+    this.onPurchaseEdit()
+    this.setData({ [`purchaseForm.${e.currentTarget.dataset.field}`]: e.detail.value })
   },
 
   onPurchaseCategoryTap(e) {
     const category = e.currentTarget.dataset.value
-    this.setData({ 'purchaseForm.category': category,
+    if (!this.data.purchaseCategories.includes(category)) return
+    this.onPurchaseEdit()
+    this.setData({ 'purchaseForm.category': category, purchaseRecordOnly: false,
       'purchaseForm.subcategory': category === '配饰' ? this.data.purchaseForm.subcategory : '', purchaseError: '' })
   },
 
   onPurchaseSubcategoryTap(e) {
-    this.setData({ 'purchaseForm.subcategory': e.currentTarget.dataset.value, purchaseError: '' })
+    this.onPurchaseEdit()
+    this.setData({ 'purchaseForm.subcategory': e.currentTarget.dataset.value })
   },
 
   onPurchaseSeasonTap(e) {
+    this.onPurchaseEdit()
     const value = e.currentTarget.dataset.value
     const selected = this.data.purchaseForm.seasons
     const seasons = selected.includes(value) ? selected.filter(item => item !== value) : [...selected, value]
     this.setData({ 'purchaseForm.seasons': seasons,
-      seasonOptions: this.data.seasonOptions.map(item => ({ ...item, selected: seasons.includes(item.value) })), purchaseError: '' })
+      seasonOptions: this.data.seasonOptions.map(item => ({ ...item, selected: seasons.includes(item.value) })) })
   },
 
   onPurchaseColorChange(e) {
-    this.setData({ 'purchaseForm.color': this.data.colors[Number(e.detail.value)] || '', purchaseError: '' })
+    this.onPurchaseEdit()
+    this.setData({ 'purchaseForm.color': this.data.colors[Number(e.detail.value)] || '' })
   },
 
   onPurchaseOccasionChange(e) {
-    this.setData({ 'purchaseForm.occasion': this.data.occasions[Number(e.detail.value)] || '', purchaseError: '' })
+    this.onPurchaseEdit()
+    this.setData({ 'purchaseForm.occasion': this.data.occasions[Number(e.detail.value)] || '' })
   },
 
   async onPurchaseSubmit() {
     if (this.data.purchaseAssessing || this.data.purchaseScanning) return
     const form = this.data.purchaseForm
     let error = ''
-    if (!form.category) error = '请选择分类'
+    if (this.data.purchaseRecordOnly) error = PURCHASE_RECORD_ONLY_MESSAGE
+    else if (!form.category) error = '请选择分类'
+    else if (!this.data.purchaseCategories.includes(form.category)) error = '该分类只做基础记录，不参与购买评估，可到衣橱中添加'
     else if (form.category === '配饰' && !form.subcategory) error = '请选择配饰类型'
     else if (!form.color) error = '请选择颜色'
     else if (!form.seasons.length) error = '请至少选择一个季节'
@@ -458,20 +493,27 @@ Page({
     }
     const candidate = { ...form, seasons: form.seasons.slice() }
     const imageFileID = this.data.purchaseScanFileID
+    const seq = (this._purchaseAssessSeq = (this._purchaseAssessSeq || 0) + 1)
     this._purchaseVisualSeq = (this._purchaseVisualSeq || 0) + 1
-    this.setData({ purchaseAssessing: true, purchaseVisualLoading: false, purchaseVisualReview: null, purchaseError: '' })
+    this.setData({ purchaseAssessing: true, purchaseResult: null, purchaseVisualLoading: false, purchaseVisualReview: null, purchaseError: '' })
     try {
-      this.setData({ purchaseResult: await db.purchaseAssess(candidate) })
+      const result = await db.purchaseAssess(candidate)
+      if (this._purchaseAssessSeq !== seq) return
+      this.setData({ purchaseResult: result })
       if (imageFileID && this.data.purchaseScanFileID === imageFileID && this.data.activeMode === 'purchase') {
         this.startPurchaseVisual(candidate, imageFileID)
       }
     } catch (e) {
       console.error(e)
-      this.setData({ purchaseError: e.message || '评估失败，请重试' })
-    } finally { this.setData({ purchaseAssessing: false }) }
+      if (this._purchaseAssessSeq === seq) this.setData({ purchaseError: e.message || '评估失败，请重试' })
+    } finally {
+      if (this._purchaseAssessSeq === seq) this.setData({ purchaseAssessing: false })
+    }
   },
 
   startPurchaseVisual(candidate, imageFileID) {
+    if (this.data.purchaseRecordOnly || this.data.purchaseScanning ||
+        !this.data.purchaseCategories.includes(candidate.category) || this.data.purchaseScanFileID !== imageFileID) return
     const seq = (this._purchaseVisualSeq = (this._purchaseVisualSeq || 0) + 1)
     this.setData({ purchaseVisualLoading: true, purchaseVisualReview: null })
     this._purchaseVisualPromise = db.purchaseVisual(candidate, imageFileID).then(visualReview => {
@@ -485,8 +527,10 @@ Page({
   },
 
   onPurchaseEdit() {
+    this._purchaseAssessSeq = (this._purchaseAssessSeq || 0) + 1
     this._purchaseVisualSeq = (this._purchaseVisualSeq || 0) + 1
-    this.setData({ purchaseResult: null, purchaseVisualLoading: false, purchaseVisualReview: null, purchaseError: '' })
+    this.setData({ purchaseResult: null, purchaseAssessing: false, purchaseVisualLoading: false, purchaseVisualReview: null,
+      purchaseError: this.data.purchaseRecordOnly ? PURCHASE_RECORD_ONLY_MESSAGE : '' })
   },
 
   onPurchaseRestart() {
@@ -495,6 +539,7 @@ Page({
       purchaseForm: { name: '', category: '', subcategory: '', color: '', seasons: [], occasion: '', price: '', monthlyBudget: '', note: '' },
       seasonOptions: app.globalData.seasons.map(value => ({ value, selected: false })),
       purchaseAssessing: false,
+      purchaseRecordOnly: false,
       purchaseResult: null,
       purchaseVisualReview: null,
       purchaseError: ''
@@ -512,23 +557,31 @@ Page({
       : inputText
     // 发送期间允许切模式/看其他会话/切 tab：序号不变说明用户仍在原视图，变了则只做后台收尾。
     const seq = (this._sendSeq = (this._sendSeq || 0) + 1)
+    const version = db.getWardrobeVersion()
     const inView = () => this._sendSeq === seq
     const previousMessages = this.data.messages
     const pendingMessages = [...previousMessages, { role: 'user', text, displayText: text, imageFileID: imagePath }]
+    this._pendingReply = { seq, version, messages: pendingMessages }
     this.setData({ sending: true, streaming: false, awaitingReply: true, thinkingText: '思考中…',
-      sendError: '', input: '', canSend: false, messages: pendingMessages, scrollIntoView: 'msg-thinking' })
+      sendError: '', input: '', imagePath: '', canSend: false, messages: pendingMessages, scrollIntoView: 'msg-thinking' })
     try {
       let fileID = ''
       if (imagePath) fileID = await db.uploadImage(imagePath)
+      if (version !== db.getWardrobeVersion()) {
+        if (fileID) await db.removeImage(fileID)
+        throw new Error('衣橱已更新，请重新发送')
+      }
       let streamed = '', lastRender = 0
       const result = await db.chatSend({ chatId: currentId || '', text, imageFileID: fileID, itemId: selectedItemId }, delta => {
         if (!inView()) return
+        if (version !== db.getWardrobeVersion()) throw new Error('衣橱已更新，请重新发送')
         streamed += delta
         if (Date.now() - lastRender < 80) return
         lastRender = Date.now()
         this.setData({ streaming: true, messages: [...pendingMessages, { role: 'assistant', text: streamed, displayText: streamed }],
           scrollIntoView: 'msg-' + pendingMessages.length })
       })
+      if (version !== db.getWardrobeVersion()) throw new Error('衣橱已更新，请重新发送')
       if (inView()) {
         const messages = result.messages.map(message => ({ ...message, displayText: message.text || '' }))
         this.saveView(result.chatId)
@@ -553,7 +606,7 @@ Page({
       if (inView()) {
         const failedMessages = pendingMessages
         const failedPatch = { messages: failedMessages, scrollIntoView: failedMessages.length ? 'msg-' + (failedMessages.length - 1) : '',
-          input: fromSuggestion ? '' : inputText,
+          input: fromSuggestion ? '' : inputText, imagePath,
           canSend: fromSuggestion ? !!imagePath || !!selectedItemId : !!inputText || !!imagePath || !!selectedItemId,
           sendError: e.message || '发送失败，请重试' }
         if (e.chatId) {
@@ -569,6 +622,7 @@ Page({
         } catch (refreshError) { console.error(refreshError) }
       }
     } finally {
+      if (this._pendingReply && this._pendingReply.seq === seq) this._pendingReply = null
       this.setData({ sending: false, streaming: false, awaitingReply: false })
     }
   },

@@ -37,7 +37,7 @@
       <view class="section-title">类别分布</view>
       <view wx:for="{{categoryStats}}" wx:key="name" class="bar-row">
         <text class="bar-label">{{item.name}}</text>
-        <progress class="bar-track" percent="{{item.percent}}" stroke-width="12" activeColor="#3a3835" backgroundColor="#efede8" />
+        <view class="bar-track" aria-hidden="true"><view class="bar-fill" style="width: {{item.percent}}%;"></view></view>
         <text class="bar-count">{{item.percent}}%（{{item.count}}件）</text>
       </view>
     </view>
@@ -47,7 +47,7 @@
       <view class="section-title">账本开销 · ¥{{expenseTotal}}</view>
       <view wx:for="{{expenseStats}}" wx:key="name" class="bar-row">
         <text class="bar-label">{{item.name}}</text>
-        <progress class="bar-track" percent="{{item.percent}}" stroke-width="12" activeColor="#3a3835" backgroundColor="#efede8" />
+        <view class="bar-track" aria-hidden="true"><view class="bar-fill" style="width: {{item.percent}}%;"></view></view>
         <text class="bar-count">¥{{item.amount}}</text>
       </view>
     </view>
@@ -57,8 +57,8 @@
       <view class="section-title">品牌分布</view>
       <view wx:for="{{brandStats}}" wx:key="name" class="bar-row">
         <text class="bar-label brand-label">{{item.name}}</text>
-        <progress class="bar-track" percent="{{item.percent}}" stroke-width="12" activeColor="#3a3835" backgroundColor="#efede8" />
-        <text class="bar-count brand-count">{{item.count}}件</text>
+        <view class="bar-track" aria-hidden="true"><view class="bar-fill" style="width: {{item.percent}}%;"></view></view>
+        <text class="bar-count">{{item.percent}}%（{{item.count}}件）</text>
       </view>
     </view>
 
@@ -69,7 +69,7 @@
         <view class="subsection-title">穿得最多</view>
         <view wx:for="{{wearRank}}" wx:key="name" class="bar-row">
           <text class="bar-label">{{item.name}}</text>
-          <progress class="bar-track" percent="{{100 * item.count / wearRank[0].count}}" stroke-width="12" activeColor="#3a3835" backgroundColor="#efede8" />
+          <view class="bar-track" aria-hidden="true"><view class="bar-fill" style="width: {{100 * item.count / wearRank[0].count}}%;"></view></view>
           <text class="bar-count">{{item.count}}次</text>
         </view>
       </view>

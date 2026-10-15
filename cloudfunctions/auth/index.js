@@ -22,6 +22,7 @@ const path = require('path')
 // 标识实际运行的源码，便于核对部署内容，避免仅凭包版本判断。
 const revision = crypto.createHash('sha256')
   .update(fs.readFileSync(__filename)).update(fs.readFileSync(path.join(__dirname, 'data.js')))
+  .update(fs.readFileSync(path.join(__dirname, 'categories.js')))
   .update(fs.readFileSync(path.join(__dirname, 'recommend.js')))
   .update(fs.readFileSync(path.join(__dirname, 'purchase.js')))
   .update(fs.readFileSync(path.join(__dirname, 'chat.js')))

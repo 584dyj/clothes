@@ -83,6 +83,17 @@
 
 .bar-track {
   flex: 1;
+  min-width: 0;
+  height: 24rpx;
+  overflow: hidden;
+  border-radius: 12rpx;
+  background: #efede8;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: 12rpx;
+  background: #3a3835;
 }
 
 .bar-count {
@@ -94,14 +105,9 @@
 }
 
 .brand-label {
-  width: 180rpx;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.brand-count {
-  width: 80rpx;
 }
 
 .season-grid {

@@ -83,6 +83,7 @@ function invalidate(collection) {
 }
 
 function clearCache() { for (const collection of Object.keys(cache)) invalidate(collection) }
+const getWardrobeVersion = () => cache.clothes.version + cache.wear_records.version
 
 async function listAll(collection) {
   const result = []
@@ -112,24 +113,15 @@ function list(collection, force = false) {
   return promise
 }
 
-// ---------- 旧数据归一化 ----------
-// 分类/季节改版前的旧值在读取时映射到新体系，避免旧衣物在新分类下"消失"；
-// 编辑保存时会自动以新值写回。
-const CATEGORY_MAP = {
-  裤子: '下装',
-  外套: '上衣',
-  裙子: '下装',
-  鞋子: '鞋'
-}
+// ---------- 季节归一化与类别子类清理 ----------
 const SEASON_MAP = {
   春: '春秋',
   秋: '春秋'
 }
 
 function normalizeItem(item) {
-  const category = CATEGORY_MAP[item.category] || item.category
   const seasons = (item.seasons || []).map(s => SEASON_MAP[s] || s)
-  return { ...item, category, seasons: [...new Set(seasons)] }
+  return { ...item, subcategory: item.category === '配饰' ? item.subcategory || '' : '', seasons: [...new Set(seasons)] }
 }
 
 const listItems = (force = false) => list('clothes', force)
@@ -214,7 +206,9 @@ function streamReply(ticket, onDelta) {
         if (!dataLine) continue
         let item
         try { item = JSON.parse(dataLine) } catch (e) { finish(new Error('流式响应格式无效')); return }
-        if (kind === 'delta' && typeof item.text === 'string') onDelta(item.text)
+        if (kind === 'delta' && typeof item.text === 'string') {
+          try { onDelta(item.text) } catch (error) { finish(error); return }
+        }
         else if (kind === 'done' && item.proof) finish(null, item.proof)
         else if (kind === 'error') finish(new Error(item.message || '流式回复失败'))
       }
@@ -238,23 +232,35 @@ function streamReply(ticket, onDelta) {
 }
 
 async function chatSend(payload, onDelta = () => {}) {
+  const version = getWardrobeVersion()
+  const ensureCurrent = () => {
+    if (version !== getWardrobeVersion()) throw new Error('衣橱已更新，请重新发送')
+  }
+  const resultOf = result => {
+    ensureCurrent()
+    return { chatId: result.chatId, title: result.title, messages: result.messages }
+  }
   if (!payload.imageFileID) {
     if (typeof wx.cloud.callHTTPFunction !== 'function') throw new Error('当前基础库不支持流式对话，请更新微信')
     const start = await call('chatStart', payload)
-    if (start.messages) return { chatId: start.chatId, title: start.title, messages: start.messages }
-    if (typeof start.ticket !== 'string' || !start.ticket) throw new Error('流式凭证签发失败')
     try {
-      const proof = await streamReply(start.ticket, onDelta)
+      ensureCurrent()
+      if (start.messages) return resultOf(start)
+      if (typeof start.ticket !== 'string' || !start.ticket) throw new Error('流式凭证签发失败')
+      const proof = await streamReply(start.ticket, delta => { ensureCurrent(); onDelta(delta) })
+      ensureCurrent()
       const result = await call('chatFinish', { proof })
-      return { chatId: result.chatId, title: result.title, messages: result.messages }
+      return resultOf(result)
     } catch (e) {
-      try { await call('chatCancel', { ticket: start.ticket }) } catch (cancelError) { console.error('释放流式会话失败', cancelError) }
+      if (start.ticket) {
+        try { await call('chatCancel', { ticket: start.ticket }) } catch (cancelError) { console.error('释放流式会话失败', cancelError) }
+      }
       e.chatId = start.chatId || ''
       e.chatTitle = start.title || ''
       throw e
     }
   }
-  return call('chatSend', payload).then(result => ({ chatId: result.chatId, title: result.title, messages: result.messages }))
+  return resultOf(await call('chatSend', payload))
 }
 const chatDelete = id => call('chatDelete', { chatId: id })
 const chatRename = (id, title) => call('chatRename', { chatId: id, title })
@@ -280,7 +286,7 @@ function callWeather(data) {
 }
 const setCity = cityName => callWeather({ action: 'setCity', cityName })
 
-module.exports = { chooseImage, uploadImage, removeImage, retryCleanup, cleanupStatus, clearCache,
+module.exports = { chooseImage, uploadImage, removeImage, retryCleanup, cleanupStatus, clearCache, getWardrobeVersion,
   listItems, getItem, addItem, updateItem, deleteItem, listOutfits, listOutfitsPage, getOutfit, addOutfit, updateOutfit, deleteOutfit,
   listExpenses, addExpense, updateExpense, deleteExpense,
   listWearRecords, addWearRecord, updateWearRecord, deleteWearRecord,

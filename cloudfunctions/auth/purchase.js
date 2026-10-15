@@ -1,18 +1,20 @@
 const crypto = require('crypto')
-const { loadItems, inventory, findGaps } = require('./recommend')
+const { loadItems, inventory, findGaps, GAP_ROLES } = require('./recommend')
 const { readDoc } = require('./data')
 const { claimImage } = require('./scan')
 const { requestChat } = require('./ai-http')
+const { CATEGORIES, ACCESSORY_TYPES, isRecommendable, roleOf } = require('./categories')
 
-const CATEGORIES = ['上衣', '下装', '连衣裙', '配饰', '挂件', '包', '鞋']
 const SEASONS = ['春秋', '夏', '冬']
 const OCCASIONS = ['日常', '通勤', '约会', '运动', '旅行', '正式']
 const NEUTRAL_COLORS = new Set(['白色', '黑色', '灰色', '米色', '卡其', '棕色', '驼色', '藏青', '藏蓝'])
+// 互补关系按搭配角色：外搭与内搭、下装、连体互配；配饰、包袋、挂件、家居服无结构互补
 const COMPLEMENTS = {
-  上衣: ['下装', '鞋'],
-  下装: ['上衣', '鞋'],
-  连衣裙: ['鞋'],
-  鞋: ['上衣', '下装', '连衣裙']
+  top: ['bottom', 'shoes'],
+  bottom: ['top', 'shoes'],
+  dress: ['shoes'],
+  shoes: ['top', 'bottom', 'dress'],
+  outer: ['top', 'bottom', 'dress']
 }
 const VERDICTS = [{ code: 'skip', label: '建议不买' }, { code: 'consider', label: '再考虑' }, { code: 'buy', label: '可以买' }]
 const IMAGE_RE = /^cloud:\/\/[^/]+\/wardrobe\/([a-f0-9]{32})\.(jpg|jpeg|png|webp|gif)$/
@@ -37,7 +39,10 @@ function validate(input = {}) {
     monthlyBudget: input.monthlyBudget === '' || input.monthlyBudget === undefined ? null : Number(input.monthlyBudget)
   }
   if (!CATEGORIES.includes(candidate.category)) throw new Error('请选择有效分类')
-  if (candidate.category === '配饰' && !candidate.subcategory) throw new Error('请选择配饰类型')
+  // 一级「其他」仅作基础记录：直接调用同样拦截，不进入推荐评估
+  if (candidate.category === '其他') throw new Error('「其他」仅作基础记录，不参与购买评估')
+  if (candidate.category === '配饰' && !ACCESSORY_TYPES.includes(candidate.subcategory)) throw new Error('请选择配饰类型')
+  if (candidate.category !== '配饰') candidate.subcategory = ''
   if (!candidate.color) throw new Error('请填写颜色')
   if (!candidate.seasons.length) throw new Error('请至少选择一个季节')
   if (!Number.isFinite(candidate.price) || candidate.price <= 0 || candidate.price > 1000000) throw new Error('请输入有效价格')
@@ -78,19 +83,25 @@ function dateKey(date) {
 }
 
 function selectItems(candidate, rawItems) {
-  const items = inventory(rawItems).map((item, index) => ({
-    ...item,
-    subcategory: text(rawItems[index].subcategory, 30),
-    purchaseDate: text(rawItems[index].purchaseDate, 10),
-    imageFileID: text(rawItems[index].imageFileID, 1024)
-  }))
-  const similar = items.filter(item => item.category === candidate.category &&
+  // 元数据按原 _id 对齐，不能以下标回填；预算口径用全量 items，相似/互补只用合格衣物
+  const byId = new Map(rawItems.map(raw => [raw._id, raw]))
+  const items = inventory(rawItems).map(item => {
+    const raw = byId.get(item.id) || {}
+    return {
+      ...item,
+      purchaseDate: text(raw.purchaseDate, 10),
+      imageFileID: text(raw.imageFileID, 1024)
+    }
+  })
+  const eligible = items.filter(isRecommendable)
+  const complements = COMPLEMENTS[roleOf(candidate.category)]
+  const similar = eligible.filter(item => item.category === candidate.category &&
     item.subcategory === candidate.subcategory && overlaps(item.seasons, candidate.seasons))
-  const matches = COMPLEMENTS[candidate.category] ? items.filter(item =>
-    COMPLEMENTS[candidate.category].includes(item.category) &&
+  const matches = complements ? eligible.filter(item =>
+    complements.includes(roleOf(item.category)) &&
     overlaps(item.seasons, candidate.seasons) && compatibleColor(item.color, candidate.color)
   ).slice(0, 8) : []
-  return { items, similar, matches }
+  return { items, eligible, similar, matches }
 }
 
 function modelPrompt(candidate, assessment) {
@@ -126,7 +137,9 @@ async function modelAdvice(candidate, assessment, request, env) {
 }
 
 function evaluate(candidate, rawItems, wearRecords, expenses, now = new Date(), includeGaps = true) {
-  const { items, similar: sameType, matches: matchItems } = selectItems(candidate, rawItems)
+  const { items, eligible, similar: sameType, matches: matchItems } = selectItems(candidate, rawItems)
+  const role = roleOf(candidate.category)
+  const complements = COMPLEMENTS[role]
   const since = new Date(now)
   since.setDate(since.getDate() - 90)
   const sinceDate = dateKey(since)
@@ -149,10 +162,12 @@ function evaluate(candidate, rawItems, wearRecords, expenses, now = new Date(), 
   }))
   const allSimilarIdle = hasRecentWear && similarItems.length > 0 && similarItems.every(item => item.wearCount90 === 0)
 
-  const gaps = includeGaps ? findGaps(items) : []
-  const filledGaps = candidate.seasons
-    .map(season => `${season}季缺少${candidate.category}`)
-    .filter(gap => gaps.includes(gap))
+  // 缺口按合格衣物与搭配角色计算；家居服、配饰等无结构角色，不消除缺口
+  const gaps = includeGaps ? findGaps(eligible) : []
+  const gapLabel = (GAP_ROLES.find(([gapRole]) => gapRole === role) || [])[1]
+  const filledGaps = gapLabel ? candidate.seasons
+    .map(season => `${season}季缺少${gapLabel}`)
+    .filter(gap => gaps.includes(gap)) : []
   const month = dateKey(now).slice(0, 7)
   const wardrobeSpend = items.filter(item => item.purchaseDate.startsWith(month)).reduce((sum, item) => sum + item.price, 0)
   const ledgerSpend = expenses.filter(item => text(item.date, 10).startsWith(month)).reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
@@ -170,7 +185,7 @@ function evaluate(candidate, rawItems, wearRecords, expenses, now = new Date(), 
   else reasons.push('衣橱中的同类重复度较低')
   if (filledGaps.length) reasons.push(`可补足${filledGaps.join('、')}`)
   if (allSimilarIdle) reasons.push('相似衣物近 90 天均无穿着记录')
-  if (COMPLEMENTS[candidate.category]) reasons.push(`可与 ${matchItems.length} 件现有衣物搭配`)
+  if (complements) reasons.push(`可与 ${matchItems.length} 件现有衣物搭配`)
   if (budgetExceeded) reasons.push(`购买后将超过月预算 ${roundMoney(afterPurchase - candidate.monthlyBudget)} 元`)
 
   return {
@@ -179,7 +194,7 @@ function evaluate(candidate, rawItems, wearRecords, expenses, now = new Date(), 
     duplicateRisk: { level: risk, label: { high: '高', medium: '中', low: '低' }[risk], similarCount: sameType.length },
     similarItems,
     filledGaps,
-    matchCount: COMPLEMENTS[candidate.category] ? matchItems.length : null,
+    matchCount: complements ? matchItems.length : null,
     spending: { monthSpent, candidatePrice: candidate.price, afterPurchase, budget: candidate.monthlyBudget, budgetExceeded }
   }
 }

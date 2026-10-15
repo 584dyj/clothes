@@ -112,22 +112,33 @@ function loadDb(records) {
   return { api: require(MODULE_PATH), queryCalls, deletedFiles: cloud.deletedFiles }
 }
 
-test('listItems 自动分页读取全部衣物并归一化旧值', async () => {
+test('listItems 分页和 getItem 保留 18 类，清理非配饰子类并归一化季节', async () => {
+  const { CATEGORIES } = require('../cloudfunctions/auth/categories')
   const records = {
     clothes: Array.from({ length: 45 }, (_, index) => ({
       _id: `item-${index}`,
-      category: index === 0 ? '外套' : '上衣',
+      category: CATEGORIES[index % CATEGORIES.length],
+      subcategory: CATEGORIES[index % CATEGORIES.length] === '配饰' ? '袜子' : '帽子',
+      price: index + 0.5,
       seasons: index === 0 ? ['春', '秋'] : ['冬']
     }))
   }
   const { api, queryCalls } = loadDb(records)
+  const originals = new Map(records.clothes.map(item => [item._id, item]))
 
   const items = await api.listItems()
 
   assert.equal(items.length, 45)
   assert.deepEqual(queryCalls.map(call => call.offset), [0, 20, 40])
-  assert.equal(items[0].category, '上衣')
-  assert.deepEqual(items[0].seasons, ['春秋'])
+  for (const item of items) {
+    const source = originals.get(item._id)
+    assert.equal(item.category, source.category)
+    assert.equal(item.subcategory, source.category === '配饰' ? '袜子' : '')
+    assert.equal(item.price, source.price)
+    assert.deepEqual(await api.getItem(item._id), item)
+  }
+  assert.deepEqual(items.find(item => item._id === 'item-0').seasons, ['春秋'])
+  assert.equal(records.clothes[0].subcategory, '帽子')
 })
 
 test('listItems 在缓存期内复用结果，force 会重新读取全部数据', async () => {
@@ -138,7 +149,7 @@ test('listItems 在缓存期内复用结果，force 会重新读取全部数据'
   await api.listItems()
   assert.equal(queryCalls.length, 1)
 
-  records.clothes.push({ _id: 'item-2', _openid: 'openid-1', category: '包', seasons: [] })
+  records.clothes.push({ _id: 'item-2', _openid: 'openid-1', category: '包袋', seasons: [] })
   const refreshed = await api.listItems(true)
   assert.equal(queryCalls.length, 2)
   assert.equal(refreshed.length, 2)
@@ -162,4 +173,110 @@ test('deleteItem 删除衣物并清理全部穿搭引用', async () => {
   assert.deepEqual(records.outfits.map(outfit => outfit.itemIds), [['item-2'], [], ['item-2']])
   assert.deepEqual(deletedFiles, [])
   assert.equal(records.cleanup_jobs[0].state, 'review')
+})
+
+test('衣橱变化使在途流式和图片回复失效，普通读取与改回后新请求正常', async () => {
+  for (const phase of ['delta', 'finish', 'photo', 'refresh', 'wear', 'wearRefresh', 'read']) {
+    const actions = [], deltas = []
+    let stream, finishResult, photoResult
+    let category = '衬衫'
+    const result = { success: true, chatId: 'c1', title: '搭配', messages: [{ role: 'assistant', text: '当前搭配' }] }
+    global.wx = { cloud: {
+      callFunction: async ({ data }) => {
+        actions.push(data.action)
+        if (data.action === 'data') {
+          if (data.operation === 'list') return { result: { success: true, data: [{ _id: 'one', category, seasons: [] }] } }
+          if (data.collection === 'clothes') category = data.data.category
+          return { result: { success: true } }
+        }
+        if (data.action === 'chatStart') return { result: { success: true, chatId: 'c1', title: '搭配', ticket: 'ticket' } }
+        if (data.action === 'chatCancel') return { result: { success: true } }
+        if (data.action === 'chatSend') return new Promise(resolve => { photoResult = () => resolve({ result }) })
+        if (phase === 'finish') return new Promise(resolve => { finishResult = () => resolve({ result }) })
+        return { result }
+      },
+      callHTTPFunction: options => { stream = options }
+    } }
+    delete require.cache[MODULE_PATH]
+    const api = require(MODULE_PATH)
+    if (phase === 'read') {
+      await api.updateItem('one', { category: '其他' })
+      await api.updateItem('one', { category: '衬衫' })
+    }
+    const version = api.getWardrobeVersion()
+    const pending = api.chatSend({ text: '怎么搭配', imageFileID: phase === 'photo' ? 'cloud://photo' : '' }, delta => deltas.push(delta))
+    const completion = phase === 'read' ? pending : assert.rejects(pending, /衣橱已更新，请重新发送/)
+    await new Promise(resolve => setImmediate(resolve))
+    const emit = (event, data) => {
+      const bytes = Buffer.from(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+      stream.onChunkedReceived({ data: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) })
+    }
+    if (phase !== 'photo') emit('delta', { text: '前半段' })
+    if (phase === 'finish') {
+      emit('done', { proof: 'proof' })
+      await new Promise(resolve => setImmediate(resolve))
+    }
+    if (phase === 'refresh') await api.listItems(true)
+    else if (phase === 'wearRefresh') await api.listWearRecords(true)
+    else if (phase === 'wear') await api.updateWearRecord('wear-1', { date: '2026-10-15', itemIds: ['one'] })
+    else if (phase === 'read') {
+      await api.listItems()
+      await api.listItems()
+      await api.listWearRecords()
+      assert.equal(api.getWardrobeVersion(), version)
+      assert.equal((await api.listItems())[0].category, '衬衫')
+    } else await api.updateItem('one', { category: '其他' })
+    if (phase === 'photo') photoResult()
+    else if (phase === 'finish') finishResult()
+    else if (phase === 'delta') emit('delta', { text: '失效后半段' })
+    else emit('done', { proof: 'proof' })
+    await completion
+    assert.deepEqual(deltas, phase === 'photo' ? [] : ['前半段'])
+    if (!['read', 'photo'].includes(phase)) assert.equal(actions.at(-1), 'chatCancel')
+  }
+})
+
+test('返回助手或切回穿搭撤回过期临时回复并保留历史，上传期间变化不发模型', async () => {
+  const { loadPage } = require('./support/page')
+  const history = [{ role: 'user', text: '旧问题' }, { role: 'assistant', text: '历史回答' }]
+  for (const entry of ['show', 'mode', 'wear', 'upload']) {
+    let clothesVersion = 0, wearVersion = 0, reply, delta, uploaded, calls = 0
+    const removed = []
+    const page = loadPage('assistant', {
+      getWardrobeVersion: () => clothesVersion + wearVersion,
+      chatList: async () => [],
+      uploadImage: () => new Promise(resolve => { uploaded = () => resolve('cloud://new-photo') }),
+      removeImage: async fileID => { removed.push(fileID) },
+      chatSend: async (payload, onDelta) => {
+        calls++
+        delta = onDelta
+        return new Promise(resolve => { reply = () => resolve({ chatId: 'c1', title: '搭配', messages: [...history, { role: 'assistant', text: '旧推荐' }] }) })
+      }
+    })
+    page.setData({ currentId: 'c1', messages: history, input: '新问题', imagePath: entry === 'upload' ? '/tmp/photo.jpg' : '' })
+    const pending = page.onSend()
+    if (entry !== 'upload') {
+      delta('旧推荐')
+      assert.equal(page.data.messages.at(-1).role, 'assistant')
+    }
+    if (entry === 'wear') wearVersion++
+    else clothesVersion++
+    if (entry === 'show' || entry === 'wear') await page.onShow()
+    if (entry === 'mode') {
+      page.setData({ activeMode: 'purchase' })
+      page.onModeTap({ currentTarget: { dataset: { mode: 'outfit' } } })
+    }
+    if (entry !== 'upload') {
+      assert.deepEqual(Array.from(page.data.messages, item => item.text), ['旧问题', '历史回答', '新问题'])
+      assert.equal(page.data.streaming, false)
+      assert.equal(page.data.sendError, '衣橱已更新，请重新发送')
+      reply()
+    } else uploaded()
+    await pending
+    assert.deepEqual(Array.from(page.data.messages, item => item.text), ['旧问题', '历史回答', '新问题'])
+    assert.equal(page.data.sendError, '衣橱已更新，请重新发送')
+    assert.equal(page.data.sending, false)
+    assert.deepEqual(removed, entry === 'upload' ? ['cloud://new-photo'] : [])
+    assert.equal(calls, entry === 'upload' ? 0 : 1)
+  }
 })

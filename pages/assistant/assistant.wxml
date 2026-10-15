@@ -44,7 +44,7 @@
 
           <view class="field-label">分类</view>
           <view class="choice-row">
-            <view wx:for="{{categories}}" wx:key="*this" class="choice {{purchaseForm.category === item ? 'choice-active' : ''}}" data-value="{{item}}" bindtap="onPurchaseCategoryTap">{{item}}</view>
+            <view wx:for="{{purchaseCategories}}" wx:key="*this" class="choice {{purchaseForm.category === item ? 'choice-active' : ''}}" data-value="{{item}}" bindtap="onPurchaseCategoryTap">{{item}}</view>
           </view>
 
           <block wx:if="{{purchaseForm.category === '配饰'}}">

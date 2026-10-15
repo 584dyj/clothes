@@ -55,7 +55,7 @@ Page({
       const totalBrands = new Set(items.map(item => (item.brand || '').trim()).filter(Boolean)).size
       const totalSpent = items.reduce((sum, item) => sum + (Number(item.price) || 0), 0)
 
-      // 类别分布 + 分类花费（展示全部类别，空类别显示 0）
+      // 类别分布 + 分类花费（按全局类别顺序，空类别显示 0）
       const categoryStats = app.globalData.categories
         .map(name => {
           const inCategory = items.filter(item => item.category === name)
@@ -68,7 +68,6 @@ Page({
             percent: totalItems ? Math.round((count / totalItems) * 100) : 0
           }
         })
-        .sort((a, b) => b.count - a.count)
 
       // 季节分布（一件衣物可属多个季节）
       const seasonStats = app.globalData.seasons.map(name => ({
@@ -79,8 +78,8 @@ Page({
       // 品牌分布（每个品牌的件数，占比基数为衣物总数）
       const brandCount = Object.create(null)
       items.forEach(item => {
-        const brand = (item.brand || '').trim()
-        if (brand) brandCount[brand] = (brandCount[brand] || 0) + 1
+        const brand = (item.brand || '').trim() || '无品牌'
+        brandCount[brand] = (brandCount[brand] || 0) + 1
       })
       const brandStats = Object.keys(brandCount)
         .map(name => ({
@@ -121,7 +120,8 @@ Page({
         .map(item => ({ name: item.name || '未命名', count: wearCount[item._id] }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 8)
-      const idleRank = items.filter(item => lastWorn[item._id])
+      // 一级其他只保留基础统计和手工记录，不进入闲置建议。
+      const idleRank = items.filter(item => item.category !== '其他' && lastWorn[item._id])
         .map(item => {
           const last = lastWorn[item._id]
           const days = Math.max(0, Math.round((new Date(todayStr.replace(/-/g, '/')).getTime() - new Date(last.replace(/-/g, '/')).getTime()) / 86400000))

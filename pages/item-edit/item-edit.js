@@ -1,5 +1,6 @@
 const db = require('../../utils/db')
 const auth = require('../../utils/auth')
+const { cleanScanFields } = require('../../utils/item-fields')
 const swipeBack = require('../../utils/swipe-back')
 const focusPlaceholder = require('../../utils/focus-placeholder')
 
@@ -89,7 +90,8 @@ Page({
     try {
       const item = await db.getItem(id)
       if (!item) throw new Error('衣物不存在')
-      const subcategory = item.subcategory || ''
+      const category = this.data.categories.includes(item.category) ? item.category : ''
+      const subcategory = category === '配饰' && this.data.accessoryTypes.includes(item.subcategory) ? item.subcategory : ''
       const size = item.size || ''
       const color = item.color || ''
       const colorIndex = this.data.colorOptions.indexOf(color)
@@ -98,7 +100,7 @@ Page({
       this.setData({
         ready: true, loading: false, loadError: '',
         name: item.name || '',
-        category: item.category || '',
+        category,
         subcategory,
         subcategoryIndex: this.data.accessoryTypes.indexOf(subcategory),
         size,
@@ -149,7 +151,7 @@ Page({
         fileID = await db.uploadImage(imagePath)
         this.setData({ imagePath: '', imageFileID: fileID, scanFileID: fileID })
       }
-      const result = await db.itemScan(fileID)
+      const result = cleanScanFields(await db.itemScan(fileID), app.globalData)
       const current = this.data
       const patch = {}
       if (!current.name.trim() && result.name) patch.name = result.name
@@ -162,6 +164,10 @@ Page({
       if (category === '配饰' && !current.subcategory && result.subcategory) {
         patch.subcategory = result.subcategory
         patch.subcategoryIndex = current.accessoryTypes.indexOf(result.subcategory)
+      }
+      if (category !== '配饰') {
+        patch.subcategory = ''
+        patch.subcategoryIndex = -1
       }
       if (!current.color.trim() && !current.colorCustom && result.color) {
         patch.color = result.color
@@ -277,16 +283,16 @@ Page({
 
   async onSave() {
     const { id, name, category, subcategory, size, color, brand, selectedSeasons, price, purchaseDate, note, imagePath, imageFileID, saving } = this.data
-    if (saving || !this.data.ready) return
+    if (saving || this.data.scanning || !this.data.ready) return
     if (!name.trim()) {
       wx.showToast({ title: '请填写名称', icon: 'none' })
       return
     }
-    if (!category) {
+    if (!this.data.categories.includes(category)) {
       wx.showToast({ title: '请选择类别', icon: 'none' })
       return
     }
-    if (category === '配饰' && !subcategory) {
+    if (category === '配饰' && !this.data.accessoryTypes.includes(subcategory)) {
       wx.showToast({ title: '请选择配饰类型', icon: 'none' })
       return
     }

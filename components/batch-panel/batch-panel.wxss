@@ -179,6 +179,12 @@
 
 .input { flex: 1; }
 
+.picker-value {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+}
+
 .chip-row {
   display: flex;
   flex-wrap: wrap;
@@ -201,4 +207,11 @@
 
 .placeholder { color: #b3aea5; }
 
-.save-btn { margin-top: 20rpx; }
+.save-btn {
+  width: 100%;
+  margin: 20rpx 0 0;
+  background: #3a3835;
+  color: #ffffff;
+  border-radius: 44rpx;
+  font-size: 30rpx;
+}

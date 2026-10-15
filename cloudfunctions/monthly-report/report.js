@@ -81,14 +81,25 @@ async function buildReport(db, openid, now) {
     listAll(db, 'clothes', { _openid: openid }),
     listAll(db, 'wear_records', { _openid: openid })
   ])
-  const validRecords = records.filter(record => validDate(record.date) && record.date <= today)
+  // 一级「其他」仅作基础记录：不形成闲置内容，其实穿引用也不计活动依据；本函数独立部署，使用本地最小过滤。
+  // 逐条过滤实穿记录的 itemIds：混合记录保留合格单品与日期，仅含其他或不含任何单品的记录不计活动依据；
+  // 指向已删除衣物的引用保持既有语义；原始实穿记录不写回。
+  const miscIds = new Set(items.filter(item => item.category === '其他').map(item => item._id))
+  const eligible = items.filter(item => item.category !== '其他')
+  const validRecords = records
+    .filter(record => validDate(record.date) && record.date <= today)
+    .map(record => ({
+      date: record.date,
+      itemIds: (Array.isArray(record.itemIds) ? record.itemIds : []).filter(id => !miscIds.has(id))
+    }))
+    .filter(record => record.itemIds.length > 0)
   if (!validRecords.some(record => record.date >= cutoff)) return null
 
   const lastWorn = Object.create(null)
-  validRecords.forEach(record => (record.itemIds || []).forEach(id => {
+  validRecords.forEach(record => record.itemIds.forEach(id => {
     if (!lastWorn[id] || record.date > lastWorn[id]) lastWorn[id] = record.date
   }))
-  const idle = items.filter(item => validDate(item.purchaseDate) &&
+  const idle = eligible.filter(item => validDate(item.purchaseDate) &&
       item.purchaseDate < cutoff && (!lastWorn[item._id] || lastWorn[item._id] < cutoff))
     .sort((a, b) => (lastWorn[a._id] || a.purchaseDate).localeCompare(lastWorn[b._id] || b.purchaseDate))
   if (!idle.length) return null
