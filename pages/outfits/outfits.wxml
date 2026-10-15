@@ -10,7 +10,7 @@
   <block wx:if="{{!loadError}}">
   <view wx:if="{{loading}}" class="empty">加载中…</view>
   <view wx:elif="{{left.length === 0 && right.length === 0}}" class="empty">
-    还没有收藏穿搭，点右下角 + 搭配一套吧
+    还没有搭配，点右下角 + 记一套吧
   </view>
 
   <view wx:else class="waterfall">
@@ -30,9 +30,15 @@
         </view>
         <view class="wf-body">
           <view class="wf-name">{{item.name}}</view>
+          <view wx:if="{{item.note}}" class="wf-note">{{item.note}}</view>
           <view class="wf-tags">
             <text class="tag" wx:if="{{item.occasion}}">{{item.occasion}}</text>
             <text class="tag">{{item.count}} 件</text>
+          </view>
+          <view class="wf-actions">
+            <text wx:if="{{item.wornToday}}" class="wear-tag done">已记录</text>
+            <text wx:elif="{{wearBusyId === item._id}}" class="wear-tag busy">记录中…</text>
+            <text wx:else class="wear-tag" data-id="{{item._id}}" catchtap="onWearTodayTap">今天穿了</text>
           </view>
         </view>
       </view>
@@ -53,9 +59,15 @@
         </view>
         <view class="wf-body">
           <view class="wf-name">{{item.name}}</view>
+          <view wx:if="{{item.note}}" class="wf-note">{{item.note}}</view>
           <view class="wf-tags">
             <text class="tag" wx:if="{{item.occasion}}">{{item.occasion}}</text>
             <text class="tag">{{item.count}} 件</text>
+          </view>
+          <view class="wf-actions">
+            <text wx:if="{{item.wornToday}}" class="wear-tag done">已记录</text>
+            <text wx:elif="{{wearBusyId === item._id}}" class="wear-tag busy">记录中…</text>
+            <text wx:else class="wear-tag" data-id="{{item._id}}" catchtap="onWearTodayTap">今天穿了</text>
           </view>
         </view>
       </view>

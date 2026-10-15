@@ -68,9 +68,39 @@
   -webkit-line-clamp: 2; /* 名称最多两行 */
 }
 
+.wf-note {
+  margin-bottom: 10rpx;
+  color: #9a958c;
+  font-size: 24rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap; /* 备注单行展示，超出省略 */
+}
+
 .wf-tags {
   display: flex;
   flex-wrap: wrap;
+}
+
+/* 卡片底部「今天穿了」打卡胶囊：可用=描边，已记录/记录中=弱化 */
+.wf-actions {
+  display: flex;
+  margin-top: 16rpx;
+}
+
+.wear-tag {
+  padding: 8rpx 24rpx;
+  border: 1rpx solid #3a3835;
+  border-radius: 999rpx;
+  color: #3a3835;
+  font-size: 24rpx;
+  line-height: 1.4;
+}
+
+.wear-tag.done,
+.wear-tag.busy {
+  border-color: #d8d4cc;
+  color: #9a958c;
 }
 
 .wf-loading {

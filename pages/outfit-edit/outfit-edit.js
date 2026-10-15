@@ -5,6 +5,12 @@ const focusPlaceholder = require('../../utils/focus-placeholder')
 
 const app = getApp()
 
+// 单品集合完全相同（顺序无关、去重）；与 WEAR-04 的判重逻辑同款。
+const sameItems = (a, b) => {
+  const left = new Set(a || []), right = new Set(b || [])
+  return left.size === right.size && [...left].every(id => right.has(id))
+}
+
 Page({
   ...swipeBack,
   ...focusPlaceholder,
@@ -15,6 +21,8 @@ Page({
     createdOutfitId: '',
     linkError: '',
     linkNeedsReturn: false,
+    quick: false,        // 快速录入模式：只突出单品与一行备注
+    showMore: false,     // 快速模式下折叠的「更多选项」展开态
     name: '',
     occasion: '',
     occasions: [],
@@ -40,14 +48,17 @@ Page({
       this.setData({ loading: false, loadError: '登录校验未完成，请重试' })
       return
     }
+    const quick = !options.id && !options.wearRecordId && !!options.quick
     this.setData({
       id: options.wearRecordId ? '' : options.id || '',
       wearRecordId: options.wearRecordId || '',
+      quick,
       occasions: app.globalData.occasions,
       categories: ['全部', '已选', ...app.globalData.categories]
     })
     if (options.wearRecordId) wx.setNavigationBarTitle({ title: '保存为穿搭' })
     else if (options.id) wx.setNavigationBarTitle({ title: '编辑穿搭' })
+    else if (quick) wx.setNavigationBarTitle({ title: '记一套搭配' })
     return this.onRetry()
   },
 
@@ -153,6 +164,42 @@ Page({
   onNameInput(e) { if (!this.data.createdOutfitId) this.setData({ name: e.detail.value }) },
   onNoteInput(e) { if (!this.data.createdOutfitId) this.setData({ note: e.detail.value }) },
 
+  onToggleMore() { this.setData({ showMore: !this.data.showMore }) },
+
+  // 快速录入留空名称时按已选单品自动命名：前两件用「·」连接，超过两件追加「等 N 件」，总长截断 20 字符。
+  autoName() {
+    const names = this.data.selectedIds
+      .map(id => (this.data.items.find(item => item._id === id) || {}).name)
+      .filter(Boolean)
+    if (!names.length) return ''
+    const head = names.slice(0, 2).join('·')
+    return (names.length > 2 ? `${head} 等${names.length}件` : head).slice(0, 20)
+  },
+
+  // 新增（非编辑、非实穿另存）前比对现存搭配：单品集合完全相同时提示，返回是否继续保存。
+  async confirmDuplicateOutfit(selectedIds) {
+    let outfits = []
+    try {
+      outfits = await db.listOutfits()
+    } catch (e) {
+      console.error(e)
+      return true
+    }
+    const existing = outfits.find(outfit => sameItems(outfit.itemIds, selectedIds))
+    if (!existing) return true
+    const viewExisting = await new Promise(resolve => wx.showModal({
+      title: '已有相同搭配',
+      content: `已有一套单品完全相同的搭配「${existing.name || '未命名'}」，查看它还是仍要新建？`,
+      confirmText: '查看该搭配',
+      cancelText: '仍要新建',
+      success: res => resolve(res.confirm),
+      fail: () => resolve(false)
+    }))
+    if (!viewExisting) return true
+    wx.navigateTo({ url: `/pages/outfit-edit/outfit-edit?id=${existing._id}` })
+    return false
+  },
+
   // ---------- 自定义滚轮选择器 ----------
   openPicker() {
     if (this.data.createdOutfitId) return
@@ -196,13 +243,19 @@ Page({
   },
 
   async onSave() {
-    const { id, wearRecordId, createdOutfitId, name, occasion, note, imagePath, imageFileID, selectedIds, saving } = this.data
+    const { id, wearRecordId, createdOutfitId, occasion, note, imagePath, imageFileID, selectedIds, saving, quick } = this.data
     if (saving || !this.data.ready) return
     if (createdOutfitId) {
       if (this.data.linkNeedsReturn) return wx.navigateBack()
       return this.linkSavedOutfit(wearRecordId, createdOutfitId)
     }
-    if (!name.trim()) {
+    let name = this.data.name
+    // 快速录入允许留空名称：先按已选单品自动补名（无单品时保持为空，交由下方单品校验提示）。
+    if (quick && !name.trim()) {
+      name = this.autoName()
+      if (name) this.setData({ name })
+    }
+    if (!name.trim() && !quick) {
       wx.showToast({ title: '请填写穿搭名称', icon: 'none' })
       return
     }
@@ -213,6 +266,13 @@ Page({
     if (selectedIds.length === 0) {
       wx.showToast({ title: '请至少选择一件衣物', icon: 'none' })
       return
+    }
+    // 新增前检查是否已有相同单品组合的搭配（编辑已有穿搭、实穿另存不触发）。
+    // 先置 saving，避免检查期间（含弹窗）被再次点击重复提交。
+    if (!id && !wearRecordId) {
+      this.setData({ saving: true })
+      const proceed = await this.confirmDuplicateOutfit(selectedIds)
+      if (!proceed) { this.setData({ saving: false }); return }
     }
 
     this.setData({ saving: true })

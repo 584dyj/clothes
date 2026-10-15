@@ -35,6 +35,25 @@
   margin-bottom: 32rpx;
 }
 
+/* 快速录入：折叠的「更多选项」 */
+.more-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 26rpx 32rpx;
+  margin-bottom: 24rpx;
+}
+
+.more-toggle-title {
+  color: #3a3835;
+  font-size: 28rpx;
+}
+
+.more-toggle-hint {
+  color: #9a958c;
+  font-size: 24rpx;
+}
+
 .field {
   display: flex;
   align-items: center;

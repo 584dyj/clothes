@@ -8,4 +8,9 @@ function validDate(value) {
   return year >= MIN_YEAR && year <= MAX_YEAR && date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day
 }
 
-module.exports = { validDate, MIN_YEAR, MAX_YEAR }
+// 客户端「今天」（Asia/Shanghai）：与统计页、实穿页同一口径，写实穿记录时统一用它。
+function today() {
+  return new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10)
+}
+
+module.exports = { validDate, today, MIN_YEAR, MAX_YEAR }

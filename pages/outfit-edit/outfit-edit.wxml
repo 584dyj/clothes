@@ -1,37 +1,72 @@
 <view class="page" bindtouchstart="onSwipeBackStart" bindtouchend="onSwipeBackEnd">
   <view wx:if="{{loading}}" class="empty">加载中…</view>
   <view wx:elif="{{loadError}}" class="empty">{{loadError}}<button bindtap="onRetry">重新加载</button></view>
-  <!-- 穿搭照片 -->
-  <view class="image-box card" bindtap="onChooseImage">
-    <image
-      wx:if="{{imagePath || imageFileID}}"
-      class="preview"
-      src="{{imagePath || imageFileID}}"
-      mode="aspectFill"
-    />
-    <view wx:else class="image-placeholder">
-      <view class="plus">+</view>
-      <view>拍一张上身照（可选）</view>
-    </view>
-  </view>
 
-  <!-- 基本信息 -->
-  <view class="form card">
-    <view class="field">
-      <text class="label">名称</text>
-      <input class="input" placeholder="{{_focus.name ? '' : '如：夏日清爽出街'}}" value="{{name}}" disabled="{{createdOutfitId}}" data-field="name" bindinput="onNameInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+  <!-- 快速录入：把名称、场合、照片折叠进「更多选项」，默认收起 -->
+  <block wx:if="{{quick}}">
+    <view class="more-toggle card" bindtap="onToggleMore">
+      <text class="more-toggle-title">更多选项</text>
+      <text class="more-toggle-hint">{{showMore ? '收起' : '名称、场合、照片（可选）'}}</text>
     </view>
-    <view class="field">
-      <text class="label">场合</text>
-      <view class="picker-value {{occasion ? '' : 'placeholder'}}" bindtap="openPicker">
-        {{occasion || '请选择场合'}}
+    <block wx:if="{{showMore}}">
+      <view class="image-box card" bindtap="onChooseImage">
+        <image
+          wx:if="{{imagePath || imageFileID}}"
+          class="preview"
+          src="{{imagePath || imageFileID}}"
+          mode="aspectFill"
+        />
+        <view wx:else class="image-placeholder">
+          <view class="plus">+</view>
+          <view>拍一张上身照（可选）</view>
+        </view>
+      </view>
+      <view class="form card">
+        <view class="field">
+          <text class="label">名称</text>
+          <input class="input" placeholder="{{_focus.name ? '' : '留空自动命名'}}" value="{{name}}" disabled="{{createdOutfitId}}" data-field="name" bindinput="onNameInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+        </view>
+        <view class="field">
+          <text class="label">场合</text>
+          <view class="picker-value {{occasion ? '' : 'placeholder'}}" bindtap="openPicker">
+            {{occasion || '请选择场合'}}
+          </view>
+        </view>
+      </view>
+    </block>
+  </block>
+
+  <!-- 完整模式：照片 + 名称 / 场合 / 备注 -->
+  <block wx:else>
+    <view class="image-box card" bindtap="onChooseImage">
+      <image
+        wx:if="{{imagePath || imageFileID}}"
+        class="preview"
+        src="{{imagePath || imageFileID}}"
+        mode="aspectFill"
+      />
+      <view wx:else class="image-placeholder">
+        <view class="plus">+</view>
+        <view>拍一张上身照（可选）</view>
       </view>
     </view>
-    <view class="field field-column">
-      <text class="label">备注</text>
-      <textarea class="textarea" placeholder="{{_focus.note ? '' : '搭配心得、适合的天气等'}}" value="{{note}}" disabled="{{createdOutfitId}}" data-field="note" bindinput="onNoteInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+    <view class="form card">
+      <view class="field">
+        <text class="label">名称</text>
+        <input class="input" placeholder="{{_focus.name ? '' : '如：夏日清爽出街'}}" value="{{name}}" disabled="{{createdOutfitId}}" data-field="name" bindinput="onNameInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+      </view>
+      <view class="field">
+        <text class="label">场合</text>
+        <view class="picker-value {{occasion ? '' : 'placeholder'}}" bindtap="openPicker">
+          {{occasion || '请选择场合'}}
+        </view>
+      </view>
+      <view class="field field-column">
+        <text class="label">备注</text>
+        <textarea class="textarea" placeholder="{{_focus.note ? '' : '搭配心得、适合的天气等'}}" value="{{note}}" disabled="{{createdOutfitId}}" data-field="note" bindinput="onNoteInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+      </view>
     </view>
-  </view>
+  </block>
 
   <!-- 选择衣物：分类切换条（单选）+ 网格 -->
   <view class="section-title">{{wearRecordId ? '本次实穿衣物' : '选择单品'}}（已选 {{selectedIds.length}} 件）</view>
@@ -70,6 +105,14 @@
       <view wx:else class="pick-image pick-placeholder">无图</view>
       <view class="pick-name">{{item.name}}</view>
       <view wx:if="{{item.selected}}" class="check">✓</view>
+    </view>
+  </view>
+
+  <!-- 快速录入：一行自由备注，承载未入库的搭配要素（如裤袜），不参与任何统计 -->
+  <view wx:if="{{quick}}" class="form card note-card">
+    <view class="field">
+      <text class="label">备注</text>
+      <input class="input" placeholder="{{_focus.note ? '' : '可写：搭配黑色裤袜'}}" value="{{note}}" disabled="{{createdOutfitId}}" data-field="note" bindinput="onNoteInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
     </view>
   </view>
 
