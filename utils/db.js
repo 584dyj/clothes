@@ -132,10 +132,11 @@ const listWearRecords = (force = false) => list('wear_records', force)
 const listPlans = (force = false) => list('outfit_plans', force)
 const getItem = id => call('data', { operation: 'get', collection: 'clothes', id }).then(res => normalizeItem(res.data))
 const getOutfit = id => call('data', { operation: 'get', collection: 'outfits', id }).then(res => res.data)
+const getWearRecord = id => call('data', { operation: 'get', collection: 'wear_records', id }).then(res => res.data)
 
-async function write(collection, operation, id, data) {
+async function write(collection, operation, id, data, extra = {}) {
   try {
-    return await call('data', { collection, operation, id, data })
+    return await call('data', { collection, operation, id, data, ...extra })
   } finally {
     invalidate(collection)
     if (collection === 'clothes' && operation === 'delete') invalidate('outfits')
@@ -155,6 +156,7 @@ const deleteExpense = id => write('expenses', 'delete', id)
 const addWearRecord = data => write('wear_records', 'add', undefined, data).then(res => res._id)
 const updateWearRecord = (id, data) => write('wear_records', 'update', id, data)
 const deleteWearRecord = id => write('wear_records', 'delete', id)
+const linkWearOutfit = (id, outfitId) => write('wear_records', 'linkOutfit', id, undefined, { outfitId })
 const addPlan = data => write('outfit_plans', 'add', undefined, data).then(res => res._id)
 const updatePlan = (id, data) => write('outfit_plans', 'update', id, data)
 const deletePlan = id => write('outfit_plans', 'delete', id)
@@ -289,6 +291,6 @@ const setCity = cityName => callWeather({ action: 'setCity', cityName })
 module.exports = { chooseImage, uploadImage, removeImage, retryCleanup, cleanupStatus, clearCache, getWardrobeVersion,
   listItems, getItem, addItem, updateItem, deleteItem, listOutfits, listOutfitsPage, getOutfit, addOutfit, updateOutfit, deleteOutfit,
   listExpenses, addExpense, updateExpense, deleteExpense,
-  listWearRecords, addWearRecord, updateWearRecord, deleteWearRecord,
+  listWearRecords, getWearRecord, addWearRecord, updateWearRecord, deleteWearRecord, linkWearOutfit,
   listPlans, addPlan, updatePlan, deletePlan,
   chatList, chatGet, chatSend, chatDelete, chatRename, purchaseAssess, purchaseVisual, itemScan, subscribeReport, subscribeWeather, cancelReport, cancelWeather, getSubscriptionStatus, setCity }

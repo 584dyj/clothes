@@ -50,7 +50,6 @@
             <view wx:elif="{{item.isToday}}" class="day-amount today-zero">¥0</view>
             <view class="day-marks">
               <view wx:if="{{item.hasPlan}}" class="mark-dot mark-plan"></view>
-              <view wx:if="{{item.hasWorn}}" class="mark-dot mark-worn"></view>
             </view>
           </block>
         </view>
@@ -64,7 +63,6 @@
       <view class="details-actions">
         <button class="mini-btn" bindtap="onAddExpense">记一笔</button>
         <button class="mini-btn" bindtap="onAddPlan">安排穿搭</button>
-        <button class="mini-btn" bindtap="onAddWear">记录穿着</button>
       </view>
     </view>
 
@@ -78,23 +76,13 @@
       <button wx:for="{{dayExpenses}}" wx:key="_id" class="day-item expense-item" data-id="{{item._id}}" bindtap="onExpenseTap">[账本] {{item.category}}{{item.note ? ' · ' + item.note : ''}} · ¥{{item.amount}} ›</button>
     </view>
 
-    <!-- 计划与实穿 -->
+    <!-- 计划穿搭 -->
     <view wx:if="{{dayPlans.length > 0}}" class="details-section">
       <view class="details-subtitle">计划穿搭</view>
-      <view wx:for="{{dayPlans}}" wx:key="_id" class="plan-row">
-        <button class="day-item plan-item plan-row-main" data-id="{{item._id}}" bindtap="onPlanTap"><image class="day-item-icon" src="/assets/icons/plan.svg" mode="aspectFit" /> {{item.outfitName}}{{item.note ? ' · ' + item.note : ''}} ›</button>
-        <view wx:if="{{item.checkInState === 'ready'}}" class="checkin-btn {{checkingId === item._id ? 'checkin-disabled' : ''}}" data-id="{{item._id}}" catchtap="onQuickCheckIn" role="button">{{checkingId === item._id ? '打卡中…' : '打卡'}}</view>
-        <view wx:elif="{{item.checkInState === 'done'}}" class="checkin-btn checkin-disabled">已打卡</view>
-        <view wx:elif="{{item.checkInState === 'deleted'}}" class="checkin-btn checkin-disabled">已删除</view>
-        <view wx:elif="{{item.checkInState === 'empty'}}" class="checkin-btn checkin-disabled">无单品</view>
-      </view>
-    </view>
-    <view wx:if="{{dayWears.length > 0}}" class="details-section">
-      <view class="details-subtitle">实际穿着</view>
-      <button wx:for="{{dayWears}}" wx:key="_id" class="day-item wear-item" data-id="{{item._id}}" bindtap="onWearTap"><image class="day-item-icon" src="/assets/icons/wear.svg" mode="aspectFit" /> {{item.outfitName || item.itemCount + ' 件单品'}}{{item.note ? ' · ' + item.note : ''}} ›</button>
+      <button wx:for="{{dayPlans}}" wx:key="_id" class="day-item plan-item" data-id="{{item._id}}" bindtap="onPlanTap"><image class="day-item-icon" src="/assets/icons/plan.svg" mode="aspectFit" /> {{item.outfitName}}{{item.note ? ' · ' + item.note : ''}} ›</button>
     </view>
 
-    <view wx:if="{{dayItems.length === 0 && dayExpenses.length === 0 && dayPlans.length === 0 && dayWears.length === 0}}" class="calendar-note day-empty-note">当天没有记录</view>
+    <view wx:if="{{dayItems.length === 0 && dayExpenses.length === 0 && dayPlans.length === 0}}" class="calendar-note day-empty-note">当天没有记录</view>
   </view>
 
   <!-- 年月快速选择滚轮 -->

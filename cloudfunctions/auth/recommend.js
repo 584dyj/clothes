@@ -97,7 +97,9 @@ async function loadItems(db, openid, filter = null) {
 }
 
 async function loadWearCounts(db, openid) {
-  const cutoff = new Date(Date.now() + 8 * 60 * 60 * 1000 - 89 * 86400000).toISOString().slice(0, 10)
+  const shanghaiNow = Date.now() + 8 * 60 * 60 * 1000
+  const cutoff = new Date(shanghaiNow - 89 * 86400000).toISOString().slice(0, 10)
+  const today = new Date(shanghaiNow).toISOString().slice(0, 10)
   const counts = new Map()
   let total = 0
   for (let offset = 0; offset < MAX_WEAR_RECORDS; offset += 20) {
@@ -105,6 +107,7 @@ async function loadWearCounts(db, openid) {
       .orderBy('date', 'desc').orderBy('createdAt', 'desc').skip(offset).limit(20).get()
     total += res.data.length
     for (const record of res.data) {
+      if (record.date > today) continue
       for (const id of new Set(Array.isArray(record.itemIds) ? record.itemIds : [])) counts.set(id, (counts.get(id) || 0) + 1)
     }
     if (res.data.length < 20) break

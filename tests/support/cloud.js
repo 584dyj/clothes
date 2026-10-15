@@ -36,7 +36,12 @@ function loadCloud(records = {}) {
       skip(value) { offset = value; return this },
       limit(value) { max = value; return this },
       async get() { before('get'); return { data: clone(records[name].filter(matches).slice(offset, offset + max)) } },
-      async add({ data }) { const id = data._id || 'generated-' + ++sequence; await api.doc(id).set({ data }); return { _id: id } },
+      async add({ data }) {
+        const id = data._id || 'generated-' + ++sequence
+        if (records[name].some(row => row._id === id)) throw new Error('E11000 duplicate')
+        await api.doc(id).set({ data })
+        return { _id: id }
+      },
       doc(id) {
         return {
           async get() { before('doc.get', id); return { data: clone(records[name].find(row => row._id === id) || null) } },

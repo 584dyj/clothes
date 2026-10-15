@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { loadPage } = require('./support/page')
 
-// calendar 月历：全部开销与计划、实穿
+// calendar 月历：全部开销与计划
 
 // 月历打开的是当前月份，夹具日期须落在当月，避免跨月后断言失效
 const thisMonth = day => {
@@ -10,28 +10,28 @@ const thisMonth = day => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
-test('月历统一合计全部开销，切月保留计划实穿标记与明细', async () => {
+test('月历统一合计全部开销，切月保留计划与账本明细', async () => {
   const day20 = thisMonth(new Date().getDate())
+  let wearReads = 0
   const page = loadPage('calendar', {
     listItems: async () => [{ _id: 'i1', name: '衬衫', price: 100, purchaseDate: day20 }],
     listExpenses: async () => [{ _id: 'e1', category: '洗护', amount: 50, date: day20 }],
     listPlans: async () => [{ _id: 'p1', date: day20, outfitId: 'f1', note: '' }],
-    listWearRecords: async () => [{ _id: 'w1', date: day20, itemIds: ['i1'], outfitId: '' }],
+    listWearRecords: async () => { wearReads++; return [{ _id: 'w1', date: day20, itemIds: ['i1'] }] },
     listOutfits: async () => [{ _id: 'f1', name: '通勤' }]
   })
   page.onLoad()
   await page.loadData()
+  assert.equal(wearReads, 0)
   assert.equal(page.data.monthTotal, 150) // 全部 = 衣物 + 账本
   assert.equal(page.data.yearTotal, 150)
   assert.equal(page.data.todayTotal, 150)
   const cell = page.data.cells.find(row => row.date === day20)
   assert.equal(cell.total, 150)
   assert.equal(cell.hasPlan, true)
-  assert.equal(cell.hasWorn, true)
 
   page.onDayTap({ currentTarget: { dataset: { date: day20 } } })
   assert.equal(page.data.dayPlans[0].outfitName, '通勤')
-  assert.equal(page.data.dayWears[0].itemCount, 1)
   assert.equal(page.data.selectedTotal, 150)
   assert.equal(page.data.dayItems.length, 1)
   assert.equal(page.data.dayExpenses.length, 1)
@@ -44,44 +44,39 @@ test('月历统一合计全部开销，切月保留计划实穿标记与明细',
   assert.equal(page.data.dayItems.length, 1)
   assert.equal(page.data.dayExpenses.length, 1)
   assert.equal(page.data.dayPlans.length, 1)
-  assert.equal(page.data.dayWears.length, 1)
 })
 
-// ---------- 一键打卡 ----------
+// ---------- 计划仅作计划 ----------
 
-test('计划一键打卡提交单品并转为已打卡', async () => {
-  const added = []
-  const day20 = thisMonth(new Date().getDate()) // 打卡只允许今天及以前，用今天
-  let wearList = []
+test('月历保留计划编辑入口，不读取或写入实穿', async () => {
+  const day20 = thisMonth(new Date().getDate())
+  const routes = []
   const page = loadPage('calendar', {
     listItems: async () => [],
     listExpenses: async () => [],
     listPlans: async () => [{ _id: 'p1', date: day20, outfitId: 'f1', note: '见客户' }],
-    listWearRecords: async () => wearList,
+    listWearRecords: async () => { throw Error('月历不应读取实穿') },
     listOutfits: async () => [{ _id: 'f1', name: '通勤', itemIds: ['i1', 'i2'] }],
-    addWearRecord: async data => { added.push(data); wearList = [{ _id: 'w1', ...data }] }
-  })
+    addWearRecord: async () => { throw Error('月历不应写入实穿') }
+  }, { navigateTo: ({ url }) => routes.push(url) })
   page.onLoad()
   await page.loadData()
   page.onDayTap({ currentTarget: { dataset: { date: day20 } } })
-  assert.equal(page.data.dayPlans[0].checkInState, 'ready')
-
-  await page.onQuickCheckIn({ currentTarget: { dataset: { id: 'p1' } } })
-  // vm 沙箱内创建的对象原型与宿主不同，用 JSON 比较（与文件内其他用例一致）
-  assert.equal(JSON.stringify(added[0]), JSON.stringify({ date: day20, outfitId: 'f1', itemIds: ['i1', 'i2'], note: '见客户' }))
-  assert.equal(page.data.dayPlans[0].checkInState, 'done')
-
-  // 已打卡后再次点击不再提交
-  await page.onQuickCheckIn({ currentTarget: { dataset: { id: 'p1' } } })
-  assert.equal(added.length, 1)
+  assert.equal(page.data.dayPlans[0].outfitName, '通勤')
+  assert.equal(page.data.dayPlans[0].note, '见客户')
+  page.onPlanTap({ currentTarget: { dataset: { id: 'p1' } } })
+  assert.deepEqual(routes, ['/pages/plan-edit/plan-edit?id=p1'])
+  page.onAddPlan()
+  assert.equal(routes[1], `/pages/plan-edit/plan-edit?date=${day20}`)
 
   const fs = require('node:fs'), path = require('node:path')
   const markup = fs.readFileSync(path.join(__dirname, '../pages/calendar/calendar.wxml'), 'utf8')
-  assert.match(markup, /catchtap="onQuickCheckIn"/)
-  assert.match(markup, /已打卡/)
+  assert.doesNotMatch(markup, /onQuickCheckIn|onAddWear|onWearTap|hasWorn|dayWears/)
+  assert.match(markup, /bindtap="onPlanTap"/)
+  assert.match(markup, /bindtap="onAddPlan"/)
 })
 
-test('一键打卡禁用态：已打卡、未来日期、已删除与空穿搭', async () => {
+test('未来、已删除与空穿搭计划仍能查看', async () => {
   const day20 = thisMonth(new Date().getDate())
   const futureDate = `${new Date().getFullYear() + 1}-01-15`
   const page = loadPage('calendar', {
@@ -93,16 +88,14 @@ test('一键打卡禁用态：已打卡、未来日期、已删除与空穿搭',
       { _id: 'p3', date: day20, outfitId: 'empty', note: '' },
       { _id: 'p4', date: futureDate, outfitId: 'f1', note: '' }
     ],
-    listWearRecords: async () => [{ _id: 'w1', date: day20, outfitId: 'f1', itemIds: ['i1'] }],
-    listOutfits: async () => [{ _id: 'f1', name: '通勤', itemIds: ['i1'] }, { _id: 'empty', name: '空', itemIds: [] }],
-    addWearRecord: async () => { throw Error('不应提交') }
+    listOutfits: async () => [{ _id: 'f1', name: '通勤', itemIds: ['i1'] }, { _id: 'empty', name: '空', itemIds: [] }]
   })
   page.onLoad()
   await page.loadData()
   page.onDayTap({ currentTarget: { dataset: { date: day20 } } })
-  assert.deepEqual(page.data.dayPlans.map(plan => plan.checkInState), ['done', 'deleted', 'empty'])
+  assert.deepEqual(Array.from(page.data.dayPlans, plan => plan.outfitName), ['通勤', '已删除穿搭', '空'])
   page.onDayTap({ currentTarget: { dataset: { date: futureDate } } })
-  assert.equal(page.data.dayPlans[0].checkInState, 'future')
+  assert.equal(page.data.dayPlans[0].outfitName, '通勤')
 })
 
 // ---------- plan-edit ----------
@@ -177,6 +170,7 @@ test('穿着页选穿搭自动带出单品，未选衣物不能保存', async ()
 })
 
 test('统计页穿着频次与闲置榜按记录计算，删除单品不计入', async () => {
+  const tomorrow = new Date(Date.now() + 8 * 60 * 60 * 1000 + 86400000).toISOString().slice(0, 10)
   const page = loadPage('stats', {
     listItems: async () => [
       { _id: 'a', name: '衬衫' }, { _id: 'b', name: '长裤' }
@@ -186,7 +180,8 @@ test('统计页穿着频次与闲置榜按记录计算，删除单品不计入',
     listWearRecords: async () => [
       { _id: 'w1', date: '2026-09-20', itemIds: ['a', 'b'] },
       { _id: 'w2', date: '2026-09-25', itemIds: ['a', 'gone'] },
-      { _id: 'w3', date: '2026-09-26', itemIds: ['a'] }
+      { _id: 'w3', date: '2026-09-26', itemIds: ['a'] },
+      { _id: 'old-future', date: tomorrow, itemIds: ['a', 'b'] }
     ]
   })
   await page.loadStats()

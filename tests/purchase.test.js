@@ -18,6 +18,9 @@ test('购买评估按重复、缺口和预算给出确定结果', () => {
   assert.equal(duplicate.verdict.code, 'skip')
   assert.equal(duplicate.duplicateRisk.level, 'high')
   assert.equal(duplicate.similarItems[0].wearCount90, 0)
+  const futureWear = purchase.evaluate(candidate({}), [item('top')],
+    [{ date: '2026-10-08', itemIds: ['top'] }], [], now)
+  assert.equal(futureWear.similarItems[0].wearCount90, 0)
 
   const fillsGap = purchase.evaluate(candidate({ color: '白色' }), [item('pants', { category: '长裤', color: '黑色' }),
     item('shoes', { category: '鞋', color: '白色' })], [], [], now)

@@ -171,6 +171,7 @@ test('空衣橱画像缓存不命中，并可自愈遗漏版本递增的旧数�
 test('超过 120 件时保留最近 60 件，其余按近 90 天穿着频次选择', async () => {
   const now = Date.now()
   const today = new Date(now + 8 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const tomorrow = new Date(now + 8 * 60 * 60 * 1000 + 86400000).toISOString().slice(0, 10)
   const clothes = Array.from({ length: 130 }, (_, index) => ({
     ...item(`item-${index}`, 'openid-1', `衣物${index}`, '衬衫', ['春秋']),
     createdAt: new Date(now - index * 1000)
@@ -181,7 +182,8 @@ test('超过 120 件时保留最近 60 件，其余按近 90 天穿着频次选�
     { _id: 'w1', _openid: 'openid-1', date: today, itemIds: ['item-125', 'item-126', 'missing', 'foreign'] },
     { _id: 'w2', _openid: 'openid-1', date: today, itemIds: ['item-125', 'item-127'] },
     { _id: 'w3', _openid: 'openid-1', date: '2022-01-01', itemIds: ['item-129'] },
-    { _id: 'w4', _openid: 'openid-2', date: today, itemIds: ['item-128'] }
+    { _id: 'w4', _openid: 'openid-2', date: today, itemIds: ['item-128'] },
+    { _id: 'old-future', _openid: 'openid-1', date: tomorrow, itemIds: ['item-128'] }
   ]
   const result = await recommendation.loadItems(loadCloud({ clothes, wear_records }).db, 'openid-1')
   assert.deepEqual(result.items.slice(0, 60).map(row => row._id), Array.from({ length: 60 }, (_, index) => `item-${index}`))

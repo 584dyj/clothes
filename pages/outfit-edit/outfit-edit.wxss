@@ -85,6 +85,15 @@
   margin: 8rpx 8rpx 20rpx;
 }
 
+.wear-hint,
+.link-error {
+  color: #8f8980;
+  font-size: 24rpx;
+  margin: 0 8rpx 20rpx;
+}
+
+.link-error { color: #c0504d; }
+
 /* 分类切换条：横向滚动，单选 */
 .cat-bar {
   white-space: nowrap;

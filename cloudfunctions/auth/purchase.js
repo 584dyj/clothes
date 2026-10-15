@@ -143,11 +143,12 @@ function evaluate(candidate, rawItems, wearRecords, expenses, now = new Date(), 
   const since = new Date(now)
   since.setDate(since.getDate() - 90)
   const sinceDate = dateKey(since)
+  const today = new Date(now.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10)
   const wearCounts = new Map()
   // 账号在近 90 天有过穿着记录，闲置判断才有意义；从不打卡的用户"次数为 0"是没记录而非没穿过
   let hasRecentWear = false
   for (const record of wearRecords) {
-    if (text(record.date, 10) < sinceDate || !Array.isArray(record.itemIds)) continue
+    if (text(record.date, 10) < sinceDate || text(record.date, 10) > today || !Array.isArray(record.itemIds)) continue
     hasRecentWear = true
     for (const id of record.itemIds) wearCounts.set(id, (wearCounts.get(id) || 0) + 1)
   }

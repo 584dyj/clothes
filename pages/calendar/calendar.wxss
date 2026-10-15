@@ -174,19 +174,11 @@
   box-sizing: border-box;
 }
 
-.mark-worn {
-  background: #3a3835;
-}
-
 .calendar-note { color: #6b675f; font-size: 24rpx; line-height: 1.6; margin-bottom: 16rpx; }
 .day-empty-note { text-align: center; }
 .day-selected { background: #e9e4db; }
 .day-details { margin-top: 24rpx; padding: 24rpx; }
 .day-item { text-align: left; font-size: 28rpx; margin-top: 12rpx; }
-.plan-row { display: flex; align-items: center; }
-.plan-row-main { flex: 1; min-width: 0; }
-.checkin-btn { flex-shrink: 0; margin-top: 12rpx; margin-left: 16rpx; padding: 6rpx 24rpx; border-radius: 28rpx; background: #3a3835; color: #ffffff; font-size: 24rpx; line-height: 40rpx; }
-.checkin-disabled { background: #efede8; color: #9a958c; }
 .day-item-icon { width: 30rpx; height: 30rpx; margin-right: 10rpx; vertical-align: -6rpx; }
 .details-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; }
 .details-actions { display: flex; gap: 12rpx; width: 100%; margin-top: 16rpx; }
@@ -195,5 +187,4 @@
 .details-subtitle { font-size: 24rpx; color: #9a958c; margin-top: 8rpx; }
 .expense-item { color: #6b675f; }
 .plan-item { color: #3a3835; }
-.wear-item { color: #6b675f; }
 .nav-btn[disabled] { opacity: 0.35; }

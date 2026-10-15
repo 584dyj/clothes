@@ -8,6 +8,11 @@ const MODULE_PATH = require.resolve('../utils/db')
 const user = () => ({ _id: 'user', openid: 'openid-1', username: 'alice', salt: 'salt', passwordHash: crypto.scryptSync('secret1', 'salt', 64).toString('hex') })
 const item = () => ({ name: '衬衫', category: '上衣', seasons: ['春秋'], price: 10, imageFileID: '' })
 const dataCall = (operation, collection, extra = {}) => ({ action: 'data', operation, collection, ...extra })
+const shanghaiDate = offset => {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date())
+  const day = Object.fromEntries(parts.map(part => [part.type, part.value]))
+  return new Date(Date.UTC(Number(day.year), Number(day.month) - 1, Number(day.day) + offset)).toISOString().slice(0, 10)
+}
 
 // ---------- expenses 独立账本 ----------
 
@@ -45,10 +50,102 @@ test('穿着记录校验日期、衣物与穿搭归属，穿搭可空', async ()
   const added = await c.main(dataCall('add', 'wear_records', { data: valid }))
   assert.equal(added.success, true)
   assert.deepEqual(c.records.wear_records[0].itemIds, ['own'])
-  assert.equal((await c.main(dataCall('add', 'wear_records', { data: { ...valid, outfitId: '' } }))).success, true)
+  const duplicate = await c.main(dataCall('add', 'wear_records', { data: { ...valid, outfitId: '', note: '换备注' } }))
+  assert.equal(duplicate.success, false)
+  assert.match(duplicate.error, /相同衣物组合/)
   for (const patch of [{ date: '' }, { date: '2026-13-01' }, { itemIds: [] }, { itemIds: ['foreign'] }, { itemIds: ['gone'] }, { outfitId: 'fit-foreign' }, { outfitId: 'gone' }]) {
     assert.equal((await c.main(dataCall('add', 'wear_records', { data: { ...valid, ...patch } }))).success, false, JSON.stringify(patch))
   }
+})
+
+test('实穿日期只允许今天及过去，未来日期无法新增或更新', async () => {
+  const c = loadCloud({ users: [user()], clothes: [{ _id: 'a', _openid: 'openid-1', ...item() }] })
+  const today = shanghaiDate(0), tomorrow = shanghaiDate(1)
+  const data = { date: today, itemIds: ['a'], outfitId: '', note: '' }
+  const added = await c.main(dataCall('add', 'wear_records', { data }))
+  assert.equal(added.success, true)
+  assert.equal((await c.main(dataCall('add', 'wear_records', { data: { ...data, date: tomorrow } }))).success, false)
+  assert.equal((await c.main(dataCall('update', 'wear_records', { id: added._id, data: { ...data, date: tomorrow } }))).success, false)
+  assert.equal(c.records.wear_records[0].date, today)
+})
+
+test('同日衣物集合按排序判重，修改和删除同步释放占位', async () => {
+  const date = shanghaiDate(-1)
+  const c = loadCloud({ users: [user()], clothes: ['a', 'b', 'c'].map(_id => ({ _id, _openid: 'openid-1', ...item() })) })
+  const wear = itemIds => ({ date, itemIds, outfitId: '', note: '' })
+  const first = await c.main(dataCall('add', 'wear_records', { data: wear(['a', 'b']) }))
+  assert.equal(first.success, true)
+  assert.equal((await c.main(dataCall('add', 'wear_records', { data: wear(['b', 'a', 'a']) }))).success, false)
+  const second = await c.main(dataCall('add', 'wear_records', { data: wear(['a', 'c']) }))
+  assert.equal(second.success, true)
+  assert.equal((await c.main(dataCall('update', 'wear_records', { id: second._id, data: wear(['b', 'a']) }))).success, false)
+  assert.equal((await c.main(dataCall('update', 'wear_records', { id: second._id, data: { ...wear(['a', 'c']), note: '晚间' } }))).success, true)
+  assert.equal((await c.main(dataCall('update', 'wear_records', { id: second._id, data: wear(['b', 'c']) }))).success, true)
+  assert.equal((await c.main(dataCall('add', 'wear_records', { data: wear(['a', 'c']) }))).success, true)
+  assert.equal((await c.main(dataCall('delete', 'wear_records', { id: first._id }))).success, true)
+  assert.equal((await c.main(dataCall('add', 'wear_records', { data: wear(['b', 'a']) }))).success, true)
+  assert.equal(c.records.wear_records.length, 3)
+})
+
+test('旧重复实穿可改备注，删尽旧记录后同组合可重新保存', async () => {
+  const date = shanghaiDate(-1)
+  const old = id => ({ _id: id, _openid: 'openid-1', date, itemIds: id === 'old-a' ? ['a', 'b'] : ['b', 'a'], outfitId: '', note: '' })
+  const c = loadCloud({ users: [user()], clothes: ['a', 'b'].map(_id => ({ _id, _openid: 'openid-1', ...item() })), wear_records: [old('old-a'), old('old-b')] })
+  const data = { date, itemIds: ['a', 'b'], outfitId: '', note: '补充说明' }
+  assert.equal((await c.main(dataCall('update', 'wear_records', { id: 'old-a', data }))).success, true)
+  assert.equal((await c.main(dataCall('add', 'wear_records', { data }))).success, false)
+  assert.equal((await c.main(dataCall('delete', 'wear_records', { id: 'old-a' }))).success, true)
+  assert.equal((await c.main(dataCall('add', 'wear_records', { data }))).success, false)
+  assert.equal((await c.main(dataCall('delete', 'wear_records', { id: 'old-b' }))).success, true)
+  assert.equal((await c.main(dataCall('add', 'wear_records', { data }))).success, true)
+})
+
+test('并发提交同日同组合仅保留一条实穿记录', async () => {
+  const c = loadCloud({ users: [user()], clothes: ['a', 'b'].map(_id => ({ _id, _openid: 'openid-1', ...item() })) })
+  const date = shanghaiDate(0)
+  const results = await Promise.all([
+    c.main(dataCall('add', 'wear_records', { data: { date, itemIds: ['a', 'b'] } })),
+    c.main(dataCall('add', 'wear_records', { data: { date, itemIds: ['b', 'a'] } }))
+  ])
+  assert.deepEqual(results.map(result => result.success).sort(), [false, true])
+  assert.equal(c.records.wear_records.length, 1)
+  assert.equal(c.records.wardrobe_meta.filter(row => row._id.startsWith('wear-key-')).length, 1)
+  const distinct = await Promise.all([
+    c.main(dataCall('add', 'wear_records', { data: { date, itemIds: ['a'] } })),
+    c.main(dataCall('add', 'wear_records', { data: { date, itemIds: ['b'] } }))
+  ])
+  assert.deepEqual(distinct.map(result => result.success), [true, true])
+  assert.equal(c.records.wear_records.length, 3)
+})
+
+test('元数据写入冲突重扫后仍能保存不同组合', async () => {
+  const c = loadCloud({ users: [user()], clothes: [{ _id: 'a', _openid: 'openid-1', ...item() }] })
+  let conflicted = false
+  c.faults.before = (name, operation, id) => {
+    if (name === 'wardrobe_meta' && operation === 'set' && !id.startsWith('wear-key-') && !conflicted) {
+      conflicted = true
+      throw new Error('DATABASE_DUPLICATE_WRITE')
+    }
+  }
+  const result = await c.main(dataCall('add', 'wear_records', { data: { date: shanghaiDate(0), itemIds: ['a'] } }))
+  assert.equal(result.success, true)
+  assert.equal(c.records.wear_records.length, 1)
+})
+
+test('判重扫描覆盖同日超过一页的旧记录，占位失败会回滚实穿', async () => {
+  const date = shanghaiDate(-1)
+  const old = Array.from({ length: 100 }, (_, index) => ({ _id: `old-${index}`, _openid: 'openid-1', date, itemIds: ['b'] }))
+  old.push({ _id: 'old-match', _openid: 'openid-1', date, itemIds: ['a'] })
+  const c = loadCloud({ users: [user()], clothes: ['a', 'b'].map(_id => ({ _id, _openid: 'openid-1', ...item() })), wear_records: old })
+  const data = { date, itemIds: ['a'], outfitId: '', note: '' }
+  assert.equal((await c.main(dataCall('add', 'wear_records', { data }))).success, false)
+  c.records.wear_records.pop()
+  c.faults.before = (name, operation, id) => {
+    if (name === 'wardrobe_meta' && operation === 'set' && id.startsWith('wear-key-')) throw new Error('marker write failed')
+  }
+  assert.equal((await c.main(dataCall('add', 'wear_records', { data }))).success, false)
+  assert.equal(c.records.wear_records.length, 100)
+  assert.equal(c.records.wardrobe_meta.length, 0)
 })
 
 test('删除衣物不回溯清理穿着记录', async () => {
@@ -60,6 +157,50 @@ test('删除衣物不回溯清理穿着记录', async () => {
   assert.equal((await c.main(dataCall('delete', 'clothes', { id: 'item-1' }))).success, true)
   assert.equal(c.records.wear_records.length, 1)
   assert.deepEqual(c.records.wear_records[0].itemIds, ['item-1'])
+})
+
+test('关联收藏仅更新实穿 outfitId，衣物快照、备注和频次保持不变', async () => {
+  const date = shanghaiDate(-1)
+  const c = loadCloud({
+    users: [user()],
+    wear_records: [
+      { _id: 'wear', _openid: 'openid-1', date, itemIds: ['b', 'a'], outfitId: '', note: '通勤' },
+      { _id: 'foreign-wear', _openid: 'openid-2', date, itemIds: ['a', 'b'], outfitId: '', note: '' }
+    ],
+    outfits: [
+      { _id: 'fit', _openid: 'openid-1', name: '收藏', itemIds: ['a', 'b'] },
+      { _id: 'other', _openid: 'openid-1', name: '不同组合', itemIds: ['a'] },
+      { _id: 'foreign-fit', _openid: 'openid-2', name: '他人收藏', itemIds: ['a', 'b'] }
+    ]
+  })
+  const link = (id, outfitId) => c.main(dataCall('linkOutfit', 'wear_records', { id, outfitId }))
+  for (const [id, outfitId] of [
+    ['wear', 'other'], ['wear', 'foreign-fit'], ['foreign-wear', 'fit'], ['gone', 'fit'], ['wear', 'gone'], ['wear', '']
+  ]) assert.equal((await link(id, outfitId)).success, false)
+  assert.equal((await link('wear', 'fit')).success, true)
+  assert.deepEqual(c.records.wear_records[0].itemIds, ['b', 'a'])
+  assert.equal(c.records.wear_records[0].date, date)
+  assert.equal(c.records.wear_records[0].note, '通勤')
+  assert.equal(c.records.wear_records[0].outfitId, 'fit')
+  assert.equal(c.records.wear_records.length, 2)
+  const version = c.records.wardrobe_meta[0].version
+  assert.equal((await link('wear', 'fit')).success, true)
+  assert.equal(c.records.wardrobe_meta[0].version, version)
+  assert.equal((await c.main(dataCall('linkOutfit', 'outfits', { id: 'fit', outfitId: 'fit' }))).success, false)
+})
+
+test('关联收藏写入失败时事务回滚', async () => {
+  const c = loadCloud({
+    users: [user()],
+    wear_records: [{ _id: 'wear', _openid: 'openid-1', date: shanghaiDate(-1), itemIds: ['a'], outfitId: '' }],
+    outfits: [{ _id: 'fit', _openid: 'openid-1', name: '收藏', itemIds: ['a'] }]
+  })
+  c.faults.before = (name, operation) => {
+    if (name === 'wardrobe_meta' && operation === 'set') throw new Error('version write failed')
+  }
+  assert.equal((await c.main(dataCall('linkOutfit', 'wear_records', { id: 'wear', outfitId: 'fit' }))).success, false)
+  assert.equal(c.records.wear_records[0].outfitId, '')
+  assert.equal(c.records.wardrobe_meta.length, 0)
 })
 
 // ---------- outfit_plans 穿搭计划 ----------
@@ -145,4 +286,17 @@ test('新集合缓存复用、写后失效与 clearCache 覆盖', async () => {
   api.clearCache()
   records.expenses.push({ _id: 'exp-2', _openid: 'openid-1', category: '其他', amount: 5, date: '2026-09-04' })
   assert.equal((await api.listExpenses()).length, 3)
+})
+
+test('客户端关联收藏接口刷新实穿缓存，并能读取保存后的记录', async () => {
+  const { api, queryCalls } = loadDb({
+    wear_records: [{ _id: 'wear', date: shanghaiDate(-1), itemIds: ['a'], outfitId: '', note: '' }],
+    outfits: [{ _id: 'fit', name: '收藏', itemIds: ['a'] }]
+  })
+  await api.listWearRecords()
+  assert.equal((await api.getWearRecord('wear')).outfitId, '')
+  await api.linkWearOutfit('wear', 'fit')
+  assert.equal((await api.getWearRecord('wear')).outfitId, 'fit')
+  assert.equal((await api.listWearRecords())[0].outfitId, 'fit')
+  assert.equal(queryCalls.filter(call => call.collection === 'wear_records').length, 2)
 })

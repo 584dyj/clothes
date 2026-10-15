@@ -1,9 +1,16 @@
 <view class="page">
+  <view class="wear-entry card" bindtap="onWearTap">
+    <view>
+      <view class="wear-entry-title">今日穿着</view>
+      <view class="wear-entry-hint">记录实际穿过的衣物，查看与修改历史</view>
+    </view>
+    <text class="wear-entry-arrow">›</text>
+  </view>
   <view wx:if="{{loadError}}" class="empty">{{loadError}}<button bindtap="onRetry">重新加载</button></view>
   <block wx:if="{{!loadError}}">
   <view wx:if="{{loading}}" class="empty">加载中…</view>
   <view wx:elif="{{left.length === 0 && right.length === 0}}" class="empty">
-    还没有穿搭记录，点右下角 + 搭配一套吧
+    还没有收藏穿搭，点右下角 + 搭配一套吧
   </view>
 
   <view wx:else class="waterfall">

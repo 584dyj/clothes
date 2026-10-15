@@ -1,5 +1,6 @@
 const db = require('../../utils/db')
 const auth = require('../../utils/auth')
+const { validDate } = require('../../utils/date')
 
 const app = getApp()
 
@@ -106,16 +107,15 @@ Page({
       // 穿着频次与闲置：基于 wear_records（历史保留，删除的单品不计入展示）
       const wearCount = Object.create(null)
       const lastWorn = Object.create(null)
+      const todayStr = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10)
       wearRecords.forEach(record => {
         const date = record.date
+        if (!validDate(date) || date > todayStr) return
         ;(record.itemIds || []).forEach(id => {
           wearCount[id] = (wearCount[id] || 0) + 1
           if (date && (!lastWorn[id] || date > lastWorn[id])) lastWorn[id] = date
         })
       })
-      const pad = n => String(n).padStart(2, '0')
-      const now = new Date()
-      const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
       const wearRank = items.filter(item => wearCount[item._id])
         .map(item => ({ name: item.name || '未命名', count: wearCount[item._id] }))
         .sort((a, b) => b.count - a.count)

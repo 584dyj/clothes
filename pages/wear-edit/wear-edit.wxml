@@ -2,6 +2,10 @@
   <view wx:if="{{loading}}" class="empty">加载中…</view>
   <view wx:elif="{{loadError}}" class="empty">{{loadError}}<button bindtap="onRetry">重新加载</button></view>
 
+  <view wx:if="{{!loading && !loadError}}" class="entry-heading">
+    <view class="entry-title">{{id ? '编辑穿着记录' : historyEnabled ? '今天穿了什么' : '记录穿着'}}</view>
+    <view class="entry-hint">选择实际穿过的衣物，也可以补记过去的日期</view>
+  </view>
   <view class="form card" wx:if="{{!loading && !loadError}}">
     <view class="field">
       <text class="label">日期</text>
@@ -19,6 +23,21 @@
     </view>
   </view>
 
+  <view wx:if="{{historyEnabled && !loading && !loadError}}" class="source-actions">
+    <button class="source-btn" bindtap="onLastWearTap">带入上次实穿</button>
+    <text>或在上方选择收藏穿搭</text>
+  </view>
+
+  <view wx:if="{{historyEnabled && !loading && !loadError}}" class="stock-card card">
+    <text>衣橱里还没有这件？</text>
+    <button bindtap="onQuickAddTap" disabled="{{saving || refreshingItems || !ready}}">+ 快捷入库</button>
+  </view>
+  <view wx:if="{{itemRefreshError}}" class="stock-error" bindtap="refreshItemsAfterQuickAdd">{{itemRefreshError}}</view>
+  <view wx:if="{{recentlyAdded.length}}" class="new-items">
+    <text>刚入库，点选加入：</text>
+    <button wx:for="{{recentlyAdded}}" wx:key="_id" class="new-item {{item.selected ? 'new-item-selected' : ''}}" data-id="{{item._id}}" bindtap="onItemToggle">{{item.selected ? '✓' : '+'}} {{item.name || '未命名'}}</button>
+  </view>
+
   <!-- 选择衣物：分类切换条 + 多选网格 -->
   <scroll-view wx:if="{{!loading && !loadError}}" scroll-x class="cat-bar" enhanced show-scrollbar="{{false}}">
     <view class="cat-bar-inner">
@@ -33,7 +52,7 @@
   </scroll-view>
   <view wx:if="{{!loading && !loadError}}" class="section-title">穿过的衣物（已选 {{selectedIds.length}} 件）</view>
   <block wx:if="{{!loading && !loadError}}">
-    <view wx:if="{{items.length === 0}}" class="empty">衣橱里还没有衣物，请先去「衣物」页添加</view>
+    <view wx:if="{{items.length === 0}}" class="empty">{{historyEnabled ? '衣橱里还没有衣物，可用上方「快捷入库」添加' : '衣橱里还没有衣物，请先去「衣物」页添加'}}</view>
     <view wx:elif="{{viewItems.length === 0}}" class="empty">{{activeCategory === '已选' ? '还没有选中任何衣物' : '该分类下还没有衣物'}}</view>
     <view wx:else class="grid">
       <view
@@ -50,8 +69,41 @@
       </view>
     </view>
 
-    <button class="btn-primary save-btn" bindtap="onSave" disabled="{{saving || !ready}}">保存</button>
+    <view wx:if="{{missingCount}}" class="missing card">
+      <text>这条旧记录有 {{missingCount}} 件衣物已从衣橱删除</text>
+      <button bindtap="onRemoveMissing">移除失效衣物</button>
+    </view>
+
+    <view wx:if="{{outfitSyncError}}" class="stock-error" bindtap="refreshAfterOutfitEdit">{{outfitSyncError}}</view>
+    <button class="btn-primary save-btn" bindtap="onSave" disabled="{{saving || !ready || outfitSyncPending || outfitSyncError}}">保存</button>
+    <button wx:if="{{historyEnabled}}" class="save-outfit-btn" bindtap="onSaveAsOutfit" disabled="{{saving || !ready || outfitSyncPending || outfitSyncError}}">保存为穿搭</button>
     <button wx:if="{{id}}" class="btn-danger delete-btn" bindtap="onDelete" disabled="{{saving || !ready}}">删除</button>
+    <button wx:if="{{id && historyEnabled}}" class="reset-btn" bindtap="onResetTap" disabled="{{saving}}">返回今日录入</button>
+
+    <block wx:if="{{historyEnabled}}">
+    <view class="history-heading">近期实穿</view>
+    <view wx:if="{{historyError}}" class="history-empty" bindtap="refreshHistory">{{historyError}}</view>
+    <view wx:elif="{{history.length === 0}}" class="history-empty">还没有实穿记录，保存后会显示在这里</view>
+    <view wx:for="{{history}}" wx:for-item="record" wx:key="_id" class="history-card card" data-id="{{record._id}}" bindtap="onHistoryTap">
+      <view class="history-head">
+        <text class="history-date">{{record.date}}</text>
+        <text wx:if="{{record.future}}" class="future-label">未来日期待修正</text>
+        <text class="history-count">{{record.itemCount}} 件</text>
+      </view>
+      <view class="history-body">
+        <view class="history-images">
+          <image wx:for="{{record.thumbs}}" wx:for-item="thumb" wx:key="_id" src="{{thumb.imageFileID}}" mode="aspectFill" />
+        </view>
+        <text class="history-names">{{record.itemNames}}</text>
+      </view>
+      <view wx:if="{{record.note}}" class="history-note">{{record.note}}</view>
+      <view class="history-actions">
+        <text>点此编辑</text>
+        <button data-id="{{record._id}}" catchtap="onHistoryDelete">删除</button>
+      </view>
+    </view>
+    <button wx:if="{{hasMoreHistory}}" class="more-btn" bindtap="onMoreHistory">加载更多记录</button>
+    </block>
   </block>
 
   <wheel-picker

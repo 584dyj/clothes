@@ -45,12 +45,45 @@ const COLLECTIONS = Object.keys(FIELDS)
 
 const EXPENSE_CATEGORIES = ['服饰', '鞋包', '洗护', '修改', '其他']
 const MAX_YEAR = 2030
+const WEAR_DUPLICATE = '同一天已记录相同衣物组合'
+const WEAR_RESCAN = 'WEAR_RESCAN'
+const WEAR_SCAN_PAGE_SIZE = 100
 
 function validDateString(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
   const date = new Date(value + 'T00:00:00Z')
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value &&
     Number(value.slice(0, 4)) >= 2022 && Number(value.slice(0, 4)) <= MAX_YEAR
+}
+
+function shanghaiToday() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(new Date())
+  const value = Object.fromEntries(parts.map(part => [part.type, part.value]))
+  return `${value.year}-${value.month}-${value.day}`
+}
+
+const wardrobeMetaId = openid => crypto.createHash('sha256').update('wardrobe:' + openid).digest('hex')
+// ponytail: 借现有元数据集合存组合占位；若版本文档成为写入热点，再迁移到独立集合。
+const wearKey = (openid, date, itemIds) => 'wear-key-' + crypto.createHash('sha256')
+  .update(JSON.stringify([openid, date, [...new Set(itemIds)].sort()])).digest('hex')
+
+async function hasSameWearRecord(db, openid, date, itemIds, excludedId) {
+  const key = wearKey(openid, date, itemIds)
+  for (let offset = 0; ; offset += WEAR_SCAN_PAGE_SIZE) {
+    const res = await db.collection('wear_records').where({ _openid: openid, date })
+      .orderBy('createdAt', 'desc').orderBy('_id', 'desc').skip(offset).limit(WEAR_SCAN_PAGE_SIZE).get()
+    if (res.data.some(row => row._id !== excludedId && Array.isArray(row.itemIds) &&
+      wearKey(openid, row.date, row.itemIds) === key)) return true
+    if (res.data.length < WEAR_SCAN_PAGE_SIZE) return false
+  }
+}
+
+async function releaseWearKey(tx, key, recordId) {
+  const ref = tx.collection('wardrobe_meta').doc(key)
+  const marker = await readDoc(ref)
+  if (marker && marker.recordId === recordId) await ref.remove()
 }
 
 function cleanItemIds(value) {
@@ -86,6 +119,7 @@ function cleanData(collection, input) {
     if (!validDateString(data.date)) throw new Error('日期无效')
   } else if (collection === 'wear_records') {
     if (!validDateString(data.date)) throw new Error('日期无效')
+    if (data.date > shanghaiToday()) throw new Error('不能记录未来日期')
     data.itemIds = cleanItemIds(input.itemIds)
   } else {
     if (!validDateString(data.date)) throw new Error('日期无效')
@@ -100,11 +134,12 @@ async function activeUser(tx, user, openid) {
 }
 
 // 衣物或穿着记录每次增删改递增版本号，驱动衣橱画像缓存（ai_cache）失效重建。
-async function bumpWardrobeVersion(tx, openid) {
-  const id = crypto.createHash('sha256').update('wardrobe:' + openid).digest('hex')
-  const ref = tx.collection('wardrobe_meta').doc(id)
+async function bumpWardrobeVersion(tx, openid, expectedVersion) {
+  const ref = tx.collection('wardrobe_meta').doc(wardrobeMetaId(openid))
   const current = await readDoc(ref)
-  await ref.set({ data: { _openid: openid, version: (current && current.version || 0) + 1, updatedAt: new Date() } })
+  const version = current && current.version || 0
+  if (expectedVersion !== undefined && version !== expectedVersion) throw new Error(WEAR_RESCAN)
+  await ref.set({ data: { _openid: openid, version: version + 1, updatedAt: new Date() } })
 }
 
 async function saveAvatar({ db, user, openid, avatarFileID }) {
@@ -198,53 +233,118 @@ async function handle(context) {
     const res = await db.collection(collection).where({ _openid: openid }).orderBy('createdAt', 'desc').orderBy('_id', 'desc').skip(event.offset).limit(20).get()
     return { success: true, data: res.data }
   }
-  if (!['get', 'add', 'update', 'delete'].includes(operation)) throw new Error('操作无效')
+  if (!['get', 'add', 'update', 'delete'].includes(operation) && !(collection === 'wear_records' && operation === 'linkOutfit')) throw new Error('操作无效')
   if (operation !== 'add' && (typeof id !== 'string' || !id || id.length > 100)) throw new Error('记录 ID 无效')
   if (operation === 'get') {
     const record = await readDoc(db.collection(collection).doc(id))
     if (!record || record._openid !== openid) throw new Error('记录不存在或无权访问')
     return { success: true, data: record }
   }
+  if (operation === 'linkOutfit') {
+    const outfitId = event.outfitId
+    if (typeof outfitId !== 'string' || !outfitId || outfitId.length > 100) throw new Error('穿搭 ID 无效')
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await db.runTransaction(async tx => {
+          await activeUser(tx, user, openid)
+          const wear = await readDoc(tx.collection('wear_records').doc(id))
+          const outfit = await readDoc(tx.collection('outfits').doc(outfitId))
+          if (!wear || wear._openid !== openid) throw new Error('穿着记录不存在或无权访问')
+          if (!outfit || outfit._openid !== openid) throw new Error('穿搭不存在或无权访问')
+          const wearIds = Array.isArray(wear.itemIds) ? [...new Set(wear.itemIds)].sort() : []
+          const outfitIds = Array.isArray(outfit.itemIds) ? [...new Set(outfit.itemIds)].sort() : []
+          if (!wearIds.length || wearIds.length !== outfitIds.length || wearIds.some((itemId, index) => itemId !== outfitIds[index])) {
+            throw new Error('穿搭衣物与实穿记录不一致，请刷新后重试')
+          }
+          if (wear.outfitId === outfitId) return
+          await tx.collection('wear_records').doc(id).update({ data: { outfitId } })
+          await bumpWardrobeVersion(tx, openid)
+        })
+        return { success: true, _id: id }
+      } catch (error) {
+        const message = String(error.code || error.errCode || '') + ' ' + String(error.message || error.errMsg || '')
+        const retryable = /DATABASE_TRANSACTION_CONFLICT|DATABASE_DUPLICATE_WRITE|E11000/.test(message)
+        if (retryable && attempt < 2) continue
+        if (retryable) throw new Error('穿着记录正在更新，请重试')
+        throw error
+      }
+    }
+  }
   const targetId = operation === 'add' ? crypto.randomBytes(16).toString('hex') : id
-  await db.runTransaction(async tx => {
-    await activeUser(tx, user, openid)
-    const ref = tx.collection(collection).doc(targetId)
-    const previous = operation === 'add' ? null : await readDoc(ref)
-    if (operation !== 'add' && (!previous || previous._openid !== openid)) throw new Error('记录不存在或无权访问')
-    if (operation === 'delete') {
-      await ref.remove()
-      await queueImage(tx, openid, previous.imageFileID)
-      if (collection === 'clothes') {
-        await tx.collection('cleanup_jobs').doc('refs-' + targetId).set({ data: { _openid: openid, kind: 'references', itemId: targetId, state: 'pending' } })
-        await bumpWardrobeVersion(tx, openid)
-      }
-      if (collection === 'wear_records') await bumpWardrobeVersion(tx, openid)
-      if (collection === 'outfits') {
-        await tx.collection('cleanup_jobs').doc('plans-' + targetId).set({ data: { _openid: openid, kind: 'plans', outfitId: targetId, state: 'pending' } })
-      }
-      return
+  const wearData = collection === 'wear_records' && operation !== 'delete' ? cleanData(collection, event.data) : null
+  const nextWearKey = wearData && wearKey(openid, wearData.date, wearData.itemIds)
+  for (let attempt = 0; ; attempt++) {
+    // 兼容只支持按 ID 读取的事务。先扫描旧记录，再用版本和确定性占位封住扫描到提交之间的竞态。
+    const scannedVersion = wearData
+      ? (await readDoc(db.collection('wardrobe_meta').doc(wardrobeMetaId(openid))))?.version || 0
+      : undefined
+    const duplicate = wearData && await hasSameWearRecord(db, openid, wearData.date, wearData.itemIds, targetId)
+    try {
+      await db.runTransaction(async tx => {
+        await activeUser(tx, user, openid)
+        const ref = tx.collection(collection).doc(targetId)
+        const previous = operation === 'add' ? null : await readDoc(ref)
+        if (operation !== 'add' && (!previous || previous._openid !== openid)) throw new Error('记录不存在或无权访问')
+        if (operation === 'delete') {
+          await ref.remove()
+          await queueImage(tx, openid, previous.imageFileID)
+          if (collection === 'clothes') {
+            await tx.collection('cleanup_jobs').doc('refs-' + targetId).set({ data: { _openid: openid, kind: 'references', itemId: targetId, state: 'pending' } })
+            await bumpWardrobeVersion(tx, openid)
+          }
+          if (collection === 'wear_records') {
+            await bumpWardrobeVersion(tx, openid)
+            await releaseWearKey(tx, wearKey(openid, previous.date, previous.itemIds || []), targetId)
+          }
+          if (collection === 'outfits') {
+            await tx.collection('cleanup_jobs').doc('plans-' + targetId).set({ data: { _openid: openid, kind: 'plans', outfitId: targetId, state: 'pending' } })
+          }
+          return
+        }
+        const data = wearData || cleanData(collection, event.data)
+        const previousWearKey = collection === 'wear_records' && previous
+          ? wearKey(openid, previous.date, previous.itemIds || []) : null
+        const changedWearKey = nextWearKey && nextWearKey !== previousWearKey
+        if (changedWearKey && duplicate) throw new Error(WEAR_DUPLICATE)
+        if (collection === 'outfits' || collection === 'wear_records') {
+          for (const itemId of data.itemIds) {
+            const item = await readDoc(tx.collection('clothes').doc(itemId))
+            if (!item || item._openid !== openid) throw new Error('所选衣物已删除或无权访问，请重新加载')
+          }
+        }
+        if (collection === 'expenses' && data.itemId) {
+          const item = await readDoc(tx.collection('clothes').doc(data.itemId))
+          if (!item || item._openid !== openid) throw new Error('关联衣物已删除或无权访问')
+        }
+        if ((collection === 'wear_records' || collection === 'outfit_plans') && data.outfitId) {
+          const outfit = await readDoc(tx.collection('outfits').doc(data.outfitId))
+          if (!outfit || outfit._openid !== openid) throw new Error('所选穿搭已删除或无权访问')
+        }
+        await claimImage(tx, openid, data.imageFileID, previous && previous.imageFileID, collection + '/' + targetId)
+        if (previous) await ref.update({ data })
+        else await ref.set({ data: { ...data, _openid: openid, createdAt: db.serverDate() } })
+        if (collection === 'clothes' || collection === 'wear_records') {
+          await bumpWardrobeVersion(tx, openid, changedWearKey ? scannedVersion : undefined)
+        }
+        if (changedWearKey) {
+          const marker = await readDoc(tx.collection('wardrobe_meta').doc(nextWearKey))
+          if (marker && marker.recordId !== targetId) throw new Error(WEAR_DUPLICATE)
+          if (!marker) await tx.collection('wardrobe_meta').add({
+            data: { _id: nextWearKey, _openid: openid, recordId: targetId, date: data.date }
+          })
+          if (previousWearKey) await releaseWearKey(tx, previousWearKey, targetId)
+        }
+        if (previous && previous.imageFileID !== data.imageFileID) await queueImage(tx, openid, previous.imageFileID)
+      })
+      break
+    } catch (error) {
+      const message = String(error.code || error.errCode || '') + ' ' + String(error.message || error.errMsg || '')
+      const retryable = message.includes(WEAR_RESCAN) || /DATABASE_TRANSACTION_CONFLICT|DATABASE_DUPLICATE_WRITE|E11000/.test(message)
+      if (wearData && retryable && attempt < 2) continue
+      if (wearData && retryable) throw new Error('穿着记录正在更新，请重试')
+      throw error
     }
-    const data = cleanData(collection, event.data)
-    if (collection === 'outfits' || collection === 'wear_records') {
-      for (const itemId of data.itemIds) {
-        const item = await readDoc(tx.collection('clothes').doc(itemId))
-        if (!item || item._openid !== openid) throw new Error('所选衣物已删除或无权访问，请重新加载')
-      }
-    }
-    if (collection === 'expenses' && data.itemId) {
-      const item = await readDoc(tx.collection('clothes').doc(data.itemId))
-      if (!item || item._openid !== openid) throw new Error('关联衣物已删除或无权访问')
-    }
-    if ((collection === 'wear_records' || collection === 'outfit_plans') && data.outfitId) {
-      const outfit = await readDoc(tx.collection('outfits').doc(data.outfitId))
-      if (!outfit || outfit._openid !== openid) throw new Error('所选穿搭已删除或无权访问')
-    }
-    await claimImage(tx, openid, data.imageFileID, previous && previous.imageFileID, collection + '/' + targetId)
-    if (previous) await ref.update({ data })
-    else await ref.set({ data: { ...data, _openid: openid, createdAt: db.serverDate() } })
-    if (collection === 'clothes' || collection === 'wear_records') await bumpWardrobeVersion(tx, openid)
-    if (previous && previous.imageFileID !== data.imageFileID) await queueImage(tx, openid, previous.imageFileID)
-  })
+  }
   // 提交后的清理失败必须返回已提交状态，不能让客户端把保存当作失败。
   let cleanupFailed = false
   try { cleanupFailed = (await retryCleanup(context)).cleanupFailed } catch (e) { cleanupFailed = true; console.error(e) }

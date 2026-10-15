@@ -1,7 +1,11 @@
 .page {
   padding: 24rpx;
-  padding-bottom: 60rpx;
+  padding-bottom: 120rpx;
 }
+
+.entry-heading { margin: 8rpx 4rpx 24rpx; }
+.entry-title { font-size: 36rpx; font-weight: 600; color: #3a3835; }
+.entry-hint { margin-top: 8rpx; font-size: 24rpx; color: #9a958c; }
 
 .form {
   padding: 8rpx 28rpx;
@@ -139,3 +143,34 @@
 .save-btn {
   margin-bottom: 24rpx;
 }
+
+.save-outfit-btn { margin-bottom: 24rpx; background: #ffffff; color: #3a3835; border: 1rpx solid #dedbd5; border-radius: 44rpx; font-size: 30rpx; }
+.save-outfit-btn::after { border: none; }
+
+.source-actions { display: flex; align-items: center; gap: 18rpx; margin-bottom: 28rpx; color: #9a958c; font-size: 22rpx; }
+.source-btn { margin: 0; padding: 0 22rpx; height: 64rpx; line-height: 64rpx; border-radius: 36rpx; background: #ffffff; color: #3a3835; font-size: 24rpx; }
+.source-btn::after, .stock-card button::after, .new-item::after, .missing button::after, .history-actions button::after, .reset-btn::after, .more-btn::after { border: none; }
+.stock-card { display: flex; align-items: center; justify-content: space-between; padding: 16rpx 24rpx; margin-bottom: 20rpx; color: #6b675f; font-size: 25rpx; }
+.stock-card button { margin: 0; padding: 0 18rpx; height: 64rpx; line-height: 64rpx; border-radius: 32rpx; background: #3a3835; color: #ffffff; font-size: 24rpx; }
+.stock-error { margin: 0 8rpx 16rpx; color: #c0504d; font-size: 24rpx; }
+.new-items { display: flex; flex-wrap: wrap; align-items: center; gap: 12rpx; margin: 0 8rpx 24rpx; color: #6b675f; font-size: 24rpx; }
+.new-item { margin: 0; padding: 0 16rpx; height: 60rpx; line-height: 60rpx; border-radius: 30rpx; background: #ffffff; color: #3a3835; font-size: 24rpx; }
+.new-item-selected { background: #3a3835; color: #ffffff; }
+.missing { display: flex; justify-content: space-between; align-items: center; padding: 18rpx 22rpx; margin-bottom: 24rpx; color: #6b675f; font-size: 24rpx; }
+.missing button { margin: 0; padding: 0 12rpx; background: transparent; color: #3a3835; font-size: 24rpx; }
+.reset-btn { margin-bottom: 48rpx; background: transparent; color: #6b675f; font-size: 26rpx; }
+.history-heading { margin: 48rpx 6rpx 22rpx; font-size: 30rpx; font-weight: 600; color: #3a3835; }
+.history-empty { padding: 34rpx 20rpx; text-align: center; color: #9a958c; font-size: 25rpx; }
+.history-card { padding: 22rpx 24rpx; margin-bottom: 18rpx; }
+.history-head, .history-body, .history-actions { display: flex; align-items: center; }
+.history-date { font-size: 28rpx; font-weight: 600; }
+.history-count { margin-left: auto; color: #9a958c; font-size: 24rpx; }
+.future-label { margin-left: 16rpx; color: #c0504d; font-size: 22rpx; }
+.history-body { margin-top: 18rpx; gap: 18rpx; }
+.history-images { display: flex; flex-shrink: 0; }
+.history-images image { width: 64rpx; height: 64rpx; margin-right: 6rpx; border-radius: 8rpx; }
+.history-names { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: #6b675f; font-size: 25rpx; }
+.history-note { margin-top: 12rpx; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: #9a958c; font-size: 24rpx; }
+.history-actions { justify-content: space-between; margin-top: 16rpx; color: #9a958c; font-size: 22rpx; }
+.history-actions button { margin: 0; padding: 0 12rpx; background: transparent; color: #c0504d; font-size: 24rpx; }
+.more-btn { background: transparent; color: #6b675f; font-size: 25rpx; }

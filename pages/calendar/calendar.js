@@ -2,8 +2,7 @@ const db = require('../../utils/db')
 const auth = require('../../utils/auth')
 const swipeBack = require('../../utils/swipe-back')
 
-// 月历：统一合计衣物购买与独立账本开销，
-// 穿搭计划与实穿记录叠加展示。数据在客户端内存过滤，与既有口径一致。
+// 月历：统一合计衣物购买与独立账本开销，展示穿搭计划。
 
 const { validDate, MIN_YEAR, MAX_YEAR } = require('../../utils/date')
 const WEEK_LABELS = ['日', '一', '二', '三', '四', '五', '六']
@@ -33,13 +32,11 @@ Page({
     dayItems: [],
     dayExpenses: [],
     dayPlans: [],
-    dayWears: [],
-    checkingId: '',          // 一键打卡进行中的计划 _id，防重复提交
     selectedTotal: 0,
     undatedTotal: 0,
     canPrev: true,
     canNext: true,
-    cells: [],               // [{ day, date, total, isToday, hasPlan, hasWorn }]，day 为 0 表示补位空格
+    cells: [],               // [{ day, date, total, isToday, hasPlan }]，day 为 0 表示补位空格
     monthTotal: 0,
     yearTotal: 0,
     todayTotal: 0,           // 今日消费
@@ -66,14 +63,12 @@ Page({
   async loadData(force = false) {
     this.setData({ loadError: '' })
     try {
-      const [items, expenses, plans, wears, outfits] = await Promise.all([
-        db.listItems(force), db.listExpenses(force), db.listPlans(force),
-        db.listWearRecords(force), db.listOutfits(force)
+      const [items, expenses, plans, outfits] = await Promise.all([
+        db.listItems(force), db.listExpenses(force), db.listPlans(force), db.listOutfits(force)
       ])
       this._items = items
       this._expenses = expenses
       this._plans = plans
-      this._wears = wears
       this._outfits = outfits
       this.setData({ loading: false })
       this.render()
@@ -91,7 +86,7 @@ Page({
 
   // 渲染当前年月
   render() {
-    const { _year: year, _month: month, _items, _expenses, _plans, _wears } = this
+    const { _year: year, _month: month, _items, _expenses, _plans } = this
     // 每日开销映射：'YYYY-MM-DD' -> 衣物购买与账本总金额
     const dayTotal = {}
     let monthTotal = 0
@@ -117,11 +112,9 @@ Page({
       if (y === year && m === month) monthTotal += amount
       if (y === year) yearTotal += amount
     })
-    // 计划与实穿标记
+    // 计划标记
     const planDates = {}
-    const wornDates = {}
     ;(_plans || []).forEach(plan => { if (validDate(plan.date)) planDates[plan.date] = true })
-    ;(_wears || []).forEach(wear => { if (validDate(wear.date)) wornDates[wear.date] = true })
 
     const firstDay = new Date(year, month - 1, 1).getDay() // 当月1号是周几（0=周日）
     const daysInMonth = new Date(year, month, 0).getDate()
@@ -137,8 +130,7 @@ Page({
         date,
         total: (dayTotal[date] || 0) / 100,
         isToday: date === todayStr,
-        hasPlan: !!planDates[date],
-        hasWorn: !!wornDates[date]
+        hasPlan: !!planDates[date]
       })
     }
 
@@ -166,25 +158,11 @@ Page({
       .map(item => ({ ...item, price: Math.round(Number(item.price) * 100) / 100 }))
     const dayExpenses = (this._expenses || []).filter(expense => expense.date === date && Number(expense.amount) > 0)
       .map(expense => ({ ...expense, amount: Math.round(Number(expense.amount) * 100) / 100 }))
-    const dayWears = (this._wears || []).filter(wear => wear.date === date)
-      .map(wear => ({ ...wear, outfitName: this.outfitNameOf(wear.outfitId), itemCount: (wear.itemIds || []).length }))
-    // 一键打卡状态：已打卡 > 未来日期 > 穿搭已删除 > 穿搭无单品 > 可打卡
-    const now = new Date()
-    const pad = n => String(n).padStart(2, '0')
-    const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
-    const wornOutfitIds = new Set(dayWears.map(wear => wear.outfitId).filter(Boolean))
     const dayPlans = (this._plans || []).filter(plan => plan.date === date)
-      .map(plan => {
-        const outfit = (this._outfits || []).find(row => row._id === plan.outfitId)
-        const checkInState = wornOutfitIds.has(plan.outfitId) ? 'done'
-          : date > todayStr ? 'future'
-          : !outfit ? 'deleted'
-          : !(outfit.itemIds || []).length ? 'empty' : 'ready'
-        return { ...plan, outfitName: this.outfitNameOf(plan.outfitId), checkInState }
-      })
+      .map(plan => ({ ...plan, outfitName: this.outfitNameOf(plan.outfitId) }))
     const cents = dayItems.reduce((total, item) => total + Math.round(item.price * 100), 0) +
       dayExpenses.reduce((total, expense) => total + Math.round(expense.amount * 100), 0)
-    this.setData({ selectedDate: date, dayItems, dayExpenses, dayPlans, dayWears, selectedTotal: cents / 100 })
+    this.setData({ selectedDate: date, dayItems, dayExpenses, dayPlans, selectedTotal: cents / 100 })
   },
 
   onDayTap(e) { this.selectDate(e.currentTarget.dataset.date) },
@@ -201,32 +179,6 @@ Page({
     wx.navigateTo({ url: '/pages/plan-edit/plan-edit?id=' + encodeURIComponent(e.currentTarget.dataset.id) })
   },
 
-  // 一键打卡：把计划穿搭的单品直接记为当日实穿，服务端校验单品归属
-  async onQuickCheckIn(e) {
-    if (this.data.checkingId) return
-    const id = e.currentTarget.dataset.id
-    const plan = (this._plans || []).find(row => row._id === id)
-    const outfit = plan && (this._outfits || []).find(row => row._id === plan.outfitId)
-    const itemIds = outfit ? (outfit.itemIds || []) : []
-    // 按钮在已打卡时本不渲染，这里再拦一次同日同穿搭的重复提交
-    const alreadyWorn = plan && (this._wears || []).some(wear => wear.date === plan.date && wear.outfitId === plan.outfitId)
-    if (!plan || alreadyWorn || !itemIds.length) return
-    this.setData({ checkingId: id })
-    try {
-      await db.addWearRecord({ date: plan.date, outfitId: plan.outfitId, itemIds: [...itemIds], note: plan.note || '' })
-      await this.loadData(true)
-    } catch (err) {
-      console.error(err)
-      wx.showToast({ title: err.message || '打卡失败，请重试', icon: 'none' })
-    } finally {
-      this.setData({ checkingId: '' })
-    }
-  },
-
-  onWearTap(e) {
-    wx.navigateTo({ url: '/pages/wear-edit/wear-edit?id=' + encodeURIComponent(e.currentTarget.dataset.id) })
-  },
-
   // 给当前选中日期记一笔账本开销
   onAddExpense() {
     if (!validDate(this.data.selectedDate)) return
@@ -236,11 +188,6 @@ Page({
   onAddPlan() {
     if (!validDate(this.data.selectedDate)) return
     wx.navigateTo({ url: '/pages/plan-edit/plan-edit?date=' + this.data.selectedDate })
-  },
-
-  onAddWear() {
-    if (!validDate(this.data.selectedDate)) return
-    wx.navigateTo({ url: '/pages/wear-edit/wear-edit?date=' + this.data.selectedDate })
   },
 
   // ---------- 快速切换年月（滚轮选择器） ----------

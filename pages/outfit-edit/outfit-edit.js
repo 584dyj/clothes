@@ -11,6 +11,10 @@ Page({
 
   data: {
     id: '',
+    wearRecordId: '',
+    createdOutfitId: '',
+    linkError: '',
+    linkNeedsReturn: false,
     name: '',
     occasion: '',
     occasions: [],
@@ -37,12 +41,27 @@ Page({
       return
     }
     this.setData({
-      id: options.id || '',
+      id: options.wearRecordId ? '' : options.id || '',
+      wearRecordId: options.wearRecordId || '',
       occasions: app.globalData.occasions,
       categories: ['全部', '已选', ...app.globalData.categories]
     })
-    if (options.id) wx.setNavigationBarTitle({ title: '编辑穿搭' })
+    if (options.wearRecordId) wx.setNavigationBarTitle({ title: '保存为穿搭' })
+    else if (options.id) wx.setNavigationBarTitle({ title: '编辑穿搭' })
     return this.onRetry()
+  },
+
+  onUnload() {
+    this._unloaded = true
+    if (this._returnTimer) clearTimeout(this._returnTimer)
+  },
+
+  scheduleReturn() {
+    if (this._unloaded) return
+    this._returnTimer = setTimeout(() => {
+      this._returnTimer = null
+      if (!this._unloaded) wx.navigateBack()
+    }, 500)
   },
 
   async onRetry() {
@@ -50,10 +69,12 @@ Page({
     try {
       await this.loadItems()
       if (this.data.id) await this.loadOutfit(this.data.id)
+      if (this.data.wearRecordId) await this.loadWearRecord(this.data.wearRecordId)
       this.setData({ ready: true, loading: false })
     } catch (e) {
       console.error(e)
-      this.setData({ loading: false, loadError: '穿搭或衣物加载失败，请重试' })
+      this.setData({ loading: false, loadError: e.message === '实穿衣物已从衣橱删除'
+        ? '实穿衣物已从衣橱删除，请返回实穿记录处理' : '穿搭或衣物加载失败，请重试' })
     }
   },
 
@@ -72,6 +93,7 @@ Page({
   },
 
   onCategoryTap(e) {
+    if (this.data.wearRecordId) return
     this.setData({ activeCategory: e.currentTarget.dataset.value })
     this.syncSelected()
   },
@@ -109,7 +131,17 @@ Page({
     }
   },
 
+  async loadWearRecord(id) {
+    const record = await db.getWearRecord(id)
+    const ids = record.itemIds || []
+    const available = new Set(this.data.items.map(item => item._id))
+    if (!ids.length || ids.some(itemId => !available.has(itemId))) throw new Error('实穿衣物已从衣橱删除')
+    this.setData({ selectedIds: ids.slice(), activeCategory: '已选' })
+    this.syncSelected()
+  },
+
   async onChooseImage() {
+    if (this.data.createdOutfitId) return
     try {
       const path = await db.chooseImage()
       this.setData({ imagePath: path })
@@ -118,11 +150,12 @@ Page({
     }
   },
 
-  onNameInput(e) { this.setData({ name: e.detail.value }) },
-  onNoteInput(e) { this.setData({ note: e.detail.value }) },
+  onNameInput(e) { if (!this.data.createdOutfitId) this.setData({ name: e.detail.value }) },
+  onNoteInput(e) { if (!this.data.createdOutfitId) this.setData({ note: e.detail.value }) },
 
   // ---------- 自定义滚轮选择器 ----------
   openPicker() {
+    if (this.data.createdOutfitId) return
     this.setData({
       picker: {
         show: true,
@@ -135,6 +168,7 @@ Page({
   },
 
   onPickerConfirm(e) {
+    if (this.data.createdOutfitId) return
     const index = e.detail.values[0]
     this.setData({
       'picker.show': false,
@@ -148,6 +182,7 @@ Page({
   },
 
   onItemToggle(e) {
+    if (this.data.wearRecordId) return
     const id = e.currentTarget.dataset.id
     const selected = this.data.selectedIds.slice()
     const idx = selected.indexOf(id)
@@ -161,8 +196,12 @@ Page({
   },
 
   async onSave() {
-    const { id, name, occasion, note, imagePath, imageFileID, selectedIds, saving } = this.data
+    const { id, wearRecordId, createdOutfitId, name, occasion, note, imagePath, imageFileID, selectedIds, saving } = this.data
     if (saving || !this.data.ready) return
+    if (createdOutfitId) {
+      if (this.data.linkNeedsReturn) return wx.navigateBack()
+      return this.linkSavedOutfit(wearRecordId, createdOutfitId)
+    }
     if (!name.trim()) {
       wx.showToast({ title: '请填写穿搭名称', icon: 'none' })
       return
@@ -197,18 +236,45 @@ Page({
       if (id) {
         result = await db.updateOutfit(id, data)
       } else {
-        await db.addOutfit(data)
+        const newId = await db.addOutfit(data)
+        if (wearRecordId) this.setData({ createdOutfitId: newId, imagePath: '', imageFileID: fileID })
       }
       committed = true
+      if (wearRecordId) await db.linkWearOutfit(wearRecordId, this.data.createdOutfitId)
       wx.hideLoading()
       wx.showToast({ title: result.cleanupFailed ? '已保存，清理待重试' : '已保存', icon: 'none' })
-      setTimeout(() => wx.navigateBack(), 500)
+      this.scheduleReturn()
     } catch (e) {
       console.error(e)
       if (uploadedFileID && !committed) db.removeImage(uploadedFileID)
       wx.hideLoading()
-      this.setData({ saving: false })
-      wx.showToast({ title: '保存失败', icon: 'none' })
+      if (committed && wearRecordId) this.showLinkError(e)
+      else {
+        this.setData({ saving: false })
+        wx.showToast({ title: '保存失败', icon: 'none' })
+      }
+    }
+  },
+
+  showLinkError(error) {
+    const changed = /衣物与实穿记录不一致|穿着记录不存在|穿搭不存在/.test(error.message || '')
+    this.setData({ saving: false, linkNeedsReturn: changed,
+      linkError: changed ? '穿搭已保存，实穿记录或单品已变化，请返回实穿页处理' : '穿搭已保存，关联实穿失败，请重试' })
+    wx.showToast({ title: changed ? '请返回实穿页处理' : '关联失败，请重试', icon: 'none' })
+  },
+
+  async linkSavedOutfit(wearRecordId, outfitId) {
+    this.setData({ saving: true, linkError: '' })
+    wx.showLoading({ title: '关联中…' })
+    try {
+      await db.linkWearOutfit(wearRecordId, outfitId)
+      wx.hideLoading()
+      wx.showToast({ title: '已保存', icon: 'none' })
+      this.scheduleReturn()
+    } catch (e) {
+      console.error(e)
+      wx.hideLoading()
+      this.showLinkError(e)
     }
   },
 
@@ -226,7 +292,7 @@ Page({
           const result = await db.deleteOutfit(this.data.id)
           wx.hideLoading()
           wx.showToast({ title: result.cleanupFailed ? '已删除，清理待重试' : '已删除', icon: 'none' })
-          setTimeout(() => wx.navigateBack(), 500)
+          this.scheduleReturn()
         } catch (e) {
           console.error(e)
           wx.hideLoading()

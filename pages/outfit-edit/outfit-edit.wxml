@@ -19,7 +19,7 @@
   <view class="form card">
     <view class="field">
       <text class="label">名称</text>
-      <input class="input" placeholder="{{_focus.name ? '' : '如：夏日清爽出街'}}" value="{{name}}" data-field="name" bindinput="onNameInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+      <input class="input" placeholder="{{_focus.name ? '' : '如：夏日清爽出街'}}" value="{{name}}" disabled="{{createdOutfitId}}" data-field="name" bindinput="onNameInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
     </view>
     <view class="field">
       <text class="label">场合</text>
@@ -29,13 +29,14 @@
     </view>
     <view class="field field-column">
       <text class="label">备注</text>
-      <textarea class="textarea" placeholder="{{_focus.note ? '' : '搭配心得、适合的天气等'}}" value="{{note}}" data-field="note" bindinput="onNoteInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+      <textarea class="textarea" placeholder="{{_focus.note ? '' : '搭配心得、适合的天气等'}}" value="{{note}}" disabled="{{createdOutfitId}}" data-field="note" bindinput="onNoteInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
     </view>
   </view>
 
   <!-- 选择衣物：分类切换条（单选）+ 网格 -->
-  <view class="section-title">选择单品（已选 {{selectedIds.length}} 件）</view>
-  <scroll-view wx:if="{{items.length > 0}}" scroll-x class="cat-bar" enhanced show-scrollbar="{{false}}">
+  <view class="section-title">{{wearRecordId ? '本次实穿衣物' : '选择单品'}}（已选 {{selectedIds.length}} 件）</view>
+  <view wx:if="{{wearRecordId}}" class="wear-hint">衣物组合已按实穿记录固定</view>
+  <scroll-view wx:if="{{!wearRecordId && items.length > 0}}" scroll-x class="cat-bar" enhanced show-scrollbar="{{false}}">
     <view class="cat-bar-inner">
       <view
         wx:for="{{categories}}"
@@ -72,7 +73,8 @@
     </view>
   </view>
 
-  <button class="btn-primary save-btn" bindtap="onSave" disabled="{{saving || !ready}}">保存</button>
+  <view wx:if="{{linkError}}" class="link-error">{{linkError}}</view>
+  <button class="btn-primary save-btn" bindtap="onSave" disabled="{{saving || !ready}}">{{createdOutfitId ? (linkNeedsReturn ? '返回实穿' : '重试关联') : '保存'}}</button>
   <button wx:if="{{id}}" class="btn-danger delete-btn" bindtap="onDelete" disabled="{{saving || !ready}}">删除</button>
 
   <wheel-picker

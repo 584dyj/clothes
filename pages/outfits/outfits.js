@@ -95,6 +95,10 @@ Page({
     wx.navigateTo({ url: '/pages/outfit-edit/outfit-edit' })
   },
 
+  onWearTap() {
+    wx.navigateTo({ url: '/pages/today-wear/today-wear' })
+  },
+
   onOutfitTap(e) {
     const id = e.currentTarget.dataset.id
     wx.navigateTo({ url: `/pages/outfit-edit/outfit-edit?id=${id}` })

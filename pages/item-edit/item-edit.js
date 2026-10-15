@@ -136,7 +136,17 @@ Page({
   },
 
   onUnload() {
+    this._unloaded = true
+    if (this._returnTimer) clearTimeout(this._returnTimer)
     if (this.data.scanFileID && !this._scanCommitted) db.removeImage(this.data.scanFileID)
+  },
+
+  scheduleReturn() {
+    if (this._unloaded) return
+    this._returnTimer = setTimeout(() => {
+      this._returnTimer = null
+      wx.navigateBack()
+    }, 500)
   },
 
   async onScanPhoto() {
@@ -341,7 +351,7 @@ Page({
       try { if (size) wx.setStorageSync('lastSize', size) } catch (e) { console.error('尺码记忆失败', e) }
       wx.hideLoading()
       wx.showToast({ title: result.cleanupFailed ? '已保存，清理待重试' : '已保存', icon: 'none' })
-      setTimeout(() => wx.navigateBack(), 500)
+      this.scheduleReturn()
     } catch (e) {
       console.error(e)
       // 上传成功但数据库写入失败时回收新图，避免产生孤立文件。
@@ -374,7 +384,7 @@ Page({
             })
           } else {
             wx.showToast({ title: '已删除' })
-            setTimeout(() => wx.navigateBack(), 500)
+            this.scheduleReturn()
           }
         } catch (e) {
           console.error(e)
