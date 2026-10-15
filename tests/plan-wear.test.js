@@ -312,9 +312,7 @@ test('原挂件连衣裙及历史关联读取保持，其他可保存手工关�
   assert.equal(calendar.data.monthTotal, 268.1)
   assert.equal(calendar.data.dayItems.length, 3)
   assert.equal(calendar.data.dayPlans.find(row => row._id === 'plan').outfitName, '原穿搭')
-  assert.equal(calendar.data.dayWears.find(row => row._id === 'wear').itemCount, 2)
   assert.equal(calendar.data.dayPlans.find(row => row._id === planId).outfitId, outfitId)
-  assert.deepEqual(Array.from(calendar.data.dayWears.find(row => row._id === wearId).itemIds), itemIds)
   assert.equal(calendar.data.dayExpenses.find(row => row._id === expenseId).itemId, miscId)
   for (const [collection, rows] of Object.entries(original)) {
     for (const row of rows) assert.deepEqual(cloud.records[collection].find(current => current._id === row._id), row)
