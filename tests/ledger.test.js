@@ -221,36 +221,71 @@ test('分类统计按18类固定顺序保留空类，袜子与其他的件数金
   assert.ok(page.data.categoryStats.every(row => row.count === 0 && row.spent === 0 && row.percent === 0))
 })
 
-test('闲置建议在截取前排除一级其他，配饰子类其他保留，手工穿着统计完整', async () => {
-  const misc = Array.from({ length: 9 }, (_, index) => ({ _id: `misc-${index}`, name: `其他${index}`, category: '其他', price: 1 }))
+// ---------- stats 闲置口径（WEAR-06：与月报统一为「近 90 天未记录穿着」） ----------
+
+const shanghaiDaysAgo = n => new Date(Date.now() + 8 * 3600 * 1000 - n * 86400000).toISOString().slice(0, 10)
+
+test('闲置榜排除一级其他、保留配饰子类其他，近期穿着不入选', async () => {
+  const oldDate = shanghaiDaysAgo(200)
+  const misc = Array.from({ length: 9 }, (_, index) => ({ _id: `misc-${index}`, name: `其他${index}`, category: '其他', price: 1, purchaseDate: oldDate }))
   const eligible = [
-    { _id: 'dress', name: '原连衣裙', category: '连衣裙' },
-    { _id: 'pendant', name: '原挂件', category: '挂件' },
-    { _id: 'socks', name: '袜子', category: '配饰', subcategory: '袜子' },
-    { _id: 'accessory', name: '其他配饰', category: '配饰', subcategory: '其他' }
+    { _id: 'dress', name: '原连衣裙', category: '连衣裙', purchaseDate: oldDate },
+    { _id: 'pendant', name: '原挂件', category: '挂件', purchaseDate: oldDate },
+    { _id: 'socks', name: '袜子', category: '配饰', subcategory: '袜子', purchaseDate: oldDate },
+    { _id: 'accessory', name: '其他配饰', category: '配饰', subcategory: '其他', purchaseDate: oldDate }
   ]
-  let clothes = [...misc, ...eligible]
-  let wears = [
-    { _id: 'mixed', date: '2026-09-20', itemIds: clothes.map(item => item._id) },
-    { _id: 'misc-only', date: '2026-09-01', itemIds: misc.map(item => item._id) }
-  ]
+  const worn = { _id: 'worn-shirt', name: '常穿衬衫', category: '衬衫', purchaseDate: oldDate }
+  let clothes = [...misc, ...eligible, worn]
+  // 近期记录引用一件合格衣物（常穿衬衫）证明有近期活动，其余合格衣物未穿 → 进入闲置
+  let wears = [{ _id: 'recent', date: shanghaiDaysAgo(10), itemIds: ['worn-shirt', ...misc.map(item => item._id)] }]
   const before = structuredClone({ clothes, wears })
   const page = loadPage('stats', {
     listItems: async () => clothes, listOutfits: async () => [], listExpenses: async () => [], listWearRecords: async () => wears
   })
   await page.loadStats()
+  assert.equal(page.data.idleInsufficient, false)
   assert.deepEqual(Array.from(page.data.idleRank, row => row.name).sort(), eligible.map(item => item.name).sort())
   assert.equal(page.data.wearRank.length, 8)
-  assert.ok(page.data.wearRank.every(row => row.name.startsWith('其他') && row.count === 2))
-  assert.equal(page.data.totalItems, 13)
+  assert.ok(page.data.wearRank.every(row => row.name.startsWith('其他') && row.count === 1))
+  assert.equal(page.data.totalItems, 14)
   assert.equal(page.data.totalSpent, 9)
   assert.deepEqual({ clothes, wears }, before)
 
+  // 只有其他衣物、实穿记录仅含其他时：无可判定闲置的合格衣物，且排除其他后无近期有效记录
   clothes = misc
-  wears = [{ _id: 'only-other', date: '2026-09-01', itemIds: misc.map(item => item._id) }]
+  wears = [{ _id: 'only-other', date: shanghaiDaysAgo(10), itemIds: misc.map(item => item._id) }]
   await page.loadStats(true)
   assert.equal(page.data.idleRank.length, 0)
+  assert.equal(page.data.idleInsufficient, true)
   assert.equal(page.data.wearRank.length, 8)
   assert.equal(page.data.categoryStats.find(row => row.name === '其他').count, 9)
   assert.equal(page.data.totalSpent, 9)
+})
+
+test('近 90 天无有效实穿记录时判定不足，不列闲置', async () => {
+  const oldDate = shanghaiDaysAgo(200)
+  const clothes = [{ _id: 'a', name: '旧外套', category: '外套', purchaseDate: oldDate }]
+  const wears = [{ _id: 'w', date: shanghaiDaysAgo(200), itemIds: ['a'] }]
+  const page = loadPage('stats', {
+    listItems: async () => clothes, listOutfits: async () => [], listExpenses: async () => [], listWearRecords: async () => wears
+  })
+  await page.loadStats()
+  assert.equal(page.data.idleInsufficient, true)
+  assert.equal(page.data.idleRank.length, 0)
+})
+
+test('购买日期缺失或无效时回退入库时间判定闲置', async () => {
+  const createdAtOld = new Date(Date.now() - 200 * 86400000)
+  const clothes = [
+    { _id: 'a', name: '无购买日期旧衣', category: '外套', purchaseDate: '', createdAt: createdAtOld },
+    { _id: 'b', name: '购买日期无效旧衣', category: '长裤', purchaseDate: 'not-a-date', createdAt: createdAtOld },
+    { _id: 'c', name: '无日期信息', category: '衬衫', purchaseDate: '' }
+  ]
+  const wears = [{ _id: 'w', date: shanghaiDaysAgo(10), itemIds: ['deleted'] }]
+  const page = loadPage('stats', {
+    listItems: async () => clothes, listOutfits: async () => [], listExpenses: async () => [], listWearRecords: async () => wears
+  })
+  await page.loadStats()
+  assert.equal(page.data.idleInsufficient, false)
+  assert.deepEqual(Array.from(page.data.idleRank, row => row.name).sort(), ['无购买日期旧衣', '购买日期无效旧衣'])
 })

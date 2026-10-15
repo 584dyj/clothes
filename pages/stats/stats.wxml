@@ -56,7 +56,7 @@
     <view class="section card" wx:if="{{brandStats.length > 0}}">
       <view class="section-title">品牌分布</view>
       <view wx:for="{{brandStats}}" wx:key="name" class="bar-row">
-        <text class="bar-label brand-label">{{item.name}}</text>
+        <text class="bar-label">{{item.name}}</text>
         <view class="bar-track" aria-hidden="true"><view class="bar-fill" style="width: {{item.percent}}%;"></view></view>
         <text class="bar-count">{{item.percent}}%（{{item.count}}件）</text>
       </view>
@@ -74,13 +74,13 @@
         </view>
       </view>
       <view wx:if="{{idleRank.length > 0}}">
-        <view class="subsection-title">闲置最久</view>
+        <view class="subsection-title">近 90 天未记录穿着</view>
         <view wx:for="{{idleRank}}" wx:key="name" class="idle-row">
           <text class="bar-label">{{item.name}}</text>
-          <text class="bar-count">已闲置 {{item.days}} 天</text>
         </view>
       </view>
-      <view wx:if="{{wearRank.length === 0 && idleRank.length === 0}}" class="wear-empty">记录穿着后可查看频次与闲置情况</view>
+      <view wx:if="{{idleInsufficient}}" class="wear-empty">实穿记录不足，暂不判定闲置</view>
+      <view wx:elif="{{wearRank.length === 0 && idleRank.length === 0}}" class="wear-empty">记录穿着后可查看频次与闲置情况</view>
     </view>
 
     <!-- 季节分布 -->

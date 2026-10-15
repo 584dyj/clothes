@@ -4,6 +4,17 @@ const { validDate } = require('../../utils/date')
 
 const app = getApp()
 
+// 拥有日期：优先合法购买日期，缺失或无效时回退入库时间；两者均不可用时无法判定已拥有满 90 天。
+function ownershipDate(item) {
+  if (validDate(item.purchaseDate)) return item.purchaseDate
+  const created = item.createdAt ? new Date(item.createdAt) : null
+  if (created && Number.isFinite(created.getTime())) {
+    const date = new Date(created.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    if (validDate(date)) return date
+  }
+  return null
+}
+
 Page({
   async onRetry() {
     if (!await auth.ensureLogin()) {
@@ -30,7 +41,8 @@ Page({
     expenseTotal: 0,     // 账本总开销
     expenseStats: [],    // [{ name, amount, percent }]，percent 基数为账本总额
     wearRank: [],        // 穿着频次 Top N [{ name, count }]
-    idleRank: []         // 闲置榜 Top N [{ name, days }]（最近未穿的天数）
+    idleRank: [],        // 闲置榜 Top N [{ name }]（近 90 天未记录穿着）
+    idleInsufficient: false  // 近 90 天无有效实穿记录时，不判定闲置
   },
 
   async onShow() {
@@ -106,29 +118,45 @@ Page({
 
       // 穿着频次与闲置：基于 wear_records（历史保留，删除的单品不计入展示）
       const wearCount = Object.create(null)
-      const lastWorn = Object.create(null)
       const todayStr = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10)
+      const cutoffStr = new Date(Date.now() + 8 * 60 * 60 * 1000 - 90 * 86400000).toISOString().slice(0, 10)
+      const miscIds = new Set(items.filter(item => item.category === '其他').map(item => item._id))
       wearRecords.forEach(record => {
         const date = record.date
         if (!validDate(date) || date > todayStr) return
         ;(record.itemIds || []).forEach(id => {
           wearCount[id] = (wearCount[id] || 0) + 1
-          if (date && (!lastWorn[id] || date > lastWorn[id])) lastWorn[id] = date
         })
       })
       const wearRank = items.filter(item => wearCount[item._id])
         .map(item => ({ name: item.name || '未命名', count: wearCount[item._id] }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 8)
-      // 一级其他只保留基础统计和手工记录，不进入闲置建议。
-      const idleRank = items.filter(item => item.category !== '其他' && lastWorn[item._id])
-        .map(item => {
-          const last = lastWorn[item._id]
-          const days = Math.max(0, Math.round((new Date(todayStr.replace(/-/g, '/')).getTime() - new Date(last.replace(/-/g, '/')).getTime()) / 86400000))
-          return { name: item.name || '未命名', days }
-        })
-        .sort((a, b) => b.days - a.days)   // 闲置最久在前
-        .slice(0, 8)
+      // 统一闲置口径：近 90 天未记录穿着（与闲置月报一致）。一级其他仅作基础记录，不进入闲置建议。
+      const validRecords = wearRecords
+        .filter(record => validDate(record.date) && record.date <= todayStr)
+        .map(record => ({ date: record.date, itemIds: (Array.isArray(record.itemIds) ? record.itemIds : []).filter(id => !miscIds.has(id)) }))
+        .filter(record => record.itemIds.length > 0)
+      const idleInsufficient = !validRecords.some(record => record.date >= cutoffStr)
+      let idleRank = []
+      if (!idleInsufficient) {
+        const lastWorn = Object.create(null)
+        validRecords.forEach(record => record.itemIds.forEach(id => {
+          if (!lastWorn[id] || record.date > lastWorn[id]) lastWorn[id] = record.date
+        }))
+        idleRank = items.filter(item => item.category !== '其他')
+          .map(item => {
+            const owned = ownershipDate(item)
+            if (!owned || owned > cutoffStr) return null
+            const worn = lastWorn[item._id]
+            if (worn && worn >= cutoffStr) return null
+            return { name: item.name || '未命名', since: worn || owned }
+          })
+          .filter(Boolean)
+          .sort((a, b) => a.since.localeCompare(b.since))
+          .slice(0, 8)
+          .map(({ name }) => ({ name }))
+      }
 
       this.setData({
         loading: false,
@@ -142,7 +170,8 @@ Page({
         expenseTotal: Math.round(expenseTotal * 100) / 100,
         expenseStats,
         wearRank,
-        idleRank
+        idleRank,
+        idleInsufficient
       })
     } catch (e) {
       console.error(e)

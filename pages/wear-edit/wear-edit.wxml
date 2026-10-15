@@ -11,7 +11,7 @@
       <text class="label">日期</text>
       <view class="picker-value" data-target="date" bindtap="openPicker">{{date}}</view>
     </view>
-    <view class="field">
+    <view wx:if="{{!historyEnabled}}" class="field">
       <text class="label">穿搭</text>
       <view class="picker-value {{outfitName ? '' : 'placeholder'}}" data-target="outfit" bindtap="openPicker">
         {{outfitName || '可选，选穿搭自动带出单品'}}
@@ -23,19 +23,30 @@
     </view>
   </view>
 
-  <view wx:if="{{historyEnabled && !loading && !loadError}}" class="source-actions">
-    <button class="source-btn" bindtap="onLastWearTap">带入上次实穿</button>
-    <text>或在上方选择收藏穿搭</text>
-  </view>
-
-  <view wx:if="{{historyEnabled && !loading && !loadError}}" class="stock-card card">
-    <text>衣橱里还没有这件？</text>
-    <button bindtap="onQuickAddTap" disabled="{{saving || refreshingItems || !ready}}">+ 快捷入库</button>
+  <view wx:if="{{historyEnabled && !loading && !loadError}}" class="quick-row">
+    <text class="quick-label">快速带入</text>
+    <button class="quick-btn" bindtap="onLastWearTap">上次实穿</button>
+    <button class="quick-btn {{outfitName ? 'quick-btn-on' : ''}}" data-target="outfit" bindtap="openPicker">{{outfitName || '收藏穿搭'}}</button>
   </view>
   <view wx:if="{{itemRefreshError}}" class="stock-error" bindtap="refreshItemsAfterQuickAdd">{{itemRefreshError}}</view>
   <view wx:if="{{recentlyAdded.length}}" class="new-items">
     <text>刚入库，点选加入：</text>
     <button wx:for="{{recentlyAdded}}" wx:key="_id" class="new-item {{item.selected ? 'new-item-selected' : ''}}" data-id="{{item._id}}" bindtap="onItemToggle">{{item.selected ? '✓' : '+'}} {{item.name || '未命名'}}</button>
+  </view>
+
+  <view wx:if="{{!loading && !loadError && quickPicks.length}}" class="quick-picks">
+    <view class="quick-picks-label">常穿（近 14 天，点选加入）</view>
+    <scroll-view scroll-x class="quick-picks-scroll" enhanced show-scrollbar="{{false}}">
+      <view class="quick-picks-inner">
+        <view
+          wx:for="{{quickPicks}}"
+          wx:key="_id"
+          class="pick-chip {{item.selected ? 'pick-chip-on' : ''}}"
+          data-id="{{item._id}}"
+          bindtap="onItemToggle"
+        >{{item.name || '未命名'}}<text class="pick-chip-count">{{item.count}}</text></view>
+      </view>
+    </scroll-view>
   </view>
 
   <!-- 选择衣物：分类切换条 + 多选网格 -->
@@ -50,9 +61,12 @@
       >{{item}}</view>
     </view>
   </scroll-view>
-  <view wx:if="{{!loading && !loadError}}" class="section-title">穿过的衣物（已选 {{selectedIds.length}} 件）</view>
+  <view wx:if="{{!loading && !loadError}}" class="section-title">
+    <text>穿过的衣物（已选 {{selectedIds.length}} 件）</text>
+    <button wx:if="{{historyEnabled}}" class="inline-add" bindtap="onQuickAddTap" disabled="{{saving || refreshingItems || !ready}}">+ 快捷入库</button>
+  </view>
   <block wx:if="{{!loading && !loadError}}">
-    <view wx:if="{{items.length === 0}}" class="empty">{{historyEnabled ? '衣橱里还没有衣物，可用上方「快捷入库」添加' : '衣橱里还没有衣物，请先去「衣物」页添加'}}</view>
+    <view wx:if="{{items.length === 0}}" class="empty">{{historyEnabled ? '衣橱里还没有衣物，可点上方「+ 快捷入库」添加' : '衣橱里还没有衣物，请先去「衣物」页添加'}}</view>
     <view wx:elif="{{viewItems.length === 0}}" class="empty">{{activeCategory === '已选' ? '还没有选中任何衣物' : '该分类下还没有衣物'}}</view>
     <view wx:else class="grid">
       <view

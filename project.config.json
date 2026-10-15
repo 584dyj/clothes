@@ -35,6 +35,10 @@
     "ignore": [
       {
         "type": "folder",
+        "value": "cloudfunctions"
+      },
+      {
+        "type": "folder",
         "value": "tests"
       },
       {

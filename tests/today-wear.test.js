@@ -288,3 +288,30 @@ test('已有相同单品组合可选择关联或继续新建，关联不新增�
   assert.equal(linked.length, 1)
   assert.equal(routes[0], '/pages/outfit-edit/outfit-edit?wearRecordId=wear-1')
 })
+
+test('常穿按近 14 天穿着次数降序取前 10，可点选加入', async () => {
+  const daysAgo = n => new Date(Date.parse(today() + 'T00:00:00Z') - n * 86400000).toISOString().slice(0, 10)
+  const items = Array.from({ length: 12 }, (_, k) => ({ _id: 'i' + k, name: '衣' + k }))
+  const records = []
+  items.forEach(item => {
+    const times = 12 - Number(item._id.slice(1))
+    for (let t = 0; t < times; t += 1) records.push({ _id: `${item._id}-${t}`, date: daysAgo((t % 6) + 1), itemIds: [item._id] })
+  })
+  records.push({ _id: 'old', date: daysAgo(20), itemIds: ['i0'] })        // 窗口外（>14 天），不计次
+  records.push({ _id: 'del', date: daysAgo(3), itemIds: ['i0', 'gone'] }) // 已删除引用不计入 gone，i0 计一次
+  const page = loadPage('today-wear', {
+    listItems: async () => items,
+    listOutfits: async () => [],
+    listWearRecords: async () => records
+  }, { pageScrollTo() {} })
+  await page.onLoad({})
+  const picks = page.data.quickPicks
+  assert.equal(picks.length, 10)
+  assert.deepEqual(Array.from(picks, row => row._id), Array.from({ length: 10 }, (_, k) => 'i' + k))
+  assert.equal(picks[0].count, 13) // 本组 12 次 + 已删除组合引用 1 次；窗口外旧记录不计
+  assert.equal(picks.some(row => row._id === 'gone'), false)
+
+  page.onItemToggle({ currentTarget: { dataset: { id: 'i5' } } })
+  assert.ok(page.data.selectedIds.includes('i5'))
+  assert.equal(page.data.quickPicks.find(row => row._id === 'i5').selected, true)
+})

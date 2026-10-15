@@ -4,6 +4,7 @@ const focusPlaceholder = require('../../utils/focus-placeholder')
 const { validDate } = require('../../utils/date')
 const datePicker = require('../../utils/date-picker')
 const HISTORY_PAGE_SIZE = 20
+const QUICK_PICK_DAYS = 14
 const sortRecords = records => records.slice().sort((a, b) =>
   String(b.date || '').localeCompare(String(a.date || '')) ||
   ((Number(new Date(b.createdAt)) || 0) - (Number(new Date(a.createdAt)) || 0)))
@@ -37,6 +38,7 @@ module.exports = function createWearPage({ db, auth, app, wx, returnAfterSave = 
     historyError: '',
     missingCount: 0,
     recentlyAdded: [],
+    quickPicks: [],
     refreshingItems: false,
     itemRefreshError: '',
     outfitSyncPending: false,
@@ -126,6 +128,7 @@ module.exports = function createWearPage({ db, auth, app, wx, returnAfterSave = 
       this.setData({ items, refreshingItems: false,
         recentlyAdded: (this._draftRevision || 0) === this._quickAddRevision
           ? items.filter(item => !before.has(item._id)).slice(0, 9) : [] })
+      this.buildQuickPicks()
       this.syncSelected()
       this.showHistory(Math.max(this.data.history.length, HISTORY_PAGE_SIZE))
     } catch (e) {
@@ -154,6 +157,7 @@ module.exports = function createWearPage({ db, auth, app, wx, returnAfterSave = 
         historyError: ''
       })
       if (!returnAfterSave) this.showHistory(HISTORY_PAGE_SIZE)
+      this.buildQuickPicks()
       this.syncSelected()
     } catch (e) {
       console.error(e)
@@ -187,6 +191,7 @@ module.exports = function createWearPage({ db, auth, app, wx, returnAfterSave = 
       this._records = sortRecords(await db.listWearRecords(true))
       this.showHistory(Math.max(this.data.history.length, HISTORY_PAGE_SIZE))
       this.setData({ historyError: '' })
+      this.buildQuickPicks()
     } catch (e) {
       console.error(e)
       this.setData({ historyError: '历史刷新失败，请重试' })
@@ -240,7 +245,36 @@ module.exports = function createWearPage({ db, auth, app, wx, returnAfterSave = 
       : items.filter(item => item.category === activeCategory)
     this.setData({ viewItems: filtered.map(item => ({ ...item, selected: selectedIds.includes(item._id) })),
       recentlyAdded: this.data.recentlyAdded.map(item => ({ ...item, selected: selectedIds.includes(item._id) })),
+      quickPicks: this.data.quickPicks.map(item => ({ ...item, selected: selectedIds.includes(item._id) })),
       missingCount: selectedIds.filter(id => !available.has(id)).length })
+  },
+
+  // 常穿：近 QUICK_PICK_DAYS 天穿着次数降序，取前 10 件在库衣物；同一记录内同一衣物只计一次，删失与窗口外记录不计
+  buildQuickPicks() {
+    const items = this._items || []
+    const inStock = new Set(items.map(item => item._id))
+    const today = this.today()
+    const cutoff = new Date(Date.parse(`${today}T00:00:00Z`) - QUICK_PICK_DAYS * 86400000).toISOString().slice(0, 10)
+    const stats = new Map()
+    for (const record of this._records || []) {
+      const date = record.date
+      if (!validDate(date) || date < cutoff || date > today) continue
+      for (const id of new Set(record.itemIds || [])) {
+        if (!inStock.has(id)) continue
+        const entry = stats.get(id) || { count: 0, last: '' }
+        entry.count += 1
+        if (date > entry.last) entry.last = date
+        stats.set(id, entry)
+      }
+    }
+    const selected = new Set(this.data.selectedIds || [])
+    const picks = items
+      .filter(item => stats.has(item._id))
+      .sort((a, b) => stats.get(b._id).count - stats.get(a._id).count ||
+        stats.get(b._id).last.localeCompare(stats.get(a._id).last))
+      .slice(0, 10)
+      .map(item => ({ _id: item._id, name: item.name, count: stats.get(item._id).count, selected: selected.has(item._id) }))
+    this.setData({ quickPicks: picks })
   },
 
   onRemoveMissing() {

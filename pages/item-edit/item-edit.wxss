@@ -125,10 +125,12 @@
   margin-right: 0;
 }
 
+/* 类别：每行 4 个等宽格子，按列对齐，消除胶囊换行导致的右边缘参差 */
 .category-chip {
+  flex: 0 0 calc((100% - 48rpx) / 4); /* 4 列：扣掉 3 个 16rpx 间距 */
   width: auto;
-  min-width: 112rpx;
-  padding: 0 24rpx;
+  min-width: 0;
+  padding: 0 8rpx;
   box-sizing: border-box;
   white-space: nowrap;
 }

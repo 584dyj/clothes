@@ -377,3 +377,43 @@ test('闲置候选只含其他时月报跳过，原始实穿记录完整保留',
   assert.deepEqual(Array.from(cloud.records.wear_records[0].itemIds), ['new-shirt', 'idle-misc'])
   assert.equal(cloud.records.subscriptions.find(row => row.scene === 'idle-monthly-quota').unused, 1)
 })
+
+test('购买日期缺失或无效时回退入库时间，两者均不可用不判定闲置', async () => {
+  const createdOld = new Date('2026-01-01T00:00:00.000Z')
+  const cloud = loadCloud({
+    subscriptions: [subscription('s1', 'u1'), quota('u1', 1)],
+    clothes: [
+      { ...item('no-date', 'u1', '无购买日期旧衣', ''), createdAt: createdOld },
+      { ...item('bad-date', 'u1', '日期无效旧衣', 'not-a-date'), createdAt: createdOld },
+      { ...item('no-info', 'u1', '无日期信息', '') }
+    ],
+    wear_records: [wear('recent', 'u1', '2026-10-01', ['deleted'])]
+  })
+  const result = await report.handle({ db: cloud.db, cloud: cloud.cloudService, templateId: TEMPLATE_ID, now: NOW })
+  assert.equal(result.sent, 1)
+  const message = cloud.sentMessages[0]
+  assert.equal(message.data.number16.value, 2)
+  assert.ok(message.data.thing29.value.includes('无购买日期旧衣'))
+  assert.ok(message.data.thing29.value.includes('日期无效旧衣'))
+  assert.ok(!message.data.thing29.value.includes('无日期信息'))
+})
+
+test('恰好满 90 天的衣物计入闲置，截止日当天穿着视为近期', async () => {
+  const cloud = loadCloud({
+    subscriptions: [subscription('s1', 'u1'), quota('u1', 1)],
+    clothes: [
+      item('exact-90', 'u1', '恰好满90天', '2026-07-11'),
+      item('worn-cutoff', 'u1', '截止日穿着', '2026-07-11'),
+      item('worn-after', 'u1', '截止日后穿着', '2026-07-11')
+    ],
+    wear_records: [
+      wear('r1', 'u1', '2026-07-11', ['worn-cutoff']),
+      wear('r2', 'u1', '2026-08-01', ['worn-after'])
+    ]
+  })
+  const result = await report.handle({ db: cloud.db, cloud: cloud.cloudService, templateId: TEMPLATE_ID, now: NOW })
+  assert.equal(result.sent, 1)
+  const message = cloud.sentMessages[0]
+  assert.equal(message.data.number16.value, 1)
+  assert.ok(message.data.thing29.value.includes('恰好满90天'))
+})

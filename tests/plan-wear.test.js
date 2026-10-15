@@ -170,30 +170,30 @@ test('穿着页选穿搭自动带出单品，未选衣物不能保存', async ()
 })
 
 test('统计页穿着频次与闲置榜按记录计算，删除单品不计入', async () => {
+  const daysAgo = n => new Date(Date.now() + 8 * 60 * 60 * 1000 - n * 86400000).toISOString().slice(0, 10)
   const tomorrow = new Date(Date.now() + 8 * 60 * 60 * 1000 + 86400000).toISOString().slice(0, 10)
   const page = loadPage('stats', {
     listItems: async () => [
-      { _id: 'a', name: '衬衫' }, { _id: 'b', name: '长裤' }
+      { _id: 'a', name: '衬衫', purchaseDate: daysAgo(200) }, { _id: 'b', name: '长裤', purchaseDate: daysAgo(200) }
     ],
     listOutfits: async () => [],
     listExpenses: async () => [],
     listWearRecords: async () => [
-      { _id: 'w1', date: '2026-09-20', itemIds: ['a', 'b'] },
-      { _id: 'w2', date: '2026-09-25', itemIds: ['a', 'gone'] },
-      { _id: 'w3', date: '2026-09-26', itemIds: ['a'] },
+      { _id: 'w1', date: daysAgo(200), itemIds: ['a', 'b'] },
+      { _id: 'w2', date: daysAgo(10), itemIds: ['a', 'gone'] },
       { _id: 'old-future', date: tomorrow, itemIds: ['a', 'b'] }
     ]
   })
   await page.loadStats()
   assert.equal(page.data.wearRank[0].name, '衬衫')
-  assert.equal(page.data.wearRank[0].count, 3)
+  assert.equal(page.data.wearRank[0].count, 2)
   assert.equal(page.data.wearRank[1].name, '长裤')
   // 已删除单品 gone 不出现在榜单
   assert.equal(page.data.wearRank.some(row => row.name === '已删'), false)
   assert.equal(page.data.idleRank.some(row => row.name === '已删'), false)
-  // 闲置最久的是长裤（9-20）
-  assert.equal(page.data.idleRank[0].name, '长裤')
-  assert.ok(page.data.idleRank[0].days > 0)
+  // 长裤最近一次穿着在 90 天前 → 进入闲置；衬衫近期穿过 → 不进入
+  assert.equal(page.data.idleInsufficient, false)
+  assert.deepEqual(Array.from(page.data.idleRank, row => row.name), ['长裤'])
 })
 
 test('穿着页按 18 类分组选品，其他与配饰袜子跨分类选择不丢失并保存', async () => {

@@ -72,6 +72,10 @@
             <input class="input" value="{{item.color}}" placeholder="请输入颜色" data-key="{{item.key}}" data-field="color" bindinput="onInput" />
           </view>
           <view class="field">
+            <text class="label">品牌</text>
+            <input class="input" value="{{item.brand}}" placeholder="可选" data-key="{{item.key}}" data-field="brand" bindinput="onInput" />
+          </view>
+          <view class="field">
             <text class="label">价格</text>
             <input class="input" type="digit" value="{{item.price}}" placeholder="可选，单位：元" data-key="{{item.key}}" data-field="price" bindinput="onInput" />
           </view>

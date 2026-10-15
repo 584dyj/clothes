@@ -52,9 +52,27 @@
 }
 
 .section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   font-size: 28rpx;
   color: #6b675f;
   margin: 8rpx 8rpx 20rpx;
+}
+
+.inline-add {
+  margin: 0;
+  padding: 0 22rpx;
+  height: 56rpx;
+  line-height: 56rpx;
+  border-radius: 28rpx;
+  background: #3a3835;
+  color: #ffffff;
+  font-size: 24rpx;
+}
+
+.inline-add[disabled] {
+  opacity: 0.5;
 }
 
 /* 分类切换条：横向滚动，单选 */
@@ -147,15 +165,23 @@
 .save-outfit-btn { margin-bottom: 24rpx; background: #ffffff; color: #3a3835; border: 1rpx solid #dedbd5; border-radius: 44rpx; font-size: 30rpx; }
 .save-outfit-btn::after { border: none; }
 
-.source-actions { display: flex; align-items: center; gap: 18rpx; margin-bottom: 28rpx; color: #9a958c; font-size: 22rpx; }
-.source-btn { margin: 0; padding: 0 22rpx; height: 64rpx; line-height: 64rpx; border-radius: 36rpx; background: #ffffff; color: #3a3835; font-size: 24rpx; }
-.source-btn::after, .stock-card button::after, .new-item::after, .missing button::after, .history-actions button::after, .reset-btn::after, .more-btn::after { border: none; }
-.stock-card { display: flex; align-items: center; justify-content: space-between; padding: 16rpx 24rpx; margin-bottom: 20rpx; color: #6b675f; font-size: 25rpx; }
-.stock-card button { margin: 0; padding: 0 18rpx; height: 64rpx; line-height: 64rpx; border-radius: 32rpx; background: #3a3835; color: #ffffff; font-size: 24rpx; }
+.quick-row { display: flex; align-items: center; gap: 16rpx; margin: 0 8rpx 24rpx; }
+.quick-label { flex-shrink: 0; color: #9a958c; font-size: 24rpx; }
+.quick-btn { margin: 0; padding: 0 24rpx; height: 64rpx; line-height: 64rpx; border-radius: 32rpx; background: #ffffff; color: #3a3835; font-size: 25rpx; max-width: 340rpx; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quick-btn-on { background: #3a3835; color: #ffffff; }
+.quick-btn::after, .inline-add::after, .new-item::after, .missing button::after, .history-actions button::after, .reset-btn::after, .more-btn::after { border: none; }
 .stock-error { margin: 0 8rpx 16rpx; color: #c0504d; font-size: 24rpx; }
 .new-items { display: flex; flex-wrap: wrap; align-items: center; gap: 12rpx; margin: 0 8rpx 24rpx; color: #6b675f; font-size: 24rpx; }
 .new-item { margin: 0; padding: 0 16rpx; height: 60rpx; line-height: 60rpx; border-radius: 30rpx; background: #ffffff; color: #3a3835; font-size: 24rpx; }
 .new-item-selected { background: #3a3835; color: #ffffff; }
+.quick-picks { margin: 0 8rpx 24rpx; }
+.quick-picks-label { margin-bottom: 12rpx; color: #9a958c; font-size: 24rpx; }
+.quick-picks-scroll { white-space: nowrap; }
+.quick-picks-inner { display: inline-flex; }
+.pick-chip { display: inline-flex; align-items: center; padding: 10rpx 24rpx; margin-right: 16rpx; border-radius: 32rpx; background: #ffffff; color: #3a3835; font-size: 25rpx; }
+.pick-chip-on { background: #3a3835; color: #ffffff; }
+.pick-chip-count { margin-left: 8rpx; color: #9a958c; font-size: 22rpx; }
+.pick-chip-on .pick-chip-count { color: #cfcbc4; }
 .missing { display: flex; justify-content: space-between; align-items: center; padding: 18rpx 22rpx; margin-bottom: 24rpx; color: #6b675f; font-size: 24rpx; }
 .missing button { margin: 0; padding: 0 12rpx; background: transparent; color: #3a3835; font-size: 24rpx; }
 .reset-btn { margin-bottom: 48rpx; background: transparent; color: #6b675f; font-size: 26rpx; }
@@ -172,5 +198,5 @@
 .history-names { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: #6b675f; font-size: 25rpx; }
 .history-note { margin-top: 12rpx; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: #9a958c; font-size: 24rpx; }
 .history-actions { justify-content: space-between; margin-top: 16rpx; color: #9a958c; font-size: 22rpx; }
-.history-actions button { margin: 0; padding: 0 12rpx; background: transparent; color: #c0504d; font-size: 24rpx; }
+.history-actions button { margin: 0; padding: 0 26rpx; height: 52rpx; line-height: 52rpx; border: 2rpx solid #c0504d; border-radius: 26rpx; background: #ffffff; color: #c0504d; font-size: 24rpx; }
 .more-btn { background: transparent; color: #6b675f; font-size: 25rpx; }

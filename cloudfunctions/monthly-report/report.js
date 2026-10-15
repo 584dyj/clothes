@@ -43,6 +43,17 @@ function validDate(value) {
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value
 }
 
+// 拥有日期：优先合法购买日期，缺失或无效时回退入库时间；两者均不可用时无法判定已拥有满 90 天。
+function ownershipDate(item) {
+  if (validDate(item.purchaseDate)) return item.purchaseDate
+  const created = new Date(item.createdAt)
+  if (Number.isFinite(created.getTime())) {
+    const date = shanghaiDate(created)
+    if (validDate(date)) return date
+  }
+  return null
+}
+
 function summarize(items) {
   const names = items.map(item => trimText(item.name || '未命名', TEXT_LIMIT)).filter(Boolean)
   const total = names.length
@@ -99,11 +110,18 @@ async function buildReport(db, openid, now) {
   validRecords.forEach(record => record.itemIds.forEach(id => {
     if (!lastWorn[id] || record.date > lastWorn[id]) lastWorn[id] = record.date
   }))
-  const idle = eligible.filter(item => validDate(item.purchaseDate) &&
-      item.purchaseDate < cutoff && (!lastWorn[item._id] || lastWorn[item._id] < cutoff))
-    .sort((a, b) => (lastWorn[a._id] || a.purchaseDate).localeCompare(lastWorn[b._id] || b.purchaseDate))
+  const idle = []
+  for (const item of eligible) {
+    const owned = ownershipDate(item)
+    if (!owned || owned > cutoff) continue
+    const worn = lastWorn[item._id]
+    if (worn && worn >= cutoff) continue
+    idle.push({ item, since: worn || owned })
+  }
+  idle.sort((a, b) => a.since.localeCompare(b.since))
   if (!idle.length) return null
-  return { count: idle.length, summary: summarize(idle) }
+  const idleItems = idle.map(entry => entry.item)
+  return { count: idleItems.length, summary: summarize(idleItems) }
 }
 
 async function claim(db, id, consumedAt) {
@@ -222,4 +240,4 @@ async function handle({ db, cloud, templateId, now = new Date() }) {
   }
 }
 
-module.exports = { handle, buildReport, summarize, formatShanghai, cutoffDate }
+module.exports = { handle, buildReport, summarize, formatShanghai, cutoffDate, ownershipDate }
