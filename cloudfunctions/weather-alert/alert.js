@@ -278,7 +278,9 @@ async function handle({ db, cloud, templateId, now = new Date(), request = reque
   const key = env.WEATHER_API_KEY
   if (!key) throw new Error('WEATHER_API_KEY 未配置')
   const host = env.WEATHER_API_HOST || 'https://restapi.amap.com'
-  const summary = { success: true, scanned: 0, sent: 0, skipped: 0, expired: 0, failed: 0 }
+  // skipped 的细分原因：noCity 未设城市；weatherFailed 天气接口失败；claimSkipped 当日已发送或额度不可用
+  const summary = { success: true, scanned: 0, sent: 0, skipped: 0, expired: 0, failed: 0,
+    noCity: 0, weatherFailed: 0, claimSkipped: 0 }
 
   // 1. 收集候选授权记录（同账号一次运行只处理一条）
   const candidates = []
@@ -322,6 +324,7 @@ async function handle({ db, cloud, templateId, now = new Date(), request = reque
     const user = users.get(subscription._openid)
     return user && user.cityId
   })
+  summary.noCity += candidates.length - ready.length
   summary.skipped += candidates.length - ready.length
 
   // 3. 每城市取一次预报，有额度的账号每天发送一条，特殊天气调整文案。
@@ -330,7 +333,7 @@ async function handle({ db, cloud, templateId, now = new Date(), request = reque
   const tomorrow = shiftDate(shanghaiDate(now), 1)
   for (const subscription of ready) {
     const cityId = users.get(subscription._openid).cityId
-    if (failedCities.has(cityId)) { summary.skipped++; continue }
+    if (failedCities.has(cityId)) { summary.skipped++; summary.weatherFailed++; continue }
     if (!forecasts.has(cityId)) {
       try {
         forecasts.set(cityId, await fetchForecast({ request, host, key, cityId }))
@@ -338,6 +341,7 @@ async function handle({ db, cloud, templateId, now = new Date(), request = reque
         failedCities.add(cityId)
         console.error('天气接口调用失败', cityId, error)
         summary.skipped++
+        summary.weatherFailed++
         continue
       }
     }
@@ -347,7 +351,7 @@ async function handle({ db, cloud, templateId, now = new Date(), request = reque
       const state = await sendAlert({ db, cloud, subscription, trigger, forecast, tomorrow, templateId, now })
       if (state === 'sent') summary.sent++
       else if (state === 'expired') summary.expired++
-      else summary.skipped++
+      else { summary.skipped++; summary.claimSkipped++ }
     } catch (error) {
       summary.failed++
       console.error('天气提醒发送失败', subscription._openid, error)

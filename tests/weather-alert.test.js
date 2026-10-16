@@ -182,6 +182,7 @@ test('SDK 缺文档抛错时首次发送成功，同日重跑仍按标记去重'
   assert.equal(again.failed, 0)
   assert.equal(again.sent, 0)
   assert.equal(again.skipped, 1)
+  assert.equal(again.claimSkipped, 1) // 当日已发送，认领失败
   assert.equal(cloud.sentMessages.length, 1)
   assert.equal(cloud.records.subscriptions.find(row => row._id === alert.quotaId('u1')).unused, 1)
   assert.equal(cloud.records.subscriptions.filter(row => row.scene === 'weather-alert' && row.consumedAt).length, 1)
@@ -211,6 +212,8 @@ test('普通天气发送，未设城市与天气接口失败不发送也不消�
   const summary = await run(cloud, stubWeather({ ['city=' + CITY]: NORMAL_FORECAST, 'city=bad-city': new Error('天气服务不可用') }, calls))
   assert.equal(summary.sent, 1)
   assert.equal(summary.skipped, 2)
+  assert.equal(summary.noCity, 1)        // u2 未设城市
+  assert.equal(summary.weatherFailed, 1) // u3 城市天气接口失败
   assert.equal(cloud.sentMessages[0].touser, 'u1')
   assert.ok(cloud.sentMessages[0].data.thing2.value)
   assert.ok(cloud.records.subscriptions.find(row => row._id === 'w1').consumedAt)
@@ -230,6 +233,7 @@ test('天气接口温度非法或天气文本为空时跳过且不消耗授权',
     const summary = await run(cloud, stubWeather({ ['city=' + CITY]: invalid }))
     assert.equal(summary.sent, 0)
     assert.equal(summary.skipped, 1)
+    assert.equal(summary.weatherFailed, 1) // 预报数据非法按天气接口失败归类
     assert.equal(cloud.sentMessages.length, 0)
     assert.deepEqual(cloud.records.subscriptions, before)
   }
