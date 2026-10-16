@@ -1,5 +1,5 @@
 {
-  "navigationBarTitleText": "今日穿着",
+  "navigationBarTitleText": "实穿记录",
   "usingComponents": {
     "wheel-picker": "/components/wheel-picker/wheel-picker"
   }

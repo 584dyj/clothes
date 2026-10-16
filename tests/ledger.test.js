@@ -289,3 +289,92 @@ test('购买日期缺失或无效时回退入库时间判定闲置', async () =>
   assert.equal(page.data.idleInsufficient, false)
   assert.deepEqual(Array.from(page.data.idleRank, row => row.name).sort(), ['无购买日期旧衣', '购买日期无效旧衣'])
 })
+
+// ---------- MATCH-04 实穿记录入口 ----------
+
+test('统计页穿着与闲置区「实穿记录」入口跳转实穿记录页', () => {
+  let route = ''
+  const page = loadPage('stats', {
+    listItems: async () => [], listOutfits: async () => [],
+    listExpenses: async () => [], listWearRecords: async () => []
+  }, { navigateTo: ({ url }) => { route = url } })
+  page.onWearRecordsTap()
+  assert.equal(route, '/pages/today-wear/today-wear')
+})
+
+// ---------- MATCH-05 搭配频次榜与闲置口径扩展 ----------
+
+test('搭配频次按衣物出现在多少条搭配中计次，删除单品不计入，无搭配时为空', async () => {
+  const clothes = [
+    { _id: 'a', name: '白衬衫', category: '衬衫' },
+    { _id: 'b', name: '牛仔裤', category: '长裤' },
+    { _id: 'c', name: '帆布鞋', category: '鞋' }
+  ]
+  const outfits = [
+    { _id: 'f1', itemIds: ['a', 'b'] },
+    { _id: 'f2', itemIds: ['a', 'c'] },
+    { _id: 'f3', itemIds: ['a', 'a', 'gone'] } // 同搭配重复 a 只计一次；已删除 gone 不计入
+  ]
+  const page = loadPage('stats', {
+    listItems: async () => clothes, listOutfits: async () => outfits,
+    listExpenses: async () => [], listWearRecords: async () => []
+  })
+  await page.loadStats()
+  assert.equal(page.data.outfitRank[0].name, '白衬衫')
+  assert.deepEqual(Object.fromEntries(page.data.outfitRank.map(row => [row.name, row.count])),
+    { 白衬衫: 3, 牛仔裤: 1, 帆布鞋: 1 })
+
+  const empty = loadPage('stats', {
+    listItems: async () => clothes, listOutfits: async () => [],
+    listExpenses: async () => [], listWearRecords: async () => []
+  })
+  await empty.loadStats()
+  assert.deepEqual(Array.from(empty.data.outfitRank), [])
+})
+
+test('近 90 天新建搭配中的衣物不闲置，仅旧搭配中的衣物仍入选', async () => {
+  const oldDate = shanghaiDaysAgo(200)
+  const clothes = [
+    { _id: 'recentfit', name: '近配衣', category: '衬衫', purchaseDate: oldDate },
+    { _id: 'oldfit', name: '旧配衣', category: '长裤', purchaseDate: oldDate },
+    { _id: 'lonely', name: '无配衣', category: '外套', purchaseDate: oldDate }
+  ]
+  const outfits = [
+    // createdAt 兼测字符串与 Date 两种云端形态
+    { _id: 'f-new', itemIds: ['recentfit'], createdAt: new Date(Date.now() - 10 * 86400000).toISOString() },
+    { _id: 'f-old', itemIds: ['oldfit'], createdAt: new Date(Date.now() - 200 * 86400000) }
+  ]
+  const page = loadPage('stats', {
+    listItems: async () => clothes, listOutfits: async () => outfits,
+    listExpenses: async () => [], listWearRecords: async () => []
+  })
+  await page.loadStats()
+  assert.equal(page.data.idleInsufficient, false)
+  assert.deepEqual(Array.from(page.data.idleRank, row => row.name).sort(), ['旧配衣', '无配衣'].sort())
+})
+
+test('实穿与搭配均无近期记录时判定不足，不列闲置', async () => {
+  const clothes = [{ _id: 'a', name: '旧衣', category: '衬衫', purchaseDate: shanghaiDaysAgo(200) }]
+  const page = loadPage('stats', {
+    listItems: async () => clothes,
+    listOutfits: async () => [{ _id: 'f-old', itemIds: ['a'], createdAt: new Date(Date.now() - 200 * 86400000) }],
+    listExpenses: async () => [],
+    listWearRecords: async () => [{ _id: 'w-old', date: shanghaiDaysAgo(200), itemIds: ['a'] }]
+  })
+  await page.loadStats()
+  assert.equal(page.data.idleInsufficient, true)
+  assert.equal(page.data.idleRank.length, 0)
+})
+
+test('截止日当天新建的搭配算近期活动', async () => {
+  const clothes = [{ _id: 'a', name: '边界衣', category: '衬衫', purchaseDate: shanghaiDaysAgo(200) }]
+  const cutoffMidnight = new Date(Date.parse(`${shanghaiDaysAgo(90)}T00:00:00+08:00`))
+  const page = loadPage('stats', {
+    listItems: async () => clothes,
+    listOutfits: async () => [{ _id: 'f-cut', itemIds: ['a'], createdAt: cutoffMidnight }],
+    listExpenses: async () => [], listWearRecords: async () => []
+  })
+  await page.loadStats()
+  assert.equal(page.data.idleInsufficient, false)
+  assert.equal(page.data.idleRank.length, 0)
+})

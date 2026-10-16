@@ -2,7 +2,7 @@
   padding: 24rpx 24rpx 160rpx;
 }
 
-.wear-entry { display: flex; align-items: center; justify-content: space-between; padding: 30rpx 32rpx; margin-bottom: 28rpx; }
+.wear-entry { display: flex; align-items: center; justify-content: space-between; padding: 30rpx 32rpx; margin-bottom: 20rpx; }
 .wear-entry-title { color: #3a3835; font-size: 32rpx; font-weight: 600; }
 .wear-entry-hint { margin-top: 8rpx; color: #9a958c; font-size: 24rpx; }
 .wear-entry-arrow { color: #9a958c; font-size: 46rpx; line-height: 1; }

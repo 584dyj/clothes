@@ -68,6 +68,23 @@
   margin-bottom: 24rpx;
 }
 
+/* 区块标题行：左侧标题 + 右侧文字入口（如「实穿记录 ›」） */
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24rpx;
+}
+
+.section-head .section-title {
+  margin-bottom: 0;
+}
+
+.section-link {
+  color: #6b675f;
+  font-size: 24rpx;
+}
+
 .bar-row {
   display: flex;
   align-items: center;

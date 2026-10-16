@@ -1,13 +1,14 @@
 <view class="page">
+  <view wx:if="{{loadError}}" class="empty">{{loadError}}<button bindtap="onRetry">重新加载</button></view>
+  <block wx:if="{{!loadError}}">
+  <!-- 实穿记录入口：保持在页面顶部（搭配本本身不设日期录入入口） -->
   <view class="wear-entry card" bindtap="onWearTap">
     <view>
-      <view class="wear-entry-title">今日穿着</view>
-      <view class="wear-entry-hint">记录实际穿过的衣物，查看与修改历史</view>
+      <view class="wear-entry-title">实穿记录</view>
+      <view class="wear-entry-hint">查看与管理历史实穿</view>
     </view>
     <text class="wear-entry-arrow">›</text>
   </view>
-  <view wx:if="{{loadError}}" class="empty">{{loadError}}<button bindtap="onRetry">重新加载</button></view>
-  <block wx:if="{{!loadError}}">
   <view wx:if="{{loading}}" class="empty">加载中…</view>
   <view wx:elif="{{left.length === 0 && right.length === 0}}" class="empty">
     还没有搭配，点右下角 + 记一套吧

@@ -61,7 +61,7 @@ module.exports = function createWearPage({ db, auth, app, wx, returnAfterSave = 
       date: validDate(options.date) && options.date <= this.today() ? options.date : this.today(),
       categories: ['全部', '已选', ...app.globalData.categories]
     })
-    wx.setNavigationBarTitle({ title: options.id ? '编辑穿着' : returnAfterSave ? '记录穿着' : '今日穿着' })
+    wx.setNavigationBarTitle({ title: options.id ? '编辑穿着' : returnAfterSave ? '记录穿着' : '实穿记录' })
     return this.loadBase(options.id || '')
   },
 
@@ -219,7 +219,7 @@ module.exports = function createWearPage({ db, auth, app, wx, returnAfterSave = 
     this.setData({ id: '', date: this.today(), selectedIds: [], outfitId: '', outfitName: '', note: '', activeCategory: '全部', recentlyAdded: [],
       outfitSyncPending: false, outfitSyncError: '' })
     this.syncSelected()
-    wx.setNavigationBarTitle({ title: returnAfterSave ? '记录穿着' : '今日穿着' })
+    wx.setNavigationBarTitle({ title: returnAfterSave ? '记录穿着' : '实穿记录' })
   },
 
   onLastWearTap() {

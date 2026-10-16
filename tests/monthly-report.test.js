@@ -10,6 +10,7 @@ const subscription = (id, openid, patch = {}) => ({ _id: id, _openid: openid, sc
 const quota = (openid, unused) => ({ _id: require('../cloudfunctions/auth/subscription').quotaId(openid), _openid: openid, scene: 'idle-monthly-quota', unused, createdAt: NOW })
 const item = (id, openid, name, purchaseDate) => ({ _id: id, _openid: openid, name, purchaseDate })
 const wear = (id, openid, date, itemIds = []) => ({ _id: id, _openid: openid, date, itemIds })
+const outfit = (id, openid, date, itemIds = []) => ({ _id: id, _openid: openid, createdAt: new Date(date), itemIds })
 
 test('订阅登记需要登录，并发写入不会超过十二条未消耗额度', async () => {
   const subscriptions = [quota('openid-1', 11), ...Array.from({ length: 11 }, (_, index) => subscription(`s${index}`, 'openid-1'))]
@@ -416,4 +417,58 @@ test('恰好满 90 天的衣物计入闲置，截止日当天穿着视为近期'
   const message = cloud.sentMessages[0]
   assert.equal(message.data.number16.value, 1)
   assert.ok(message.data.thing29.value.includes('恰好满90天'))
+})
+
+test('近 90 天新建搭配引用使衣物不判闲置，早于截止日的搭配不改变闲置判定', async () => {
+  const cloud = loadCloud({
+    subscriptions: [subscription('s1', 'u1'), quota('u1', 1)],
+    clothes: [
+      item('by-new-outfit', 'u1', '新搭配护衣', '2025-01-01'),
+      item('by-old-outfit', 'u1', '旧搭配衣', '2025-01-01')
+    ],
+    outfits: [
+      outfit('o-new', 'u1', '2026-10-01', ['by-new-outfit']),
+      outfit('o-old', 'u1', '2026-01-01', ['by-old-outfit'])
+    ],
+    wear_records: [wear('recent', 'u1', '2026-10-01', ['deleted'])]
+  })
+  const result = await report.handle({ db: cloud.db, cloud: cloud.cloudService, templateId: TEMPLATE_ID, now: NOW })
+  assert.equal(result.sent, 1)
+  const message = cloud.sentMessages[0]
+  assert.equal(message.data.number16.value, 1)
+  assert.ok(message.data.thing29.value.includes('旧搭配衣'))
+  assert.ok(!message.data.thing29.value.includes('新搭配护衣'))
+  assert.equal(message.data.thing4.value, '近90天未穿也未搭配')
+})
+
+test('截止日当天新建的搭配视为近期活动，单独即可免除跳过', async () => {
+  const cloud = loadCloud({
+    subscriptions: [subscription('s1', 'u1'), quota('u1', 1)],
+    clothes: [
+      item('cutoff-protected', 'u1', '截止日搭配护衣', '2025-01-01'),
+      item('plain-idle', 'u1', '普通闲置衣', '2025-01-01')
+    ],
+    outfits: [outfit('o-cutoff', 'u1', '2026-07-11', ['cutoff-protected'])]
+  })
+  const result = await report.handle({ db: cloud.db, cloud: cloud.cloudService, templateId: TEMPLATE_ID, now: NOW })
+  assert.equal(result.sent, 1)
+  const message = cloud.sentMessages[0]
+  assert.equal(message.data.number16.value, 1)
+  assert.ok(message.data.thing29.value.includes('普通闲置衣'))
+  assert.ok(!message.data.thing29.value.includes('截止日搭配护衣'))
+})
+
+test('近 90 天既无实穿也无新建搭配时月报跳过且不消耗额度', async () => {
+  const cloud = loadCloud({
+    subscriptions: [subscription('s1', 'u1'), quota('u1', 1)],
+    clothes: [item('dormant', 'u1', '沉寂旧衣', '2025-01-01')],
+    outfits: [outfit('o-stale', 'u1', '2026-01-01', ['dormant'])],
+    wear_records: [wear('w-stale', 'u1', '2026-01-01', ['dormant'])]
+  })
+  const result = await report.handle({ db: cloud.db, cloud: cloud.cloudService, templateId: TEMPLATE_ID, now: NOW })
+  assert.equal(result.sent, 0)
+  assert.equal(result.skipped, 1)
+  assert.equal(cloud.sentMessages.length, 0)
+  assert.equal(cloud.records.subscriptions.find(row => row._id === 's1').consumedAt, undefined)
+  assert.equal(cloud.records.subscriptions.find(row => row.scene === 'idle-monthly-quota').unused, 1)
 })

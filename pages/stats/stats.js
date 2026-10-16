@@ -4,15 +4,19 @@ const { validDate } = require('../../utils/date')
 
 const app = getApp()
 
+// 云端日期（Date 或字符串）归一化为上海时区 YYYY-MM-DD，便于与截止日字符串比较。
+function toDateString(value) {
+  if (!value) return null
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) return null
+  return new Date(date.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10)
+}
+
 // 拥有日期：优先合法购买日期，缺失或无效时回退入库时间；两者均不可用时无法判定已拥有满 90 天。
 function ownershipDate(item) {
   if (validDate(item.purchaseDate)) return item.purchaseDate
-  const created = item.createdAt ? new Date(item.createdAt) : null
-  if (created && Number.isFinite(created.getTime())) {
-    const date = new Date(created.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10)
-    if (validDate(date)) return date
-  }
-  return null
+  const date = toDateString(item.createdAt)
+  return date && validDate(date) ? date : null
 }
 
 Page({
@@ -41,8 +45,9 @@ Page({
     expenseTotal: 0,     // 账本总开销
     expenseStats: [],    // [{ name, amount, percent }]，percent 基数为账本总额
     wearRank: [],        // 穿着频次 Top N [{ name, count }]
-    idleRank: [],        // 闲置榜 Top N [{ name }]（近 90 天未记录穿着）
-    idleInsufficient: false  // 近 90 天无有效实穿记录时，不判定闲置
+    outfitRank: [],      // 搭配频次 Top N [{ name, count }]（衣物出现在多少条搭配中）
+    idleRank: [],        // 闲置榜 Top N [{ name }]（近 90 天未记录穿着或搭配）
+    idleInsufficient: false  // 近 90 天无有效实穿且无新建搭配引用时，不判定闲置
   },
 
   async onShow() {
@@ -132,12 +137,32 @@ Page({
         .map(item => ({ name: item.name || '未命名', count: wearCount[item._id] }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 8)
-      // 统一闲置口径：近 90 天未记录穿着（与闲置月报一致）。一级其他仅作基础记录，不进入闲置建议。
+      // 搭配频次：每件衣物出现在多少条搭配中（同一搭配内重复引用只计一次），已删除单品不计入展示。
+      const existingItemIds = new Set(items.map(item => item._id))
+      const outfitCount = Object.create(null)
+      outfits.forEach(outfit => {
+        new Set(outfit.itemIds || []).forEach(id => {
+          if (existingItemIds.has(id)) outfitCount[id] = (outfitCount[id] || 0) + 1
+        })
+      })
+      const outfitRank = items.filter(item => outfitCount[item._id])
+        .map(item => ({ name: item.name || '未命名', count: outfitCount[item._id] }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 8)
+      // 统一闲置口径：近 90 天未记录穿着或搭配（与闲置月报 MATCH-06 同源）。一级其他仅作基础记录，不进入闲置建议。
       const validRecords = wearRecords
         .filter(record => validDate(record.date) && record.date <= todayStr)
         .map(record => ({ date: record.date, itemIds: (Array.isArray(record.itemIds) ? record.itemIds : []).filter(id => !miscIds.has(id)) }))
         .filter(record => record.itemIds.length > 0)
-      const idleInsufficient = !validRecords.some(record => record.date >= cutoffStr)
+      // 搭配活动信号：createdAt 不早于截止日的搭配，其单品计入近期活动集合（截止日当天算近期）。
+      const recentOutfitItems = new Set()
+      outfits.forEach(outfit => {
+        const created = toDateString(outfit.createdAt)
+        if (!created || created < cutoffStr) return
+        ;(outfit.itemIds || []).forEach(id => recentOutfitItems.add(id))
+      })
+      // 近 90 天无有效实穿且无新建搭配引用时，不判定闲置（与闲置月报 MATCH-06 同源）。
+      const idleInsufficient = !validRecords.some(record => record.date >= cutoffStr) && recentOutfitItems.size === 0
       let idleRank = []
       if (!idleInsufficient) {
         const lastWorn = Object.create(null)
@@ -148,6 +173,7 @@ Page({
           .map(item => {
             const owned = ownershipDate(item)
             if (!owned || owned > cutoffStr) return null
+            if (recentOutfitItems.has(item._id)) return null
             const worn = lastWorn[item._id]
             if (worn && worn >= cutoffStr) return null
             return { name: item.name || '未命名', since: worn || owned }
@@ -170,6 +196,7 @@ Page({
         expenseTotal: Math.round(expenseTotal * 100) / 100,
         expenseStats,
         wearRank,
+        outfitRank,
         idleRank,
         idleInsufficient
       })
@@ -183,5 +210,10 @@ Page({
   // 进入月历页（查看月度/年度开销）
   onCalendarTap() {
     wx.navigateTo({ url: '/pages/calendar/calendar' })
+  },
+
+  // 进入实穿记录页（与「我的穿搭」页底入口一致）
+  onWearRecordsTap() {
+    wx.navigateTo({ url: '/pages/today-wear/today-wear' })
   }
 })

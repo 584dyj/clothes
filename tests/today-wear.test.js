@@ -5,8 +5,9 @@ const { loadPage } = require('./support/page')
 const today = () => new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10)
 const dayBefore = date => new Date(Date.parse(date + 'T00:00:00Z') - 86400000).toISOString().slice(0, 10)
 
-test('穿搭入口进入今日穿着，带入后可调整并在同页查看全部历史', async () => {
+test('「我的穿搭」页底实穿记录入口进入实穿记录页，带入后可调整并在同页查看全部历史', async () => {
   let route = ''
+  let title = ''
   const gallery = loadPage('outfits', {}, { navigateTo: ({ url }) => { route = url } })
   gallery.onWearTap()
   assert.equal(route, '/pages/today-wear/today-wear')
@@ -20,8 +21,9 @@ test('穿搭入口进入今日穿着，带入后可调整并在同页查看全�
     listOutfits: async () => [{ _id: 'look', name: '通勤', itemIds: ['a', 'b'] }],
     listWearRecords: async () => records,
     addWearRecord: async data => { saved.push(data); records.push({ _id: 'new', ...data }); return 'new' }
-  }, { pageScrollTo() {} })
+  }, { pageScrollTo() {}, setNavigationBarTitle: options => { title = options.title } })
   await page.onLoad({})
+  assert.equal(title, '实穿记录')
   assert.equal(page.data.date, today())
   assert.equal(page.data.history.length, 20)
   assert.equal(page.data.hasMoreHistory, true)
@@ -43,6 +45,11 @@ test('穿搭入口进入今日穿着，带入后可调整并在同页查看全�
   assert.equal(saved[0].outfitId, '')
   assert.equal(page.data.history[0]._id, 'new')
   assert.equal(page.data.id, '')
+  assert.equal(title, '实穿记录')
+  page.onHistoryTap({ currentTarget: { dataset: { id: 'new' } } })
+  assert.equal(title, '编辑穿着')
+  page.onResetTap()
+  assert.equal(title, '实穿记录')
 })
 
 test('历史未来日期可修正，失效衣物需显式移除，删除后刷新列表', async () => {
@@ -83,13 +90,15 @@ test('历史未来日期可修正，失效衣物需显式移除，删除后刷�
 test('月历旧入口不预填未来日期，保存后仍返回月历', async () => {
   const future = new Date(Date.parse(today() + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10)
   let backCount = 0
+  let title = ''
   const page = loadPage('wear-edit', {
     listItems: async () => [{ _id: 'a', name: '衬衫' }],
     listOutfits: async () => [],
     listWearRecords: async () => [],
     addWearRecord: async () => 'new'
-  }, { navigateBack: () => { backCount++ }, testSetTimeout: fn => fn() })
+  }, { navigateBack: () => { backCount++ }, testSetTimeout: fn => fn(), setNavigationBarTitle: options => { title = options.title } })
   await page.onLoad({ date: future })
+  assert.equal(title, '记录穿着')
   assert.equal(page.data.date, today())
   page.onItemToggle({ currentTarget: { dataset: { id: 'a' } } })
   await page.onSave()

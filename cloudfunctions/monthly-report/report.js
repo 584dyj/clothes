@@ -43,6 +43,14 @@ function validDate(value) {
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value
 }
 
+// 搭配活动日期：由 createdAt（云端 Date 或字符串）归一化为上海时区 YYYY-MM-DD；缺失或无效时不计活动信号。
+function activityDate(doc) {
+  const created = new Date(doc && doc.createdAt)
+  if (!Number.isFinite(created.getTime())) return null
+  const date = shanghaiDate(created)
+  return validDate(date) ? date : null
+}
+
 // 拥有日期：优先合法购买日期，缺失或无效时回退入库时间；两者均不可用时无法判定已拥有满 90 天。
 function ownershipDate(item) {
   if (validDate(item.purchaseDate)) return item.purchaseDate
@@ -88,9 +96,10 @@ async function readDoc(ref) {
 async function buildReport(db, openid, now) {
   const cutoff = cutoffDate(now)
   const today = shanghaiDate(now)
-  const [items, records] = await Promise.all([
+  const [items, records, outfits] = await Promise.all([
     listAll(db, 'clothes', { _openid: openid }),
-    listAll(db, 'wear_records', { _openid: openid })
+    listAll(db, 'wear_records', { _openid: openid }),
+    listAll(db, 'outfits', { _openid: openid })
   ])
   // 一级「其他」仅作基础记录：不形成闲置内容，其实穿引用也不计活动依据；本函数独立部署，使用本地最小过滤。
   // 逐条过滤实穿记录的 itemIds：混合记录保留合格单品与日期，仅含其他或不含任何单品的记录不计活动依据；
@@ -104,7 +113,16 @@ async function buildReport(db, openid, now) {
       itemIds: (Array.isArray(record.itemIds) ? record.itemIds : []).filter(id => !miscIds.has(id))
     }))
     .filter(record => record.itemIds.length > 0)
-  if (!validRecords.some(record => record.date >= cutoff)) return null
+  // 搭配活动信号：createdAt 不早于截止日的搭配，其单品计入近期活动集合（截止日当天算近期）。
+  // 与统计页(stats)闲置口径同源：实穿 ∪ 近 90 天新建搭配，任一命中即不判闲置。
+  const recentOutfitItems = new Set()
+  outfits.forEach(outfit => {
+    const created = activityDate(outfit)
+    if (!created || created < cutoff) return
+    ;(Array.isArray(outfit.itemIds) ? outfit.itemIds : []).forEach(id => recentOutfitItems.add(id))
+  })
+  // 近 90 天既无有效实穿、也无新建搭配引用时不判定闲置。
+  if (!validRecords.some(record => record.date >= cutoff) && recentOutfitItems.size === 0) return null
 
   const lastWorn = Object.create(null)
   validRecords.forEach(record => record.itemIds.forEach(id => {
@@ -114,6 +132,7 @@ async function buildReport(db, openid, now) {
   for (const item of eligible) {
     const owned = ownershipDate(item)
     if (!owned || owned > cutoff) continue
+    if (recentOutfitItems.has(item._id)) continue
     const worn = lastWorn[item._id]
     if (worn && worn >= cutoff) continue
     idle.push({ item, since: worn || owned })
@@ -179,7 +198,7 @@ async function sendReport({ db, cloud, subscription, report, templateId, now }) 
       page: 'pages/stats/stats',
       data: {
         thing1: { value: '衣橱闲置月报' },
-        thing4: { value: '近90天未记录穿着' },
+        thing4: { value: '近90天未穿也未搭配' },
         number16: { value: report.count },
         thing29: { value: report.summary },
         time23: { value: formatShanghai(now) }
