@@ -5,6 +5,7 @@ const { validDate } = require('../../utils/date')
 const datePicker = require('../../utils/date-picker')
 const HISTORY_PAGE_SIZE = 20
 const QUICK_PICK_DAYS = 14
+const HISTORY_ANIMATION_MS = 300
 const sortRecords = records => records.slice().sort((a, b) =>
   String(b.date || '').localeCompare(String(a.date || '')) ||
   ((Number(new Date(b.createdAt)) || 0) - (Number(new Date(a.createdAt)) || 0)))
@@ -21,7 +22,7 @@ const dateTextOf = (date, today) => {
 }
 
 // 今日穿着与历史共用这一页的选品和保存逻辑。
-module.exports = function createWearPage({ db, auth, app, wx, returnAfterSave = false, schedule = setTimeout }) {
+module.exports = function createWearPage({ db, auth, app, wx, returnAfterSave = false, schedule = setTimeout, cancelSchedule = clearTimeout }) {
   return {
   ...swipeBack,
   ...focusPlaceholder,
@@ -41,6 +42,8 @@ module.exports = function createWearPage({ db, auth, app, wx, returnAfterSave = 
     outfitName: '',
     note: '',
     historyEnabled: !returnAfterSave,
+    historyEditing: false,
+    historyClosing: false,
     history: [],
     hasMoreHistory: false,
     historyError: '',
@@ -81,6 +84,12 @@ module.exports = function createWearPage({ db, auth, app, wx, returnAfterSave = 
 
   onRetry() { return this.onLoad(this._options || {}) },
 
+  onUnload() {
+    this._unloaded = true
+    cancelSchedule(this._historyCloseTimer)
+    this._historyCloseTimer = null
+  },
+
   async onShow() {
     if (this._returningFromItemEdit) {
       this._returningFromItemEdit = false
@@ -116,7 +125,7 @@ module.exports = function createWearPage({ db, auth, app, wx, returnAfterSave = 
   },
 
   onQuickAddTap() {
-    if (!this.data.historyEnabled || !this.data.ready || this.data.saving || this.data.refreshingItems) return
+    if (!this.data.historyEnabled || !this.data.ready || this.data.saving || this.data.historyClosing || this.data.refreshingItems) return
     this._itemIdsBeforeQuickAdd = new Set(this.data.items.map(item => item._id))
     this._quickAddRevision = this._draftRevision || 0
     this._returningFromItemEdit = true
@@ -199,6 +208,10 @@ module.exports = function createWearPage({ db, auth, app, wx, returnAfterSave = 
 
   onMoreHistory() { this.showHistory(this.data.history.length + HISTORY_PAGE_SIZE) },
 
+  onPageScroll(e) {
+    if (!this.data.historyEditing) this._pageScrollTop = e.scrollTop
+  },
+
   async refreshHistory() {
     try {
       this._records = sortRecords(await db.listWearRecords(true))
@@ -212,11 +225,18 @@ module.exports = function createWearPage({ db, auth, app, wx, returnAfterSave = 
   },
 
   onHistoryTap(e) {
-    if (this.data.saving) return
+    if (!this.data.ready || this.data.saving || this.data.historyClosing || this.data.refreshingItems || this.data.outfitSyncPending) return
     const record = (this._records || []).find(row => row._id === e.currentTarget.dataset.id)
     if (!record) return
+    if (!this.data.historyEditing) {
+      this._historyScrollTop = this._pageScrollTop || 0
+      const { id, date, dateText, selectedIds, outfitId, outfitName, note, activeCategory, recentlyAdded, outfitSyncError } = this.data
+      this._historyDraft = { id, date, dateText, selectedIds: selectedIds.slice(), outfitId, outfitName, note,
+        activeCategory, recentlyAdded: recentlyAdded.slice(), outfitSyncError }
+    }
     this._draftRevision = (this._draftRevision || 0) + 1
     this.setData({
+      historyEditing: true, 'picker.show': false, _focus: {},
       id: record._id, date: record.date || '', dateText: dateTextOf(record.date || '', this.today()),
       selectedIds: (record.itemIds || []).slice(),
       outfitId: record.outfitId || '', outfitName: this.outfitNameOf(this.data.outfits, record.outfitId),
@@ -224,11 +244,39 @@ module.exports = function createWearPage({ db, auth, app, wx, returnAfterSave = 
       outfitSyncPending: false, outfitSyncError: ''
     })
     this.syncSelected()
-    wx.setNavigationBarTitle({ title: '编辑穿着' })
-    wx.pageScrollTo({ scrollTop: 0, duration: 200 })
+  },
+
+  onCancelHistoryEdit() {
+    if (!this.data.historyEditing || this.data.saving || this.data.historyClosing) return
+    this._draftRevision = (this._draftRevision || 0) + 1
+    this.setData({ historyClosing: true, 'picker.show': false, _focus: {} }, () => {
+      if (this._unloaded) return
+      this._historyCloseTimer = schedule(() => {
+        this._historyCloseTimer = null
+        this.setData({ ...this._historyDraft, historyEditing: false, historyClosing: false, outfitSyncPending: false },
+          () => { if (!this._unloaded) wx.pageScrollTo({ scrollTop: this._historyScrollTop, duration: 0 }) })
+        this._historyDraft = null
+        this.syncSelected()
+      }, HISTORY_ANIMATION_MS)
+    })
+  },
+
+  onHistoryEditTouch() {},
+
+  onSwipeBackStart(e) {
+    if (this.data.historyEditing) {
+      this._swipeBackStart = null
+      return
+    }
+    swipeBack.onSwipeBackStart.call(this, e)
+  },
+
+  onSwipeBackEnd(e) {
+    if (!this.data.historyEditing) swipeBack.onSwipeBackEnd.call(this, e)
   },
 
   onResetTap() {
+    if (this.data.historyEditing) return this.onCancelHistoryEdit()
     this._draftRevision = (this._draftRevision || 0) + 1
     const today = this.today()
     this.setData({ id: '', date: today, dateText: dateTextOf(today, today), selectedIds: [], outfitId: '', outfitName: '', note: '', activeCategory: '全部', recentlyAdded: [],
@@ -366,7 +414,7 @@ module.exports = function createWearPage({ db, auth, app, wx, returnAfterSave = 
 
   async saveWear(saveAsOutfit) {
     const { id, date, selectedIds, outfitId, note, saving } = this.data
-    if (saving || !this.data.ready) return
+    if (saving || this.data.historyClosing || !this.data.ready) return
     if (this.data.outfitSyncPending || this.data.outfitSyncError) {
       wx.showToast({ title: '请先刷新穿搭状态', icon: 'none' })
       return
@@ -404,7 +452,7 @@ module.exports = function createWearPage({ db, auth, app, wx, returnAfterSave = 
       if (saveAsOutfit) {
         this.setData({ id: wearId, outfitId: data.outfitId,
           outfitName: data.outfitId ? this.outfitNameOf(this.data.outfits, data.outfitId) : '' })
-        wx.setNavigationBarTitle({ title: '编辑穿着' })
+        if (!this.data.historyEditing) wx.setNavigationBarTitle({ title: '编辑穿着' })
         wx.showLoading({ title: '检查已有穿搭…' })
         await this.refreshHistory()
         await this.startOutfitSave(wearId, selectedIds)
@@ -468,13 +516,13 @@ module.exports = function createWearPage({ db, auth, app, wx, returnAfterSave = 
   onHistoryDelete(e) { this.confirmDelete(e.currentTarget.dataset.id) },
 
   confirmDelete(id) {
-    if (!id || !this.data.ready || this.data.saving) return
+    if (!id || !this.data.ready || this.data.saving || this.data.historyClosing) return
     wx.showModal({
       title: '删除穿着记录',
       content: '确定删除这条穿着记录吗？',
       confirmColor: '#c0504d',
       success: async res => {
-        if (!res.confirm || this.data.saving) return
+        if (!res.confirm || this.data.saving || this.data.historyClosing) return
         this.setData({ saving: true })
         wx.showLoading({ title: '删除中…' })
         try {
@@ -486,6 +534,7 @@ module.exports = function createWearPage({ db, auth, app, wx, returnAfterSave = 
             return
           }
           this.setData({ saving: false })
+          if (this._historyDraft && this._historyDraft.id === id) this._historyDraft.id = ''
           if (id === this.data.id) this.onResetTap()
           await this.refreshHistory()
         } catch (e) {

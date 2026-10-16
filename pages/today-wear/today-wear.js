@@ -4,5 +4,7 @@ Page(createWearPage({
   db: require('../../utils/db'),
   auth: require('../../utils/auth'),
   app: getApp(),
-  wx
+  wx,
+  schedule: setTimeout,
+  cancelSchedule: clearTimeout
 }))

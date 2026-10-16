@@ -290,18 +290,6 @@ test('购买日期缺失或无效时回退入库时间判定闲置', async () =>
   assert.deepEqual(Array.from(page.data.idleRank, row => row.name).sort(), ['无购买日期旧衣', '购买日期无效旧衣'])
 })
 
-// ---------- MATCH-04 实穿记录入口 ----------
-
-test('统计页穿着与闲置区「实穿记录」入口跳转实穿记录页', () => {
-  let route = ''
-  const page = loadPage('stats', {
-    listItems: async () => [], listOutfits: async () => [],
-    listExpenses: async () => [], listWearRecords: async () => []
-  }, { navigateTo: ({ url }) => { route = url } })
-  page.onWearRecordsTap()
-  assert.equal(route, '/pages/today-wear/today-wear')
-})
-
 // ---------- MATCH-05 搭配频次榜与闲置口径扩展 ----------
 
 test('搭配频次按衣物出现在多少条搭配中计次，删除单品不计入，无搭配时为空', async () => {

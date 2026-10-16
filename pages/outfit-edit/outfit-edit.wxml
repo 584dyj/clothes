@@ -27,12 +27,12 @@
       <view class="form card">
         <view class="field">
           <text class="label">名称</text>
-          <input class="input" placeholder="{{_focus.name ? '' : '留空自动命名'}}" value="{{name}}" disabled="{{createdOutfitId}}" data-field="name" bindinput="onNameInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+          <input class="input" placeholder="{{_focus.name ? '' : '为穿搭取一套名字吧'}}" value="{{name}}" disabled="{{createdOutfitId}}" data-field="name" bindinput="onNameInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
         </view>
         <view class="field">
           <text class="label">场合</text>
           <view class="picker-value {{occasion ? '' : 'placeholder'}}" bindtap="openPicker">
-            {{occasion || '请选择场合'}}
+            {{occasion || '选择穿搭适合的场合'}}
           </view>
         </view>
       </view>
@@ -61,7 +61,7 @@
       <view class="field">
         <text class="label">场合</text>
         <view class="picker-value {{occasion ? '' : 'placeholder'}}" bindtap="openPicker">
-          {{occasion || '请选择场合'}}
+          {{occasion || '选择穿搭适合的场合'}}
         </view>
       </view>
       <view class="field field-column">

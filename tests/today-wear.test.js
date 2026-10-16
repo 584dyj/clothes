@@ -4,6 +4,9 @@ const { loadPage } = require('./support/page')
 
 const today = () => new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10)
 const dayBefore = date => new Date(Date.parse(date + 'T00:00:00Z') - 86400000).toISOString().slice(0, 10)
+const draftState = page => structuredClone(Object.fromEntries([
+  'id', 'date', 'dateText', 'selectedIds', 'outfitId', 'outfitName', 'note', 'activeCategory', 'recentlyAdded'
+].map(key => [key, page.data[key]])))
 
 test('「我的穿搭」页底实穿记录入口进入实穿记录页，带入后可调整并在同页查看全部历史', async () => {
   let route = ''
@@ -48,8 +51,10 @@ test('「我的穿搭」页底实穿记录入口进入实穿记录页，带入�
   assert.equal(page.data.id, '')
   assert.equal(title, '实穿记录')
   page.onHistoryTap({ currentTarget: { dataset: { id: 'new' } } })
-  assert.equal(title, '编辑穿着')
-  page.onResetTap()
+  assert.equal(page.data.historyEditing, true)
+  assert.equal(title, '实穿记录')
+  page.onCancelHistoryEdit()
+  assert.equal(page.data.historyEditing, false)
   assert.equal(title, '实穿记录')
   assert.match(page.data.dateText, /^今天（\d+月\d+日）$/)
 })
@@ -87,6 +92,252 @@ test('历史未来日期可修正，失效衣物需显式移除，删除后刷�
   page.onHistoryDelete({ currentTarget: { dataset: { id: 'legacy' } } })
   await new Promise(resolve => setImmediate(resolve))
   assert.equal(page.data.history.length, 0)
+})
+
+test('历史弹窗取消完整恢复上方草稿，切换历史记录与重置均不写库', async () => {
+  for (const cancel of ['onCancelHistoryEdit', 'onResetTap']) {
+    const writes = []
+    const records = [
+      { _id: 'first', date: '2022-01-01', itemIds: ['b'], note: '第一条' },
+      { _id: 'second', date: dayBefore(today()), itemIds: ['b'], note: '第二条' }
+    ]
+    const page = loadPage('today-wear', {
+      listItems: async () => [{ _id: 'a', name: '衬衫' }, { _id: 'b', name: '长裤' }],
+      listOutfits: async () => [{ _id: 'look', name: '草稿穿搭', itemIds: ['a'] }],
+      listWearRecords: async () => records,
+      addWearRecord: async data => writes.push(['add', data]),
+      updateWearRecord: async (id, data) => writes.push(['update', id, data]),
+      deleteWearRecord: async id => writes.push(['delete', id])
+    })
+    await page.onLoad({})
+    page.setData({
+      date: dayBefore(today()), dateText: dayBefore(today()), selectedIds: ['a'],
+      outfitId: 'look', outfitName: '草稿穿搭', note: '尚未保存的新增备注', activeCategory: '已选',
+      recentlyAdded: [{ _id: 'a', name: '衬衫', selected: true }]
+    })
+    page.syncSelected()
+    const draft = draftState(page)
+    const before = structuredClone(records)
+
+    page.onHistoryTap({ currentTarget: { dataset: { id: 'first' } } })
+    assert.equal(page.data.historyEditing, true)
+    page.onNoteInput({ detail: { value: '弹窗里未保存' } })
+    page.onItemToggle({ currentTarget: { dataset: { id: 'a' } } })
+    page.onHistoryTap({ currentTarget: { dataset: { id: 'second' } } })
+    assert.equal(page.data.id, 'second')
+    assert.equal(page.data.note, '第二条')
+    page[cancel]()
+
+    assert.equal(page.data.historyEditing, false)
+    assert.deepEqual(draftState(page), draft)
+    assert.deepEqual(records, before)
+    assert.deepEqual(writes, [])
+    assert.equal(page.data.viewItems.find(item => item._id === 'a').selected, true)
+  }
+})
+
+test('历史编辑失败保留弹窗和编辑值，重试成功只更新该记录并恢复草稿', async () => {
+  const records = [{ _id: 'history', date: dayBefore(today()), itemIds: ['b'], note: '原备注' }]
+  const updates = []
+  let fail = true
+  let added = 0
+  const page = loadPage('today-wear', {
+    listItems: async () => [{ _id: 'a', name: '衬衫' }, { _id: 'b', name: '长裤' }, { _id: 'c', name: '外套' }],
+    listOutfits: async () => [{ _id: 'look', name: '草稿穿搭', itemIds: ['a'] }],
+    listWearRecords: async () => records,
+    addWearRecord: async () => { added++; return 'unexpected' },
+    updateWearRecord: async (id, data) => {
+      updates.push([id, structuredClone(data)])
+      if (fail) throw Error('offline')
+      Object.assign(records.find(record => record._id === id), data)
+      return {}
+    }
+  })
+  await page.onLoad({})
+  page.setData({ selectedIds: ['a'], outfitId: 'look', outfitName: '草稿穿搭', note: '新增草稿', activeCategory: '已选' })
+  page.syncSelected()
+  const draft = draftState(page)
+  page.onHistoryTap({ currentTarget: { dataset: { id: 'history' } } })
+  page.setData({ date: today() })
+  page.onNoteInput({ detail: { value: ' 修改后的备注 ' } })
+  page.onItemToggle({ currentTarget: { dataset: { id: 'c' } } })
+  page.onItemToggle({ currentTarget: { dataset: { id: 'b' } } })
+  await page.onSave()
+
+  assert.equal(page.data.historyEditing, true)
+  assert.equal(page.data.saving, false)
+  assert.equal(page.data.id, 'history')
+  assert.equal(page.data.date, today())
+  assert.equal(page.data.note, ' 修改后的备注 ')
+  assert.deepEqual(Array.from(page.data.selectedIds), ['c'])
+  assert.equal(records[0].note, '原备注')
+  assert.equal(added, 0)
+
+  fail = false
+  await page.onSave()
+  assert.equal(updates.length, 2)
+  assert.equal(updates[1][0], 'history')
+  assert.deepEqual(updates[1][1], { date: today(), itemIds: ['c'], outfitId: '', note: '修改后的备注' })
+  assert.equal(added, 0)
+  assert.equal(page.data.historyEditing, false)
+  assert.deepEqual(draftState(page), draft)
+  assert.equal(page.data.history[0].date, today())
+  assert.equal(page.data.history[0].note, '修改后的备注')
+  assert.deepEqual(Array.from(page.data.history[0].itemIds), ['c'])
+  assert.equal(page.data.quickPicks.find(item => item._id === 'c').selected, false)
+})
+
+test('同步或刷新中不打开历史弹窗，保存中不能取消、切换或重复提交', async () => {
+  const records = [
+    { _id: 'first', date: dayBefore(today()), itemIds: ['a'], note: '第一条' },
+    { _id: 'second', date: '2022-01-01', itemIds: ['b'], note: '第二条' }
+  ]
+  let finish
+  let updates = 0
+  const page = loadPage('today-wear', {
+    listItems: async () => [{ _id: 'a', name: '衬衫' }, { _id: 'b', name: '长裤' }],
+    listOutfits: async () => [],
+    listWearRecords: async () => records,
+    updateWearRecord: async (id, data) => {
+      updates++
+      await new Promise(resolve => { finish = resolve })
+      Object.assign(records.find(record => record._id === id), data)
+      return {}
+    }
+  })
+  await page.onLoad({})
+  page.setData({ selectedIds: ['b'], note: '新增草稿' })
+  page.syncSelected()
+  const draft = draftState(page)
+  for (const flag of ['outfitSyncPending', 'refreshingItems']) {
+    page.setData({ [flag]: true })
+    page.onHistoryTap({ currentTarget: { dataset: { id: 'first' } } })
+    assert.equal(page.data.historyEditing, false)
+    assert.deepEqual(draftState(page), draft)
+    page.setData({ [flag]: false })
+  }
+
+  page.onHistoryTap({ currentTarget: { dataset: { id: 'first' } } })
+  const saving = page.onSave()
+  assert.equal(page.data.saving, true)
+  page.onCancelHistoryEdit()
+  page.onResetTap()
+  page.onHistoryTap({ currentTarget: { dataset: { id: 'second' } } })
+  await page.onSave()
+  assert.equal(page.data.historyEditing, true)
+  assert.equal(page.data.id, 'first')
+  assert.equal(updates, 1)
+  finish()
+  await saving
+  assert.equal(page.data.historyEditing, false)
+  assert.deepEqual(draftState(page), draft)
+})
+
+test('历史弹窗关闭满 300ms 才恢复草稿，关闭期间阻止操作，卸载取消回写', async () => {
+  for (const unload of ['never', 'after-timer', 'before-render']) {
+    let now = 0
+    let nextTimer = 0
+    let writes = 0
+    const timers = new Map()
+    const routes = []
+    const advance = ms => {
+      now += ms
+      for (const [id, timer] of timers) {
+        if (timer.due > now) continue
+        timers.delete(id)
+        timer.callback()
+      }
+    }
+    const records = [
+      { _id: 'first', date: dayBefore(today()), itemIds: ['a'], note: '第一条' },
+      { _id: 'second', date: '2022-01-01', itemIds: ['b'], note: '第二条' }
+    ]
+    const page = loadPage('today-wear', {
+      listItems: async () => [{ _id: 'a', name: '衬衫' }, { _id: 'b', name: '长裤' }],
+      listOutfits: async () => [],
+      listWearRecords: async () => records,
+      addWearRecord: async () => { writes++; return 'new' },
+      updateWearRecord: async () => { writes++; return {} },
+      deleteWearRecord: async () => { writes++ }
+    }, {
+      navigateTo: ({ url }) => routes.push(url),
+      testSetTimeout: (callback, delay) => {
+        const id = ++nextTimer
+        timers.set(id, { callback, due: now + delay })
+        return id
+      },
+      testClearTimeout: id => timers.delete(id)
+    })
+    await page.onLoad({})
+    page.setData({ selectedIds: ['b'], note: '上方新增草稿' })
+    page.syncSelected()
+    const draft = draftState(page)
+    page.onHistoryTap({ currentTarget: { dataset: { id: 'first' } } })
+    page.onNoteInput({ detail: { value: '弹窗未保存的编辑' } })
+    const editing = draftState(page)
+    const renderCallbacks = []
+    if (unload === 'before-render') {
+      const setData = page.setData
+      page.setData = (patch, callback) => {
+        setData(patch)
+        if (callback) renderCallbacks.push(callback)
+      }
+    }
+
+    page.onCancelHistoryEdit()
+    assert.equal(page.data.historyClosing, true)
+    assert.equal(page.data.historyEditing, true)
+    assert.deepEqual(draftState(page), editing)
+    if (unload === 'before-render') {
+      assert.equal(timers.size, 0)
+      assert.equal(renderCallbacks.length, 1)
+      page.onUnload()
+      const state = structuredClone(page.data)
+      let lateUpdates = 0
+      const setData = page.setData
+      page.setData = patch => { lateUpdates++; setData(patch) }
+      for (const callback of renderCallbacks) callback()
+      advance(300)
+      assert.equal(nextTimer, 0)
+      assert.equal(lateUpdates, 0)
+      assert.deepEqual(page.data, state)
+      assert.equal(writes, 0)
+      continue
+    }
+    assert.equal(timers.size, 1)
+    assert.equal([...timers.values()][0].due, 300)
+    page.onCancelHistoryEdit()
+    page.onResetTap()
+    page.onHistoryTap({ currentTarget: { dataset: { id: 'second' } } })
+    page.onQuickAddTap()
+    await page.onSave()
+    await page.onSaveAsOutfit()
+    assert.equal(nextTimer, 1)
+    assert.equal(writes, 0)
+    assert.deepEqual(routes, [])
+    advance(299)
+    assert.equal(page.data.historyEditing, true)
+    assert.deepEqual(draftState(page), editing)
+
+    if (unload === 'after-timer') {
+      page.onUnload()
+      assert.equal(timers.size, 0)
+      const state = structuredClone(page.data)
+      let lateUpdates = 0
+      const setData = page.setData
+      page.setData = patch => { lateUpdates++; setData(patch) }
+      advance(1)
+      assert.equal(lateUpdates, 0)
+      assert.deepEqual(page.data, state)
+    } else {
+      advance(1)
+      assert.equal(page.data.historyEditing, false)
+      assert.equal(page.data.historyClosing, false)
+      assert.deepEqual(draftState(page), draft)
+      assert.equal(timers.size, 0)
+    }
+    assert.equal(writes, 0)
+  }
 })
 
 test('月历旧入口不预填未来日期，保存后仍返回月历', async () => {
@@ -148,7 +399,7 @@ test('快捷入库返回后保留草稿并可点选新衣物，取消入库也�
   assert.deepEqual(Array.from(page.data.selectedIds), ['a', 'b'])
 })
 
-test('历史编辑入库刷新失败可重试，切换记录不会带入原草稿', async () => {
+test('历史编辑入库刷新失败可重试，切换记录并取消后恢复新增草稿', async () => {
   let items = [{ _id: 'a', name: '衬衫' }, { _id: 'b', name: '长裤' }]
   let failRefresh = true
   const records = [
@@ -164,21 +415,30 @@ test('历史编辑入库刷新失败可重试，切换记录不会带入原草�
     listWearRecords: async () => records
   }, { navigateTo() {}, pageScrollTo() {} })
   await page.onLoad({})
+  page.onItemToggle({ currentTarget: { dataset: { id: 'b' } } })
+  page.onNoteInput({ detail: { value: '新增草稿' } })
+  const draft = draftState(page)
   page.onHistoryTap({ currentTarget: { dataset: { id: 'first' } } })
-  page.onNoteInput({ detail: { value: '修改中' } })
+  page.onNoteInput({ detail: { value: '编辑中的备注' } })
   page.onQuickAddTap()
   items = [...items, { _id: 'c', name: '新毛衣' }]
   await page.onShow()
   assert.equal(page.data.itemRefreshError, '衣橱刷新失败，点此重试')
   assert.equal(page.data.id, 'first')
-  assert.equal(page.data.note, '修改中')
-  page.onHistoryTap({ currentTarget: { dataset: { id: 'second' } } })
+  assert.equal(page.data.note, '编辑中的备注')
   await page.refreshItemsAfterQuickAdd()
   assert.equal(page.data.itemRefreshError, '')
+  assert.equal(page.data.recentlyAdded[0]._id, 'c')
+  page.onItemToggle({ currentTarget: { dataset: { id: 'c' } } })
+  assert.deepEqual(Array.from(page.data.selectedIds), ['a', 'c'])
+  page.onHistoryTap({ currentTarget: { dataset: { id: 'second' } } })
   assert.equal(page.data.id, 'second')
   assert.equal(page.data.note, '另一条')
   assert.deepEqual(Array.from(page.data.selectedIds), ['b'])
   assert.equal(page.data.recentlyAdded.length, 0)
+  page.onCancelHistoryEdit()
+  assert.deepEqual(draftState(page), draft)
+  assert.equal(page.data.items.some(item => item._id === 'c'), true)
 })
 
 test('入库页手动返回后取消延迟返回，避免再退一层', async () => {
@@ -219,49 +479,67 @@ test('入库页手动返回后取消延迟返回，避免再退一层', async ()
   assert.equal(backCount, 0)
 })
 
-test('主动保存为穿搭先保存实穿，取消收藏后记录仍可编辑', async () => {
-  const records = []
-  const routes = []
-  const outfits = []
-  let failSync = false
-  let added = 0
-  let updated = 0
-  const page = loadPage('today-wear', {
-    listItems: async () => [{ _id: 'a', name: '衬衫' }],
-    listOutfits: async () => outfits,
-    listWearRecords: async () => records,
-    getWearRecord: async id => { if (failSync) throw Error('offline'); return records.find(row => row._id === id) },
-    addWearRecord: async data => { added++; records.push({ _id: 'wear-1', ...data }); return 'wear-1' },
-    updateWearRecord: async (id, data) => { updated++; Object.assign(records.find(row => row._id === id), data); return {} }
-  }, { navigateTo: ({ url }) => routes.push(url), pageScrollTo() {} })
-  await page.onLoad({})
-  page.onItemToggle({ currentTarget: { dataset: { id: 'a' } } })
-  await page.onSaveAsOutfit()
-  assert.equal(added, 1)
-  assert.equal(page.data.id, 'wear-1')
-  assert.deepEqual(Array.from(records[0].itemIds), ['a'])
-  assert.equal(routes[0], '/pages/outfit-edit/outfit-edit?wearRecordId=wear-1')
+test('主动保存为穿搭先保存实穿，历史编辑回程取消恢复草稿，取消收藏后记录仍可编辑', async () => {
+  for (const historyEditing of [false, true]) {
+    const records = historyEditing ? [{ _id: 'wear-1', date: dayBefore(today()), itemIds: ['a'], note: '旧实穿' }] : []
+    const routes = []
+    const outfits = []
+    let failSync = false
+    let added = 0
+    let updated = 0
+    const page = loadPage('today-wear', {
+      listItems: async () => [{ _id: 'a', name: '衬衫' }, { _id: 'b', name: '长裤' }],
+      listOutfits: async () => outfits,
+      listWearRecords: async () => records,
+      getWearRecord: async id => { if (failSync) throw Error('offline'); return records.find(row => row._id === id) },
+      addWearRecord: async data => { added++; records.push({ _id: 'wear-1', ...data }); return 'wear-1' },
+      updateWearRecord: async (id, data) => { updated++; Object.assign(records.find(row => row._id === id), data); return {} }
+    }, { navigateTo: ({ url }) => routes.push(url), pageScrollTo() {} })
+    await page.onLoad({})
+    page.onItemToggle({ currentTarget: { dataset: { id: historyEditing ? 'b' : 'a' } } })
+    page.onNoteInput({ detail: { value: '尚未提交的草稿' } })
+    const draft = draftState(page)
+    if (historyEditing) page.onHistoryTap({ currentTarget: { dataset: { id: 'wear-1' } } })
+    await page.onSaveAsOutfit()
+    assert.equal(added, historyEditing ? 0 : 1)
+    assert.equal(updated, historyEditing ? 1 : 0)
+    assert.equal(page.data.id, 'wear-1')
+    assert.deepEqual(Array.from(records[0].itemIds), ['a'])
+    assert.equal(routes[0], '/pages/outfit-edit/outfit-edit?wearRecordId=wear-1')
 
-  await page.onShow()
-  assert.equal(records.length, 1)
-  assert.equal(page.data.history[0]._id, 'wear-1')
+    await page.onShow()
+    assert.equal(records.length, 1)
+    assert.equal(page.data.history[0]._id, 'wear-1')
+    if (historyEditing) {
+      assert.equal(page.data.historyEditing, true)
+      page.onCancelHistoryEdit()
+      assert.deepEqual(draftState(page), draft)
+      assert.equal(updated, 1)
+      page.onHistoryTap({ currentTarget: { dataset: { id: 'wear-1' } } })
+    }
 
-  outfits.push({ _id: 'fit-1', name: '新收藏', itemIds: ['a'] })
-  records[0].outfitId = 'fit-1'
-  failSync = true
-  page._returningFromOutfitEdit = true
-  await page.onShow()
-  assert.equal(page.data.outfitSyncError, '穿搭状态刷新失败，点此重试')
-  await page.onSave()
-  assert.equal(updated, 0)
-  failSync = false
-  await page.refreshAfterOutfitEdit()
-  assert.equal(page.data.outfitSyncError, '')
-  assert.equal(page.data.outfitId, 'fit-1')
-  await page.onSave()
-  assert.equal(added, 1)
-  assert.equal(updated, 1)
-  assert.equal(records[0].outfitId, 'fit-1')
+    outfits.push({ _id: 'fit-1', name: '新收藏', itemIds: ['a'] })
+    records[0].outfitId = 'fit-1'
+    failSync = true
+    page._returningFromOutfitEdit = true
+    await page.onShow()
+    assert.equal(page.data.outfitSyncError, '穿搭状态刷新失败，点此重试')
+    await page.onSave()
+    assert.equal(updated, historyEditing ? 1 : 0)
+    failSync = false
+    await page.refreshAfterOutfitEdit()
+    assert.equal(page.data.outfitSyncError, '')
+    assert.equal(page.data.outfitId, 'fit-1')
+    await page.onSave()
+    assert.equal(added, historyEditing ? 0 : 1)
+    assert.equal(updated, historyEditing ? 2 : 1)
+    assert.equal(records[0].outfitId, 'fit-1')
+    if (historyEditing) {
+      assert.equal(page.data.historyEditing, false)
+      assert.deepEqual(draftState(page), draft)
+      assert.equal(page.data.outfits[0]._id, 'fit-1')
+    }
+  }
 })
 
 test('已有相同单品组合可选择关联或继续新建，关联不新增实穿', async () => {

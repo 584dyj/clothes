@@ -3,6 +3,81 @@
   padding-bottom: 120rpx;
 }
 
+.history-edit-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(0, 0, 0, 0.4);
+  animation: history-mask-in 300ms ease-out both;
+}
+
+.history-edit-panel {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 81;
+  display: flex;
+  flex-direction: column;
+  height: 88vh;
+  border-radius: 28rpx 28rpx 0 0;
+  background: #f6f4f0;
+  overflow: hidden;
+  animation: history-panel-in 300ms ease-out both;
+}
+
+.history-edit-mask-closing { animation: history-mask-out 300ms ease-in both; }
+.history-edit-closing { animation: history-panel-out 300ms ease-in both; pointer-events: none; }
+@keyframes history-panel-in { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@keyframes history-panel-out { from { transform: translateY(0); } to { transform: translateY(100%); } }
+@keyframes history-mask-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes history-mask-out { from { opacity: 1; } to { opacity: 0; } }
+
+.history-edit-heading {
+  flex-shrink: 0;
+  padding: 28rpx 32rpx 24rpx;
+  color: #3a3835;
+  font-size: 32rpx;
+  font-weight: 600;
+}
+
+.history-edit-panel .wear-form-body {
+  flex: 1;
+  height: 0;
+  min-height: 0;
+}
+
+.history-edit-panel .wear-form-content {
+  padding: 0 24rpx 24rpx;
+  box-sizing: border-box;
+}
+
+.history-edit-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 20rpx;
+  padding: 20rpx 24rpx calc(20rpx + env(safe-area-inset-bottom));
+  border-top: 1rpx solid #e9e5de;
+  background: #f6f4f0;
+}
+
+.history-edit-actions button {
+  flex: 1;
+  min-width: 0;
+  height: 88rpx;
+  line-height: 88rpx;
+  margin: 0;
+  padding: 0;
+  border-radius: 44rpx;
+  box-sizing: border-box;
+  font-size: 30rpx;
+}
+
+.history-edit-cancel {
+  background: #ffffff;
+  color: #6b675f;
+}
+
 /* 日期/穿搭摘要条：一行卡片，点按打开滚轮 */
 .date-row {
   display: flex;

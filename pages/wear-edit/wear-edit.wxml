@@ -2,6 +2,11 @@
   <view wx:if="{{loading}}" class="empty">加载中…</view>
   <view wx:elif="{{loadError}}" class="empty">{{loadError}}<button bindtap="onRetry">重新加载</button></view>
 
+  <view wx:if="{{historyEditing}}" class="history-edit-mask {{historyClosing ? 'history-edit-mask-closing' : ''}}" catchtap="onCancelHistoryEdit" catchtouchmove="onHistoryEditTouch"></view>
+  <view wx:if="{{!loading && !loadError}}" class="wear-form {{historyEditing ? 'history-edit-panel' : ''}} {{historyClosing ? 'history-edit-closing' : ''}}" aria-role="{{historyEditing ? 'dialog' : ''}}" aria-label="{{historyEditing ? '编辑实穿' : ''}}">
+    <view wx:if="{{historyEditing}}" class="history-edit-heading" catchtouchmove="onHistoryEditTouch">编辑实穿</view>
+    <scroll-view class="wear-form-body" scroll-y="{{historyEditing}}" enhanced show-scrollbar="{{false}}">
+      <view class="wear-form-content">
   <!-- 日期摘要条：默认今天，点按才打开滚轮补记 -->
   <view wx:if="{{!loading && !loadError}}" class="date-row card" data-target="date" bindtap="openPicker">
     <text class="date-row-label">日期</text>
@@ -88,12 +93,20 @@
     </view>
 
     <view wx:if="{{outfitSyncError}}" class="stock-error" bindtap="refreshAfterOutfitEdit">{{outfitSyncError}}</view>
-    <button class="btn-primary save-btn" bindtap="onSave" disabled="{{saving || !ready || outfitSyncPending || outfitSyncError}}">保存</button>
+    <button wx:if="{{!historyEditing}}" class="btn-primary save-btn" bindtap="onSave" disabled="{{saving || !ready || outfitSyncPending || outfitSyncError}}">保存</button>
     <view wx:if="{{historyEnabled}}" class="save-outfit-link {{saving || !ready || outfitSyncPending || outfitSyncError ? 'save-outfit-link-off' : ''}}" bindtap="onSaveAsOutfit">保存并记为穿搭 ›</view>
     <button wx:if="{{id}}" class="btn-danger delete-btn" bindtap="onDelete" disabled="{{saving || !ready}}">删除</button>
-    <button wx:if="{{id && historyEnabled}}" class="reset-btn" bindtap="onResetTap" disabled="{{saving}}">返回今日录入</button>
+    <button wx:if="{{id && historyEnabled && !historyEditing}}" class="reset-btn" bindtap="onResetTap" disabled="{{saving}}">返回今日录入</button>
+  </block>
+      </view>
+    </scroll-view>
+    <view wx:if="{{historyEditing}}" class="history-edit-actions" catchtouchmove="onHistoryEditTouch">
+      <button class="history-edit-cancel" bindtap="onCancelHistoryEdit" disabled="{{saving || historyClosing}}">取消</button>
+      <button class="btn-primary save-btn" bindtap="onSave" disabled="{{saving || historyClosing || !ready || outfitSyncPending || outfitSyncError}}">保存修改</button>
+    </view>
+  </view>
 
-    <block wx:if="{{historyEnabled}}">
+    <block wx:if="{{historyEnabled && !loading && !loadError}}">
     <view class="history-heading">近期实穿</view>
     <view wx:if="{{historyError}}" class="history-empty" bindtap="refreshHistory">{{historyError}}</view>
     <view wx:elif="{{history.length === 0}}" class="history-empty">还没有实穿记录，保存后会显示在这里</view>
@@ -111,13 +124,12 @@
       </view>
       <view wx:if="{{record.note}}" class="history-note">{{record.note}}</view>
       <view class="history-actions">
-        <text>点此编辑</text>
+        <text>编辑记录</text>
         <button data-id="{{record._id}}" catchtap="onHistoryDelete">删除</button>
       </view>
     </view>
     <button wx:if="{{hasMoreHistory}}" class="more-btn" bindtap="onMoreHistory">加载更多记录</button>
     </block>
-  </block>
 
   <wheel-picker
     show="{{picker.show}}"

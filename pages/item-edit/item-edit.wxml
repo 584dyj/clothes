@@ -35,7 +35,7 @@
   <view class="form card">
     <view class="field">
       <text class="label">名称</text>
-      <input class="input" placeholder="{{_focus.name ? '' : '如：白色T恤'}}" value="{{name}}" data-field="name" bindinput="onNameInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+      <input class="input" placeholder="{{_focus.name ? '' : '衣服的名字是……'}}" value="{{name}}" data-field="name" bindinput="onNameInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
     </view>
 
     <view class="field field-column">
@@ -101,12 +101,12 @@
 
     <view class="field">
       <text class="label">品牌</text>
-      <input class="input" placeholder="{{_focus.brand ? '' : '如：优衣库（可选）'}}" value="{{brand}}" data-field="brand" bindinput="onBrandInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+      <input class="input" placeholder="{{_focus.brand ? '' : '衣服的品牌是……'}}" value="{{brand}}" data-field="brand" bindinput="onBrandInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
     </view>
 
     <view class="field">
       <text class="label">价格</text>
-      <input class="input" type="digit" placeholder="{{_focus.price ? '' : '可选，单位：元'}}" value="{{price}}" data-field="price" bindinput="onPriceInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+      <input class="input" type="digit" placeholder="{{_focus.price ? '' : '衣服的价格是……'}}" value="{{price}}" data-field="price" bindinput="onPriceInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
     </view>
 
     <view class="field" data-target="date" bindtap="openPicker">
@@ -118,7 +118,7 @@
 
     <view class="field field-column">
       <text class="label">备注</text>
-      <textarea class="textarea" placeholder="{{_focus.note ? '' : '材质、购买渠道等'}}" value="{{note}}" data-field="note" bindinput="onNoteInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+      <textarea class="textarea" placeholder="{{_focus.note ? '' : '还有要记录的内容是……'}}" value="{{note}}" data-field="note" bindinput="onNoteInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
     </view>
   </view>
 

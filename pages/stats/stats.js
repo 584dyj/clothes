@@ -134,9 +134,20 @@ Page({
         })
       })
       const wearRank = items.filter(item => wearCount[item._id])
-        .map(item => ({ name: item.name || '未命名', count: wearCount[item._id] }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 8)
+      .map(item => ({
+        name: item.name || '未命名',
+        count: wearCount[item._id]
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8)
+    
+    const maxWearCount = wearRank.length > 0 ? wearRank[0].count : 0
+    
+    wearRank.forEach(item => {
+      item.barPercent = maxWearCount > 0
+        ? Math.round(item.count / maxWearCount * 100)
+        : 0
+    })
       // 搭配频次：每件衣物出现在多少条搭配中（同一搭配内重复引用只计一次），已删除单品不计入展示。
       const existingItemIds = new Set(items.map(item => item._id))
       const outfitCount = Object.create(null)
@@ -146,9 +157,20 @@ Page({
         })
       })
       const outfitRank = items.filter(item => outfitCount[item._id])
-        .map(item => ({ name: item.name || '未命名', count: outfitCount[item._id] }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 8)
+      .map(item => ({
+        name: item.name || '未命名',
+        count: outfitCount[item._id]
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8)
+    
+    const maxOutfitCount = outfitRank.length > 0 ? outfitRank[0].count : 0
+    
+    outfitRank.forEach(item => {
+      item.barPercent = maxOutfitCount > 0
+        ? Math.round(item.count / maxOutfitCount * 100)
+        : 0
+    })
       // 统一闲置口径：近 90 天未记录穿着或搭配（与闲置月报 MATCH-06 同源）。一级其他仅作基础记录，不进入闲置建议。
       const validRecords = wearRecords
         .filter(record => validDate(record.date) && record.date <= todayStr)
@@ -190,13 +212,36 @@ Page({
         totalOutfits,
         totalBrands,
         totalSpent: Math.round(totalSpent * 100) / 100,
-        categoryStats,
-        brandStats,
+      
+        categoryStats: categoryStats.map(item => ({
+          ...item,
+          barStyle: `width: ${item.percent}%;`
+        })),
+      
+        brandStats: brandStats.map(item => ({
+          ...item,
+          barStyle: `width: ${item.percent}%;`
+        })),
+      
         seasonStats,
+      
         expenseTotal: Math.round(expenseTotal * 100) / 100,
-        expenseStats,
-        wearRank,
-        outfitRank,
+      
+        expenseStats: expenseStats.map(item => ({
+          ...item,
+          barStyle: `width: ${item.percent}%;`
+        })),
+      
+        wearRank: wearRank.map(item => ({
+          ...item,
+          barStyle: `width: ${item.barPercent}%;`
+        })),
+      
+        outfitRank: outfitRank.map(item => ({
+          ...item,
+          barStyle: `width: ${item.barPercent}%;`
+        })),
+      
         idleRank,
         idleInsufficient
       })
@@ -210,10 +255,5 @@ Page({
   // 进入月历页（查看月度/年度开销）
   onCalendarTap() {
     wx.navigateTo({ url: '/pages/calendar/calendar' })
-  },
-
-  // 进入实穿记录页（与「我的穿搭」页底入口一致）
-  onWearRecordsTap() {
-    wx.navigateTo({ url: '/pages/today-wear/today-wear' })
   }
 })
