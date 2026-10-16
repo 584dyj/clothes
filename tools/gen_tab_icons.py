@@ -54,11 +54,11 @@ def draw_wardrobe(color):
 
 
 def draw_outfits(color):
-    """衣架"""
+    """衣架；纵向占位与其他图标对齐（约 y7-69，与 wardrobe 的 y9-71 同水平线）"""
     img = new_img()
-    polyline(img, [(38, 10), (43, 9), (46, 13), (44, 17), (40, 21)], color)  # 挂钩
-    polyline(img, [(40, 21), (13, 52), (68, 52)], color, close=True)          # 三角架
-    line(img, 22, 45, 59, 45, color)                                          # 下横杆
+    polyline(img, [(38, 12), (43, 10), (47, 14), (45, 19), (40, 24)], color)  # 挂钩
+    polyline(img, [(40, 24), (12, 66), (69, 66)], color, close=True)          # 三角架
+    line(img, 21, 57, 60, 57, color)                                          # 下横杆
     return img
 
 
