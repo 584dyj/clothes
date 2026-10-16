@@ -287,10 +287,11 @@ function callWeather(data) {
   })
 }
 const setCity = cityName => callWeather({ action: 'setCity', cityName })
+const setCityByLocation = (longitude, latitude) => callWeather({ action: 'setCityByLocation', longitude, latitude })
 
 module.exports = { chooseImage, uploadImage, removeImage, retryCleanup, cleanupStatus, clearCache, getWardrobeVersion,
   listItems, getItem, addItem, updateItem, deleteItem, listOutfits, listOutfitsPage, getOutfit, addOutfit, updateOutfit, deleteOutfit,
   listExpenses, addExpense, updateExpense, deleteExpense,
   listWearRecords, getWearRecord, addWearRecord, updateWearRecord, deleteWearRecord, linkWearOutfit,
   listPlans, addPlan, updatePlan, deletePlan,
-  chatList, chatGet, chatSend, chatDelete, chatRename, purchaseAssess, purchaseVisual, itemScan, subscribeReport, subscribeWeather, cancelReport, cancelWeather, getSubscriptionStatus, setCity }
+  chatList, chatGet, chatSend, chatDelete, chatRename, purchaseAssess, purchaseVisual, itemScan, subscribeReport, subscribeWeather, cancelReport, cancelWeather, getSubscriptionStatus, setCity, setCityByLocation }

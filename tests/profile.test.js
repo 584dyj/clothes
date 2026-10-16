@@ -427,6 +427,7 @@ test('城市设置：确认后调用云端并回显，失败提示原因', async
   const profile = loadPage('profile', {
     setCity: async name => { called = name; return { success: true, cityId: '101020100', cityName: '上海' } }
   }, {
+    showActionSheet: options => options.success({ tapIndex: 1 }),
     showModal: options => options.success({ confirm: true, content: ' 上海 ' }),
     showToast: options => toasts.push(options.title)
   })
@@ -438,10 +439,103 @@ test('城市设置：确认后调用云端并回显，失败提示原因', async
   const failing = loadPage('profile', {
     setCity: async () => { throw new Error('未找到该城市，请检查名称') }
   }, {
+    showActionSheet: options => options.success({ tapIndex: 1 }),
     showModal: options => options.success({ confirm: true, content: '火星' }),
     showToast: options => toasts.push(options.title)
   })
   failing.onCityTap()
   await new Promise(resolve => setImmediate(resolve))
   assert.equal(toasts.at(-1), '未找到该城市，请检查名称')
+})
+
+test('城市定位：模糊定位成功写入区县并弹确认，授权被拒提示替代方式', async () => {
+  const modals = []
+  let called = null
+  const profile = loadPage('profile', {
+    setCityByLocation: async (lng, lat) => { called = [lng, lat]; return { success: true, cityId: '310115', cityName: '上海市浦东新区' } }
+  }, {
+    showActionSheet: options => options.success({ tapIndex: 0 }),
+    getFuzzyLocation: options => options.success({ longitude: 121.54, latitude: 31.22 }),
+    showModal: options => { modals.push(options); options.success && options.success({ confirm: true }) }
+  })
+  profile.onCityTap()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(called, [121.54, 31.22])
+  assert.equal(profile.data.cityName, '上海市浦东新区')
+  assert.equal(profile.data.locating, false)
+  assert.equal(modals.at(-1).title, '已定位到')
+  assert.equal(modals.at(-1).content, '上海市浦东新区')
+  // 授权被拒：提示手动输入或地图选点
+  const denied = loadPage('profile', {}, {
+    showActionSheet: options => options.success({ tapIndex: 0 }),
+    getFuzzyLocation: options => options.fail({ errMsg: 'getFuzzyLocation:fail auth deny' }),
+    showModal: options => { modals.push(options); options.success && options.success({ confirm: true }) }
+  })
+  denied.onCityTap()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(modals.at(-1).title, '定位失败')
+  assert.match(modals.at(-1).content, /手动输入或地图选点/)
+  assert.equal(denied.data.locating, false)
+  // 云端解析失败：透传错误原因
+  const failing = loadPage('profile', {
+    setCityByLocation: async () => { throw new Error('未找到该位置，请手动输入城市') }
+  }, {
+    showActionSheet: options => options.success({ tapIndex: 0 }),
+    getFuzzyLocation: options => options.success({ longitude: 139.7, latitude: 35.7 }),
+    showModal: options => { modals.push(options); options.success && options.success({ confirm: true }) }
+  })
+  failing.onCityTap()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(modals.at(-1).title, '定位失败')
+  assert.equal(modals.at(-1).content, '未找到该位置，请手动输入城市')
+  // errno 112：位置声明未生效（隐私指引审核中），只引导手动输入
+  const undeclared = loadPage('profile', {}, {
+    showActionSheet: options => options.success({ tapIndex: 0 }),
+    getFuzzyLocation: options => options.fail({ errMsg: 'getFuzzyLocation:fail api scope is not declared in the privacy agreement', errno: 112 }),
+    showModal: options => { modals.push(options); options.success && options.success({ confirm: true }) }
+  })
+  undeclared.onCityTap()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(modals.at(-1).title, '定位失败')
+  assert.match(modals.at(-1).content, /隐私指引审核中/)
+  assert.doesNotMatch(modals.at(-1).content, /privacy agreement/)
+})
+
+test('城市地图选点：选点坐标走逆地理编码，取消不提示', async () => {
+  const toasts = []
+  let called = null
+  const modals = []
+  const profile = loadPage('profile', {
+    setCityByLocation: async (lng, lat) => { called = [lng, lat]; return { success: true, cityId: '330106', cityName: '杭州市西湖区' } }
+  }, {
+    showActionSheet: options => options.success({ tapIndex: 2 }),
+    chooseLocation: options => options.success({ longitude: 120.13, latitude: 30.27, address: '浙江省杭州市西湖区文三路' }),
+    showModal: options => { modals.push(options); options.success && options.success({ confirm: true }) },
+    showToast: options => toasts.push(options.title)
+  })
+  profile.onCityTap()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(called, [120.13, 30.27])
+  assert.equal(profile.data.cityName, '杭州市西湖区')
+  assert.equal(modals.at(-1).title, '已定位到')
+  // 用户取消选点：静默返回，不弹提示
+  const toastCount = toasts.length
+  const cancelled = loadPage('profile', {}, {
+    showActionSheet: options => options.success({ tapIndex: 2 }),
+    chooseLocation: options => options.fail({ errMsg: 'chooseLocation:fail cancel' }),
+    showToast: options => toasts.push(options.title)
+  })
+  cancelled.onCityTap()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(cancelled.data.locating, false)
+  assert.equal(toasts.length, toastCount)
+  // errno 112：位置声明未生效时给中文提示而非英文 errMsg
+  const undeclared = loadPage('profile', {}, {
+    showActionSheet: options => options.success({ tapIndex: 2 }),
+    chooseLocation: options => options.fail({ errMsg: 'chooseLocation:fail api scope is not declared in the privacy agreement', errno: 112 }),
+    showToast: options => toasts.push(options.title)
+  })
+  undeclared.onCityTap()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(toasts.at(-1), '选点暂不可用，请手动输入城市')
 })

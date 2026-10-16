@@ -29,6 +29,7 @@ Page({
     mostExpensive: null,
     favoriteBrand: null,
     cityName: '',
+    locating: false,
     weatherStateText: '',
     weatherUnused: null,
     weatherQuotaLoading: true,
@@ -197,6 +198,18 @@ Page({
   },
 
   onCityTap() {
+    if (this.data.locating) return
+    wx.showActionSheet({
+      itemList: ['自动定位', '手动输入', '地图选点'],
+      success: res => {
+        if (res.tapIndex === 0) this.locateCity()
+        else if (res.tapIndex === 1) this.inputCity()
+        else if (res.tapIndex === 2) this.pickCityOnMap()
+      }
+    })
+  },
+
+  inputCity() {
     wx.showModal({
       title: '设置城市',
       editable: true,
@@ -216,6 +229,81 @@ Page({
         }
       }
     })
+  },
+
+  // 模糊定位（区县级精度，无需后台审核）→ 云端逆地理编码 → 弹窗确认
+  async locateCity() {
+    if (this.data.locating) return
+    if (typeof wx.getFuzzyLocation !== 'function') {
+      wx.showToast({ title: '当前微信版本不支持定位，请手动输入', icon: 'none' })
+      return
+    }
+    this.setData({ locating: true })
+    wx.showLoading({ title: '定位中…', mask: true })
+    try {
+      const location = await new Promise((resolve, reject) =>
+        wx.getFuzzyLocation({ type: 'wgs84', success: resolve, fail: reject }))
+      await this.applyLocation(location.longitude, location.latitude)
+    } catch (e) {
+      wx.hideLoading()
+      console.error(e)
+      const raw = String(e && (e.errMsg || e.message) || '')
+      // errno 112：隐私指引中的位置声明未生效（如审核中），此期间地图选点同样被拦，只引导手动输入
+      const undeclared = e && e.errno === 112 || /privacy agreement|privacy permission/i.test(raw)
+      const denied = /auth deny|authorize no response/i.test(raw)
+      wx.showModal({
+        title: '定位失败',
+        content: undeclared
+          ? '定位能力尚未开放（隐私指引审核中），请改用手动输入城市'
+          : denied
+            ? '定位授权被拒绝，可改用手动输入或地图选点；如需定位，请在微信设置中开启位置权限'
+            : raw || '请改用手动输入或地图选点',
+        showCancel: false
+      })
+    } finally {
+      this.setData({ locating: false })
+    }
+  },
+
+  // 地图选点：用户自选精确位置，同样走逆地理编码落到区县
+  async pickCityOnMap() {
+    if (this.data.locating || typeof wx.chooseLocation !== 'function') return
+    this.setData({ locating: true })
+    try {
+      const place = await new Promise((resolve, reject) => wx.chooseLocation({ success: resolve, fail: reject }))
+      wx.showLoading({ title: '解析中…', mask: true })
+      await this.applyLocation(place.longitude, place.latitude)
+    } catch (e) {
+      wx.hideLoading()
+      if (e && /cancel/i.test(String(e.errMsg || ''))) return
+      console.error(e)
+      const raw = String(e && (e.errMsg || e.message) || '')
+      // errno 112：位置声明未生效时与定位口径一致
+      const undeclared = e && e.errno === 112 || /privacy agreement|privacy permission/i.test(raw)
+      wx.showToast({ title: undeclared ? '选点暂不可用，请手动输入城市' : raw || '选点失败，请重试', icon: 'none' })
+    } finally {
+      this.setData({ locating: false })
+    }
+  },
+
+  // 经纬度 → 云函数解析为区县并落库，成功后弹确认，可返回重新选择
+  async applyLocation(longitude, latitude) {
+    try {
+      const result = await db.setCityByLocation(longitude, latitude)
+      const name = result.cityName || ''
+      this.setData({ cityName: name })
+      wx.hideLoading()
+      wx.showModal({
+        title: '已定位到',
+        content: name,
+        confirmText: '确认',
+        cancelText: '修改',
+        success: res => { if (!res.confirm) this.onCityTap() }
+      })
+    } catch (e) {
+      wx.hideLoading()
+      throw e
+    }
   },
 
   async onSubscribeWeather() {

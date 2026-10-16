@@ -76,7 +76,7 @@
         <view class="reminder-hint">
           <view wx:if="{{weatherStateText}}">{{weatherStateText}}</view>
           <view>每天 21:30，为你送上明日天气与穿搭建议</view>
-          <view>每次订阅可收到一条提醒，若已过今日发送时间，则顺延至明晚</view>
+          <view>每次订阅可收到一条提醒，今日发送时间已过则顺延至明晚</view>
           <view>订阅前，请先设置城市</view>
           <view>取消提醒将清空对应的剩余次数</view>
         </view>
@@ -92,7 +92,7 @@
         </view>
         <view class="reminder-hint">
           <view>每月 1 日 09:00，为你检查闲置衣物</view>
-          <view>每次授权增加 1 次，成功发送后扣除 1 次，用完后将暂停提醒</view>
+          <view>每次授权增加 1 次次数，次数用尽后将暂停提醒</view>
           <view>取消提醒将清空对应的剩余次数</view>
         </view>
       </view>

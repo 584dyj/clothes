@@ -61,5 +61,14 @@
   },
   "style": "v2",
   "lazyCodeLoading": "requiredComponents",
+  "permission": {
+    "scope.userFuzzyLocation": {
+      "desc": "用于自动获取所在城市，为你提供天气提醒与穿搭建议"
+    }
+  },
+  "requiredPrivateInfos": [
+    "getFuzzyLocation",
+    "chooseLocation"
+  ],
   "sitemapLocation": "sitemap.json"
 }

@@ -1,5 +1,6 @@
 const db = require('../../utils/db')
 const auth = require('../../utils/auth')
+const markdown = require('../../utils/markdown')
 const { cleanScanFields } = require('../../utils/item-fields')
 const app = getApp()
 
@@ -145,19 +146,31 @@ Page({
     }
   },
 
+  // 助手回复含 Markdown，渲染为 rich-text 节点；用户消息保持纯文本
+  withDisplay(message) {
+    const text = message.text || ''
+    return { ...message, displayText: text,
+      nodes: message.role === 'assistant' && text ? markdown.toNodes(text) : null }
+  },
+
+  // scroll-into-view 仅在值变化时触发，且是把目标顶部对齐视口。
+  // 统一用 ''→'msg-end' 两步强滚到底部锚点：指向消息 id 会在长回复时把视口弹回消息开头。
+  scrollChatToBottom(patch = {}) {
+    this.setData({ ...patch, scrollIntoView: '' }, () => this.setData({ scrollIntoView: 'msg-end' }))
+  },
+
   async loadChat(id) {
     this.detachPendingSend()
     try {
       const chat = await db.chatGet(id)
       this.saveView(id)
-      this.setData({
+      this.scrollChatToBottom({
         currentId: id,
         title: chat.title,
-        messages: chat.messages.map(message => ({ ...message, displayText: message.text || '' })),
+        messages: chat.messages.map(message => this.withDisplay(message)),
         awaitingReply: false,
         sendError: chat.messages.length && chat.messages[chat.messages.length - 1].role === 'user'
-          ? '这条提问尚未收到回复。请稍后刷新；若持续如此，请检查 auth 云函数日志。' : '',
-        scrollIntoView: chat.messages.length ? 'msg-' + (chat.messages.length - 1) : ''
+          ? '这条提问尚未收到回复。请稍后刷新；若持续如此，请检查 auth 云函数日志。' : ''
       })
     } catch (e) {
       console.error(e)
@@ -578,14 +591,18 @@ Page({
         streamed += delta
         if (Date.now() - lastRender < 80) return
         lastRender = Date.now()
-        this.setData({ streaming: true, messages: [...pendingMessages, { role: 'assistant', text: streamed, displayText: streamed }],
-          scrollIntoView: 'msg-' + pendingMessages.length })
+        // scroll-into-view 仅在值变化时触发：先清空再指回底部锚点，保证气泡增高时持续跟随
+        this.setData({ streaming: true,
+          messages: [...pendingMessages, this.withDisplay({ role: 'assistant', text: streamed })],
+          scrollIntoView: '' }, () => {
+          if (inView()) this.setData({ scrollIntoView: 'msg-end' })
+        })
       })
       if (version !== db.getWardrobeVersion()) throw new Error('衣橱已更新，请重新发送')
       if (inView()) {
-        const messages = result.messages.map(message => ({ ...message, displayText: message.text || '' }))
+        const messages = result.messages.map(message => this.withDisplay(message))
         this.saveView(result.chatId)
-        this.setData({
+        this.scrollChatToBottom({
           currentId: result.chatId,
           title: result.title,
           messages,
@@ -593,8 +610,7 @@ Page({
           imagePath: '',
           selectedItemId: '',
           selectedItemName: '',
-          canSend: false,
-          scrollIntoView: messages.length ? 'msg-' + (messages.length - 1) : ''
+          canSend: false
         })
       }
       // 刷新会话列表，让新会话/新标题及时出现（含后台完成的会话）；失败不影响本次回复
@@ -605,7 +621,7 @@ Page({
       console.error(e)
       if (inView()) {
         const failedMessages = pendingMessages
-        const failedPatch = { messages: failedMessages, scrollIntoView: failedMessages.length ? 'msg-' + (failedMessages.length - 1) : '',
+        const failedPatch = { messages: failedMessages,
           input: fromSuggestion ? '' : inputText, imagePath,
           canSend: fromSuggestion ? !!imagePath || !!selectedItemId : !!inputText || !!imagePath || !!selectedItemId,
           sendError: e.message || '发送失败，请重试' }
@@ -613,7 +629,7 @@ Page({
           failedPatch.currentId = e.chatId
           failedPatch.title = e.chatTitle || this.data.title
         }
-        this.setData(failedPatch)
+        this.scrollChatToBottom(failedPatch)
         wx.showToast({ title: e.message || '发送失败', icon: 'none' })
       } else {
         // 用户已离开原会话：回复虽失败，用户消息已存云端，刷新列表保留入口

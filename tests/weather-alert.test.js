@@ -501,6 +501,37 @@ test('setCity 拒绝已退出登录的账号', async () => {
     /登录状态已失效/)
 })
 
+// ---------- setCityByLocation（高德逆地理编码） ----------
+
+test('setCityByLocation 解析区县写入、直辖市与普通城市显示名、失败不落库', async () => {
+  const pudong = { status: '1', regeocode: { formatted_address: '上海市浦东新区张江镇',
+    addressComponent: { province: '上海市', city: [], district: '浦东新区', adcode: '310115' } } }
+  const xihu = { status: '1', regeocode: { formatted_address: '浙江省杭州市西湖区文三路',
+    addressComponent: { province: '浙江省', city: '杭州市', district: '西湖区', adcode: '330106' } } }
+  const cloud = loadCloud({ users: [{ _id: 'user', openid: 'openid-1', username: 'alice', autoLoginEnabled: true }] })
+  // 直辖市：city 为 [] 时用省名拼接区县
+  const ok = await alert.setCityByLocation({ db: cloud.db, openid: 'openid-1', longitude: 121.54, latitude: 31.22, request: stubWeather({ regeo: pudong }), env: ENV })
+  assert.deepEqual(ok, { success: true, cityId: '310115', cityName: '上海市浦东新区' })
+  assert.equal(cloud.records.users[0].cityId, '310115')
+  assert.equal(cloud.records.users[0].cityName, '上海市浦东新区')
+  // 普通城市：市 + 区
+  const ok2 = await alert.setCityByLocation({ db: cloud.db, openid: 'openid-1', longitude: 120.13, latitude: 30.27, request: stubWeather({ regeo: xihu }), env: ENV })
+  assert.deepEqual(ok2, { success: true, cityId: '330106', cityName: '杭州市西湖区' })
+  // 无 adcode（如海外）解析失败且不覆盖已有城市
+  await assert.rejects(
+    alert.setCityByLocation({ db: cloud.db, openid: 'openid-1', longitude: 139.7, latitude: 35.7,
+      request: stubWeather({ regeo: { status: '1', regeocode: { addressComponent: { province: [], city: [], district: [], adcode: [] } } } }), env: ENV }),
+    /未找到该位置/)
+  assert.equal(cloud.records.users[0].cityId, '330106')
+  // 坐标非法、未登录
+  await assert.rejects(
+    alert.setCityByLocation({ db: cloud.db, openid: 'openid-1', longitude: 'abc', latitude: 31, request: stubWeather({}), env: ENV }),
+    /定位坐标无效/)
+  await assert.rejects(
+    alert.setCityByLocation({ db: cloud.db, openid: 'stranger', longitude: 121.54, latitude: 31.22, request: stubWeather({ regeo: pudong }), env: ENV }),
+    /登录状态已失效/)
+})
+
 test('天气候选先排除一级其他：混合衣橱不含其他，只剩其他用通用建议，配饰子类其他仍参与', async () => {
   const mixed = loadCloud({
     users: [cityUser('u1')],

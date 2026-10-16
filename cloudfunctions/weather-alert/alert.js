@@ -356,13 +356,8 @@ async function handle({ db, cloud, templateId, now = new Date(), request = reque
   return summary
 }
 
-// ---------- 设置城市（客户端调用入口）：高德地理编码把城市名解析为 adcode ----------
-async function setCity({ db, openid, name, request = requestWeather, env = process.env }) {
-  const key = env.WEATHER_API_KEY
-  if (!key) throw new Error('WEATHER_API_KEY 未配置')
-  const host = env.WEATHER_API_HOST || 'https://restapi.amap.com'
-  const cityName = String(name || '').trim()
-  if (!cityName || Array.from(cityName).length > 20) throw new Error('请输入城市名')
+// 城市设置的共用账号校验：登录态有效且 openid 绑定唯一
+async function activeCityUser(db, openid) {
   const res = await db.collection('users').where({ openid }).limit(2).get()
   if (res.data.length > 1) {
     console.error('检测到重复 OpenID 绑定', openid)
@@ -370,6 +365,17 @@ async function setCity({ db, openid, name, request = requestWeather, env = proce
   }
   const user = res.data[0]
   if (!user || user.autoLoginEnabled === false) throw new Error('登录状态已失效')
+  return user
+}
+
+// ---------- 设置城市（客户端调用入口）：高德地理编码把城市名解析为 adcode ----------
+async function setCity({ db, openid, name, request = requestWeather, env = process.env }) {
+  const key = env.WEATHER_API_KEY
+  if (!key) throw new Error('WEATHER_API_KEY 未配置')
+  const host = env.WEATHER_API_HOST || 'https://restapi.amap.com'
+  const cityName = String(name || '').trim()
+  if (!cityName || Array.from(cityName).length > 20) throw new Error('请输入城市名')
+  const user = await activeCityUser(db, openid)
   const geo = await request({ host, path: `/v3/geocode/geo?address=${encodeURIComponent(cityName)}&key=${encodeURIComponent(key)}&output=JSON` })
   const top = geo.status === '1' && Array.isArray(geo.geocodes) && geo.geocodes[0]
   if (!top || !top.adcode) throw new Error('未找到该城市，请检查名称')
@@ -378,5 +384,29 @@ async function setCity({ db, openid, name, request = requestWeather, env = proce
   return { success: true, cityId: String(top.adcode), cityName: display }
 }
 
-module.exports = { handle, setCity, evaluate, buildAdvice, fetchForecast, quotaId, sentId,
+// ---------- 定位设置城市：高德逆地理编码把经纬度解析为区县 adcode ----------
+// 高德 regeo 空字段返回 [] 而非空字符串，统一归一为字符串
+const geoText = value => Array.isArray(value) ? '' : String(value || '')
+
+async function setCityByLocation({ db, openid, longitude, latitude, request = requestWeather, env = process.env }) {
+  const key = env.WEATHER_API_KEY
+  if (!key) throw new Error('WEATHER_API_KEY 未配置')
+  const host = env.WEATHER_API_HOST || 'https://restapi.amap.com'
+  const lng = Number(longitude)
+  const lat = Number(latitude)
+  if (!Number.isFinite(lng) || lng < -180 || lng > 180 ||
+      !Number.isFinite(lat) || lat < -90 || lat > 90) throw new Error('定位坐标无效')
+  const user = await activeCityUser(db, openid)
+  const geo = await request({ host, path: `/v3/geocode/regeo?location=${lng},${lat}&key=${encodeURIComponent(key)}&output=JSON&extensions=base&radius=1000` })
+  const ac = geo.status === '1' && geo.regeocode && geo.regeocode.addressComponent
+  const adcode = ac && geoText(ac.adcode)
+  if (!adcode) throw new Error('未找到该位置，请手动输入城市')
+  // 直辖市的 city 字段为空，回退用省名；区县的 adcode 即天气接口所需精度
+  const display = trimText((geoText(ac.city) || geoText(ac.province)) + geoText(ac.district) || geoText(geo.regeocode.formatted_address))
+  if (!display) throw new Error('未找到该位置，请手动输入城市')
+  await db.collection('users').doc(user._id).update({ data: { cityId: adcode, cityName: display } })
+  return { success: true, cityId: adcode, cityName: display }
+}
+
+module.exports = { handle, setCity, setCityByLocation, evaluate, buildAdvice, fetchForecast, quotaId, sentId,
   SCENE, QUOTA_SCENE, SENT_SCENE, shanghaiDate, shiftDate, dateCn, summarize }

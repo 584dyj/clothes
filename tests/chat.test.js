@@ -723,6 +723,8 @@ test('助手收到流式片段时立即更新回复气泡', async () => {
   const page = loadPage('assistant', { chatSend: async (payload, onDelta) => {
     onDelta('你好')
     assert.equal(page.data.messages[1].displayText, '你好')
+    // 流式渲染强制把滚动锚点重置到底部，保证气泡增高时视口跟随
+    assert.equal(page.data.scrollIntoView, 'msg-end')
     onDelta('，可以这样搭配')
     return { chatId: 'c1', title: '搭配', messages: [
       { role: 'user', text: payload.text }, { role: 'assistant', text: '你好，可以这样搭配' }] }
@@ -730,6 +732,26 @@ test('助手收到流式片段时立即更新回复气泡', async () => {
   page.onInput({ detail: { value: '怎么搭配' } })
   await page.onSend()
   assert.equal(page.data.messages[1].displayText, '你好，可以这样搭配')
+  // 完成后仍停在底部锚点：指向消息 id 会因顶部对齐把视口弹回长回复开头
+  assert.equal(page.data.scrollIntoView, 'msg-end')
+  // 助手消息带 Markdown 渲染节点，用户消息保持纯文本
+  assert.ok(Array.isArray(page.data.messages[1].nodes))
+  assert.equal(page.data.messages[0].nodes, null)
+  const markup = require('node:fs').readFileSync(require('node:path').join(__dirname, '../pages/assistant/assistant.wxml'), 'utf8')
+  assert.match(markup, /<rich-text[^>]*nodes="\{\{item\.nodes\}\}"/)
+})
+
+test('助手回复的 Markdown 加粗渲染为富文本节点', async () => {
+  const page = loadPage('assistant', {
+    chatGet: async () => ({ title: '搭配', messages: [{ role: 'user', text: '通勤怎么穿' }, { role: 'assistant', text: '选**黑色**鞋款' }] })
+  })
+  await page.loadChat('c1')
+  assert.equal(page.data.scrollIntoView, 'msg-end')
+  const nodes = page.data.messages[1].nodes
+  assert.equal(nodes.length, 1)
+  const strong = nodes[0].children.find(node => node.name === 'span')
+  assert.match(strong.attrs.style, /font-weight:600/)
+  assert.equal(strong.children[0].text, '黑色')
 })
 
 test('auth 入口校验登录后路由到对话模块', async () => {

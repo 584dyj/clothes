@@ -171,8 +171,8 @@ test('品牌分布将未填写品牌的衣物归入无品牌', async () => {
   await page.loadStats()
   assert.equal(page.data.totalBrands, 1)
   assert.deepEqual(Array.from(page.data.brandStats, row => ({ ...row })), [
-    { name: '无品牌', count: 3, percent: 60 },
-    { name: '塔卡沙', count: 2, percent: 40 }
+    { name: '无品牌', count: 3, percent: 60, barStyle: 'width: 60%;' },
+    { name: '塔卡沙', count: 2, percent: 40, barStyle: 'width: 40%;' }
   ])
 
   clothes = []

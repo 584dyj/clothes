@@ -132,7 +132,7 @@
       </scroll-view>
 
       <block wx:else>
-        <scroll-view scroll-y class="chat-scroll" scroll-into-view="{{scrollIntoView}}" scroll-with-animation>
+        <scroll-view scroll-y class="chat-scroll" scroll-into-view="{{scrollIntoView}}" scroll-with-animation="{{!streaming}}">
           <view wx:if="{{messages.length === 0}}" class="chat-empty">
             <view class="chat-empty-title">我是你的穿搭助手</view>
             <view class="chat-empty-sub">可以问我搭配建议，也可以拍照或从衣橱选一件单品</view>
@@ -141,7 +141,8 @@
           <view wx:for="{{messages}}" wx:key="index" id="msg-{{index}}" class="msg-row {{item.role === 'user' ? 'msg-user' : 'msg-assistant'}}">
             <view class="bubble">
               <image wx:if="{{item.imageFileID}}" class="bubble-img" src="{{item.imageFileID}}" mode="aspectFill" data-fileid="{{item.imageFileID}}" bindtap="onPreviewImage" />
-              <text wx:if="{{item.text}}" class="bubble-text">{{item.displayText}}</text>
+              <rich-text wx:if="{{item.text && item.role === 'assistant'}}" class="bubble-text" nodes="{{item.nodes}}" />
+              <text wx:elif="{{item.text}}" class="bubble-text">{{item.displayText}}</text>
             </view>
           </view>
           <view wx:if="{{awaitingReply && !streaming}}" id="msg-thinking" class="msg-row msg-assistant"><view class="bubble bubble-thinking">{{thinkingText}}</view></view>
