@@ -54,6 +54,39 @@
   font-size: 24rpx;
 }
 
+.more-toggle-right {
+  display: flex;
+  align-items: center;
+}
+
+.more-toggle-arrow {
+  display: inline-block;
+  margin-left: 8rpx;
+  color: #b3aea5;
+  font-size: 28rpx;
+  transition: transform 0.3s ease;
+}
+
+.more-toggle-arrow-open {
+  transform: rotate(90deg);
+}
+
+/* 「更多选项」面板展开/收拢动画：max-height + 透明度过渡，代替 wx:if 硬切换。
+   面板内容定高（照片区 420rpx + 表单两行），900rpx 上界留有余量 */
+.more-panel {
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: max-height 0.3s ease, opacity 0.3s ease;
+}
+
+.more-panel-open {
+  max-height: 900rpx;
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .field {
   display: flex;
   align-items: center;

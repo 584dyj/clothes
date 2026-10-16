@@ -2,13 +2,16 @@
   <view wx:if="{{loading}}" class="empty">加载中…</view>
   <view wx:elif="{{loadError}}" class="empty">{{loadError}}<button bindtap="onRetry">重新加载</button></view>
 
-  <!-- 快速录入：把名称、场合、照片折叠进「更多选项」，默认收起 -->
+  <!-- 快速录入：把名称、场合、照片折叠进「更多选项」，默认收起；面板带展开/收拢动画 -->
   <block wx:if="{{quick}}">
     <view class="more-toggle card" bindtap="onToggleMore">
       <text class="more-toggle-title">更多选项</text>
-      <text class="more-toggle-hint">{{showMore ? '收起' : '名称、场合、照片（可选）'}}</text>
+      <view class="more-toggle-right">
+        <text class="more-toggle-hint">{{showMore ? '收起' : '名称、场合、照片（可选）'}}</text>
+        <text class="more-toggle-arrow {{showMore ? 'more-toggle-arrow-open' : ''}}">›</text>
+      </view>
     </view>
-    <block wx:if="{{showMore}}">
+    <view class="more-panel {{showMore ? 'more-panel-open' : ''}}">
       <view class="image-box card" bindtap="onChooseImage">
         <image
           wx:if="{{imagePath || imageFileID}}"
@@ -33,7 +36,7 @@
           </view>
         </view>
       </view>
-    </block>
+    </view>
   </block>
 
   <!-- 完整模式：照片 + 名称 / 场合 / 备注 -->
@@ -112,7 +115,7 @@
   <view wx:if="{{quick}}" class="form card note-card">
     <view class="field">
       <text class="label">备注</text>
-      <input class="input" placeholder="{{_focus.note ? '' : '可写：搭配黑色裤袜'}}" value="{{note}}" disabled="{{createdOutfitId}}" data-field="note" bindinput="onNoteInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+      <input class="input" placeholder="{{_focus.note ? '' : '还有些什么……'}}" value="{{note}}" disabled="{{createdOutfitId}}" data-field="note" bindinput="onNoteInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
     </view>
   </view>
 
