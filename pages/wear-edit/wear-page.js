@@ -12,6 +12,13 @@ const sameItems = (a, b) => {
   const left = new Set(a || []), right = new Set(b || [])
   return left.size === right.size && [...left].every(id => right.has(id))
 }
+// 日期摘要条文案：今天显示「今天（M月D日）」，其余显示 YYYY-MM-DD
+const dateTextOf = (date, today) => {
+  if (!date) return ''
+  if (date !== today) return date
+  const [, m, d] = date.split('-')
+  return `今天（${Number(m)}月${Number(d)}日）`
+}
 
 // 今日穿着与历史共用这一页的选品和保存逻辑。
 module.exports = function createWearPage({ db, auth, app, wx, returnAfterSave = false, schedule = setTimeout }) {
@@ -23,6 +30,7 @@ module.exports = function createWearPage({ db, auth, app, wx, returnAfterSave = 
   data: {
     id: '',                 // 为空表示新增
     date: '',
+    dateText: '',           // 日期摘要条展示文案
     items: [],
     viewItems: [],          // 当前分类过滤 + 选中态预计算
     categories: [],
@@ -56,9 +64,11 @@ module.exports = function createWearPage({ db, auth, app, wx, returnAfterSave = 
       this.setData({ loading: false, loadError: '登录校验未完成，请重试' })
       return
     }
+    const date = validDate(options.date) && options.date <= this.today() ? options.date : this.today()
     this.setData({
       id: options.id || '',
-      date: validDate(options.date) && options.date <= this.today() ? options.date : this.today(),
+      date,
+      dateText: dateTextOf(date, this.today()),
       categories: ['全部', '已选', ...app.globalData.categories]
     })
     wx.setNavigationBarTitle({ title: options.id ? '编辑穿着' : returnAfterSave ? '记录穿着' : '实穿记录' })
@@ -91,7 +101,8 @@ module.exports = function createWearPage({ db, auth, app, wx, returnAfterSave = 
       const [record, outfits] = await Promise.all([db.getWearRecord(id), db.listOutfits(true)])
       if (id !== this.data.id || revision !== (this._draftRevision || 0)) return
       this.setData({
-        date: record.date, selectedIds: (record.itemIds || []).slice(), note: record.note || '',
+        date: record.date, dateText: dateTextOf(record.date, this.today()),
+        selectedIds: (record.itemIds || []).slice(), note: record.note || '',
         outfitId: record.outfitId || '', outfitName: this.outfitNameOf(outfits, record.outfitId),
         outfits, outfitSyncPending: false
       })
@@ -147,13 +158,15 @@ module.exports = function createWearPage({ db, auth, app, wx, returnAfterSave = 
       if (recordId && !record) throw new Error('记录不存在')
       this._items = items
       this._records = sortRecords(records)
+      const date = record ? record.date || '' : this.data.date
       this.setData({
         items, outfits, ready: true, loading: false,
         selectedIds: record ? (record.itemIds || []).slice() : [],
         outfitId: record ? record.outfitId || '' : '',
         outfitName: record ? this.outfitNameOf(outfits, record.outfitId) : '',
         note: record ? record.note || '' : '',
-        date: record ? record.date || '' : this.data.date,
+        date,
+        dateText: dateTextOf(date, this.today()),
         historyError: ''
       })
       if (!returnAfterSave) this.showHistory(HISTORY_PAGE_SIZE)
@@ -204,7 +217,8 @@ module.exports = function createWearPage({ db, auth, app, wx, returnAfterSave = 
     if (!record) return
     this._draftRevision = (this._draftRevision || 0) + 1
     this.setData({
-      id: record._id, date: record.date || '', selectedIds: (record.itemIds || []).slice(),
+      id: record._id, date: record.date || '', dateText: dateTextOf(record.date || '', this.today()),
+      selectedIds: (record.itemIds || []).slice(),
       outfitId: record.outfitId || '', outfitName: this.outfitNameOf(this.data.outfits, record.outfitId),
       note: record.note || '', activeCategory: '已选', recentlyAdded: [],
       outfitSyncPending: false, outfitSyncError: ''
@@ -216,7 +230,8 @@ module.exports = function createWearPage({ db, auth, app, wx, returnAfterSave = 
 
   onResetTap() {
     this._draftRevision = (this._draftRevision || 0) + 1
-    this.setData({ id: '', date: this.today(), selectedIds: [], outfitId: '', outfitName: '', note: '', activeCategory: '全部', recentlyAdded: [],
+    const today = this.today()
+    this.setData({ id: '', date: today, dateText: dateTextOf(today, today), selectedIds: [], outfitId: '', outfitName: '', note: '', activeCategory: '全部', recentlyAdded: [],
       outfitSyncPending: false, outfitSyncError: '' })
     this.syncSelected()
     wx.setNavigationBarTitle({ title: returnAfterSave ? '记录穿着' : '实穿记录' })
@@ -330,7 +345,10 @@ module.exports = function createWearPage({ db, auth, app, wx, returnAfterSave = 
       }
     } else if (picker.target === 'date') {
       const date = `${picker.columns[0][values[0]]}-${picker.columns[1][values[1]]}-${picker.columns[2][values[2]]}`
-      if (validDate(date) && date <= this.today()) patch.date = date
+      if (validDate(date) && date <= this.today()) {
+        patch.date = date
+        patch.dateText = dateTextOf(date, this.today())
+      }
     }
     this.setData(patch)
     if (picker.target === 'outfit') this.syncSelected()

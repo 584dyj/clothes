@@ -25,6 +25,7 @@ test('「我的穿搭」页底实穿记录入口进入实穿记录页，带入�
   await page.onLoad({})
   assert.equal(title, '实穿记录')
   assert.equal(page.data.date, today())
+  assert.match(page.data.dateText, /^今天（\d+月\d+日）$/)
   assert.equal(page.data.history.length, 20)
   assert.equal(page.data.hasMoreHistory, true)
   assert.equal(page.data.history[0]._id, 'recent-later')
@@ -50,6 +51,7 @@ test('「我的穿搭」页底实穿记录入口进入实穿记录页，带入�
   assert.equal(title, '编辑穿着')
   page.onResetTap()
   assert.equal(title, '实穿记录')
+  assert.match(page.data.dateText, /^今天（\d+月\d+日）$/)
 })
 
 test('历史未来日期可修正，失效衣物需显式移除，删除后刷新列表', async () => {

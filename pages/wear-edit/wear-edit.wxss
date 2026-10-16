@@ -3,9 +3,30 @@
   padding-bottom: 120rpx;
 }
 
-.entry-heading { margin: 8rpx 4rpx 24rpx; }
-.entry-title { font-size: 36rpx; font-weight: 600; color: #3a3835; }
-.entry-hint { margin-top: 8rpx; font-size: 24rpx; color: #9a958c; }
+/* 日期/穿搭摘要条：一行卡片，点按打开滚轮 */
+.date-row {
+  display: flex;
+  align-items: center;
+  padding: 26rpx 28rpx;
+  margin-bottom: 24rpx;
+}
+
+.date-row-label {
+  width: 160rpx;
+  flex-shrink: 0;
+  color: #6b675f;
+  font-size: 28rpx;
+}
+
+.date-row-value {
+  flex: 1;
+  font-size: 28rpx;
+}
+
+.date-row-arrow {
+  color: #b3aea5;
+  font-size: 30rpx;
+}
 
 .form {
   padding: 8rpx 28rpx;
@@ -23,11 +44,6 @@
   border-bottom: none;
 }
 
-.field-column {
-  flex-direction: column;
-  align-items: flex-start;
-}
-
 .label {
   width: 160rpx;
   color: #6b675f;
@@ -35,20 +51,17 @@
   flex-shrink: 0;
 }
 
-.picker-value {
-  font-size: 28rpx;
-}
-
 .placeholder {
   color: #b3aea5;
 }
 
-.textarea {
-  width: 100%;
-  height: 140rpx;
-  margin-top: 16rpx;
+.input {
+  flex: 1;
   font-size: 28rpx;
-  box-sizing: border-box;
+}
+
+.note-card {
+  margin-bottom: 32rpx;
 }
 
 .section-title {
@@ -162,8 +175,9 @@
   margin-bottom: 24rpx;
 }
 
-.save-outfit-btn { margin-bottom: 24rpx; background: #ffffff; color: #3a3835; border: 1rpx solid #dedbd5; border-radius: 44rpx; font-size: 30rpx; }
-.save-outfit-btn::after { border: none; }
+/* 「保存并记为穿搭」降级为文字链接，不抢主按钮 */
+.save-outfit-link { margin: -4rpx 0 32rpx; text-align: center; color: #6b675f; font-size: 26rpx; }
+.save-outfit-link-off { opacity: 0.5; }
 
 .quick-row { display: flex; align-items: center; gap: 16rpx; margin: 0 8rpx 24rpx; }
 .quick-label { flex-shrink: 0; color: #9a958c; font-size: 24rpx; }

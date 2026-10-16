@@ -2,31 +2,22 @@
   <view wx:if="{{loading}}" class="empty">加载中…</view>
   <view wx:elif="{{loadError}}" class="empty">{{loadError}}<button bindtap="onRetry">重新加载</button></view>
 
-  <view wx:if="{{!loading && !loadError}}" class="entry-heading">
-    <view class="entry-title">{{id ? '编辑穿着记录' : historyEnabled ? '今天穿了什么' : '记录穿着'}}</view>
-    <view class="entry-hint">选择实际穿过的衣物，也可以补记过去的日期</view>
+  <!-- 日期摘要条：默认今天，点按才打开滚轮补记 -->
+  <view wx:if="{{!loading && !loadError}}" class="date-row card" data-target="date" bindtap="openPicker">
+    <text class="date-row-label">日期</text>
+    <text class="date-row-value">{{dateText}}</text>
+    <text class="date-row-arrow">›</text>
   </view>
-  <view class="form card" wx:if="{{!loading && !loadError}}">
-    <view class="field">
-      <text class="label">日期</text>
-      <view class="picker-value" data-target="date" bindtap="openPicker">{{date}}</view>
-    </view>
-    <view wx:if="{{!historyEnabled}}" class="field">
-      <text class="label">穿搭</text>
-      <view class="picker-value {{outfitName ? '' : 'placeholder'}}" data-target="outfit" bindtap="openPicker">
-        {{outfitName || '可选，选穿搭自动带出单品'}}
-      </view>
-    </view>
-    <view class="field field-column">
-      <text class="label">备注</text>
-      <textarea class="textarea" placeholder="{{_focus.note ? '' : '穿着感受、天气等'}}" value="{{note}}" data-field="note" bindinput="onNoteInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
-    </view>
+  <view wx:if="{{!historyEnabled && !loading && !loadError}}" class="date-row card" data-target="outfit" bindtap="openPicker">
+    <text class="date-row-label">穿搭</text>
+    <text class="date-row-value {{outfitName ? '' : 'placeholder'}}">{{outfitName || '可选，选穿搭自动带出单品'}}</text>
+    <text class="date-row-arrow">›</text>
   </view>
 
   <view wx:if="{{historyEnabled && !loading && !loadError}}" class="quick-row">
     <text class="quick-label">快速带入</text>
     <button class="quick-btn" bindtap="onLastWearTap">上次实穿</button>
-    <button class="quick-btn {{outfitName ? 'quick-btn-on' : ''}}" data-target="outfit" bindtap="openPicker">{{outfitName || '收藏穿搭'}}</button>
+    <button class="quick-btn {{outfitName ? 'quick-btn-on' : ''}}" data-target="outfit" bindtap="openPicker">{{outfitName || '从穿搭'}}</button>
   </view>
   <view wx:if="{{itemRefreshError}}" class="stock-error" bindtap="refreshItemsAfterQuickAdd">{{itemRefreshError}}</view>
   <view wx:if="{{recentlyAdded.length}}" class="new-items">
@@ -83,6 +74,14 @@
       </view>
     </view>
 
+    <!-- 单行备注：与「我的穿搭」快速录入同位置，可选 -->
+    <view class="form card note-card">
+      <view class="field">
+        <text class="label">备注</text>
+        <input class="input" placeholder="{{_focus.note ? '' : '穿着感受、天气等（可选）'}}" value="{{note}}" data-field="note" bindinput="onNoteInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+      </view>
+    </view>
+
     <view wx:if="{{missingCount}}" class="missing card">
       <text>这条旧记录有 {{missingCount}} 件衣物已从衣橱删除</text>
       <button bindtap="onRemoveMissing">移除失效衣物</button>
@@ -90,7 +89,7 @@
 
     <view wx:if="{{outfitSyncError}}" class="stock-error" bindtap="refreshAfterOutfitEdit">{{outfitSyncError}}</view>
     <button class="btn-primary save-btn" bindtap="onSave" disabled="{{saving || !ready || outfitSyncPending || outfitSyncError}}">保存</button>
-    <button wx:if="{{historyEnabled}}" class="save-outfit-btn" bindtap="onSaveAsOutfit" disabled="{{saving || !ready || outfitSyncPending || outfitSyncError}}">保存为穿搭</button>
+    <view wx:if="{{historyEnabled}}" class="save-outfit-link {{saving || !ready || outfitSyncPending || outfitSyncError ? 'save-outfit-link-off' : ''}}" bindtap="onSaveAsOutfit">保存并记为穿搭 ›</view>
     <button wx:if="{{id}}" class="btn-danger delete-btn" bindtap="onDelete" disabled="{{saving || !ready}}">删除</button>
     <button wx:if="{{id && historyEnabled}}" class="reset-btn" bindtap="onResetTap" disabled="{{saving}}">返回今日录入</button>
 
