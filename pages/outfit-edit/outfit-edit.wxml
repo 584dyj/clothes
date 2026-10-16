@@ -56,7 +56,7 @@
     <view class="form card">
       <view class="field">
         <text class="label">名称</text>
-        <input class="input" placeholder="{{_focus.name ? '' : '如：夏日清爽出街'}}" value="{{name}}" disabled="{{createdOutfitId}}" data-field="name" bindinput="onNameInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+        <input class="input" placeholder="{{_focus.name ? '' : '为穿搭取一套名字吧'}}" value="{{name}}" disabled="{{createdOutfitId}}" data-field="name" bindinput="onNameInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
       </view>
       <view class="field">
         <text class="label">场合</text>

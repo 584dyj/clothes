@@ -246,6 +246,21 @@
   color: #ffffff;
 }
 
+.purchase-category-row {
+  margin: 0;
+  gap: 16rpx;
+}
+
+.purchase-category-row .choice {
+  flex: 0 0 calc((100% - 48rpx) / 4);
+  min-width: 0;
+  margin: 0;
+  padding: 12rpx 8rpx;
+  box-sizing: border-box;
+  text-align: center;
+  white-space: nowrap;
+}
+
 .purchase-grid {
   display: flex;
   margin: 0 -8rpx;

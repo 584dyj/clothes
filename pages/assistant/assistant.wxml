@@ -40,10 +40,10 @@
           <view class="purchase-photo-hint">识别结果只填充空白项，提交评估前仍可修改。</view>
 
           <view class="field-label">名称 <text class="field-optional">选填</text></view>
-          <input class="purchase-input" value="{{purchaseForm.name}}" maxlength="60" data-field="name" bindinput="onPurchaseFieldInput" placeholder="例如：蓝色牛仔外套" />
+          <input class="purchase-input" value="{{purchaseForm.name}}" maxlength="60" data-field="name" bindinput="onPurchaseFieldInput" placeholder="这件衣服叫什么" />
 
           <view class="field-label">分类</view>
-          <view class="choice-row">
+          <view class="choice-row purchase-category-row">
             <view wx:for="{{purchaseCategories}}" wx:key="*this" class="choice {{purchaseForm.category === item ? 'choice-active' : ''}}" data-value="{{item}}" bindtap="onPurchaseCategoryTap">{{item}}</view>
           </view>
 
