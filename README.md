@@ -4,13 +4,16 @@
 
 基于原生微信小程序 + 微信云开发（CloudBase），AI 能力由服务端代理调用兼容 chat completions 接口的模型服务（默认 DeepSeek）。
 
-## 当前进度（2026-10-16）
+## 当前进度（2026-10-17）
 
-当前分支为 `main`，HEAD 为 `ffeb0c7`。WEAR 系列已提交至 `cef93ef`；「我的穿搭」MATCH-01 至 MATCH-03 已提交 `2ba4b8c`，MATCH-04 至 MATCH-06 已提交 `ffeb0c7`，本轮迭代全部完成。
+当前分支为 `main`，HEAD 为 `40b1023`，全量 **20 个测试文件、320 项测试通过**。
 
-MATCH 发布验收已于 2026-10-16 由用户确认通过：全量 19 个测试文件、307 项测试通过，微信编译与真机走查通过，已按顺序先部署 `monthly-report` 再发布客户端，月报真实推送送达且 `thing4` 新文案与同源候选符合预期；`auth`、`weather-alert`、`chat-stream` 本轮无改动，无新集合、无新索引。此前 2026-10-15 的部署与送达验收仅适用于当时范围。
+最近两个提交：
 
-同日后续增量：穿搭 tab 图标垂直对齐修复（`0e3c536`）、实穿记录页录入简化（LOG-01/02，`35ae05d`，见 [实穿记录页简化 SPEC](docs/实穿记录页简化SPEC.md)）与「更多选项」面板展开/收拢动画（`4286698`）已提交，全量 307 项测试通过；均为纯客户端改动，微信编译与真机走查待验收。
+- `a8fc6e5` **修复 SSE 输出 Markdown 无法渲染 + 添加定位功能**：新增 `utils/markdown.js`（轻量 Markdown → `rich-text` nodes，兼容流式未闭合标记）；修复流式输出时视口不跟随、完成后弹回消息顶部的问题；个人页城市设置支持「自动定位（`getFuzzyLocation`，区县级精度）/ 手动输入 / 地图选点」三种方式，云函数 `weather-alert` 新增 `setCityByLocation`（高德逆地理编码落区县 adcode）。
+- `40b1023` **天气提醒扫描日志细分跳过原因**：`handle` 返回 `noCity / weatherFailed / claimSkipped` 细分计数，未设城市 / 天气接口失败 / 当日已发送一眼可辨。
+
+历史：MATCH 迭代与 2026-10-16 发布验收见下文「测试」节。
 
 ## 功能特性
 
@@ -24,7 +27,7 @@ MATCH 发布验收已于 2026-10-16 由用户确认通过：全量 19 个测试�
 - **独立账本**：非衣物开销（洗护、修改等）分类记录，并入月历与统计
 - **穿着与搭配统计**：穿着频次榜、按当前搭配引用次数计算的「常被搭配」榜、闲置榜及分类 / 品牌 / 季节分布；闲置榜与月报共同使用近期有效实穿或近 90 天新建搭配作为活动信号，两者均无时提示记录不足
 - **闲置月报**：按月推送拥有满 90 天且近 90 天未记录穿着或搭配的衣物，购买日期缺失回退入库时间；搭配活动按 `createdAt` 判断，仅编辑旧搭配不刷新活动日期；按账号 + 月份幂等。在「我的→提醒」常驻显示月报剩余次数，通过「增加1次月报提醒」补充授权，次数达到 12 时停止新增，消息点击后进入统计分析
-- **天气穿搭提醒**：有可用次数时每晚 21:30 收到明日天气与基础衣橱建议，每日最多一条；在「我的→提醒」设置城市、查看天气剩余次数，通过「增加1次天气提醒」补充授权，达到 12 时停止新增，天气与月报次数独立
+- **天气穿搭提醒**：有可用次数时每晚 21:30 收到明日天气与基础衣橱建议，每日最多一条；在「我的→提醒」设置城市、查看天气剩余次数，通过「增加1次天气提醒」补充授权，达到 12 时停止新增，天气与月报次数独立；城市设置支持自动定位（`getFuzzyLocation` 模糊定位 → 高德逆地理编码落到区县）、地图选点与手动输入三种方式，未设城市的账号不推送也不消耗额度（日志按原因细分）
 - **提醒取消**：两组增加按钮旁均有「取消提醒」，直接清零对应次数，互不影响，可重新授权从 1 次积累；0 次禁用，失败保留原次数。操作与部署说明见 [GUIDE](GUIDE.md#提醒次数与取消)
 - **连续打卡**：个人页展示连续记录天数和本月打卡天数，今天尚未记录时可从昨天起计算连续天数
 - **数据安全**：所有业务数据经云函数鉴权（集合客户端全禁）、上传票据归属校验、登录 / 注册失败限流、注册码事务化消费
@@ -37,7 +40,7 @@ MATCH 发布验收已于 2026-10-16 由用户确认通过：全量 19 个测试�
 | 后端 | 微信云开发云函数（Node.js，wx-server-sdk） |
 | 数据库 | 云开发文档型数据库（14 个集合，客户端权限全禁） |
 | AI | 服务端 HTTPS 代理 chat completions 接口，支持文本、流式 SSE 与多模态视觉 |
-| 测试 | Node.js 内置 `node --test`，19 个测试文件、309 项单元与故障回归 |
+| 测试 | Node.js 内置 `node --test`，20 个测试文件、320 项单元与故障回归 |
 
 ## 项目结构
 
@@ -50,45 +53,100 @@ cloudfunctions/
   chat-stream/                  HTTP 云函数：验证身份后代理模型 SSE 流式对话
   monthly-report/               定时云函数：闲置月报订阅消息推送
   weather-alert/                定时云函数：天气穿搭提醒、城市解析
-utils/                          数据缓存、认证、日期与页面交互辅助
+utils/                          云环境配置、数据缓存、认证、日期、Markdown 渲染与页面交互辅助
 tests/                          单元与故障回归测试（模拟云接口）
 tools/                          图标生成、规模测量、AI 接口校验脚本
 ```
 
 ## 快速开始
 
+以下是从零拉取代码到本地跑起来、并部署到自己的微信云环境的完整步骤，适用于协作者。
+
 ### 环境要求
 
+- Git
 - 微信开发者工具（基础库 ≥ 3.15.2）
-- 已开通微信云开发的小程序 AppID
+- 一个已开通微信云开发的小程序 AppID（位置能力需按主体 / 类目申请，见第 7 步）
 - Node.js ≥ 18（运行测试与工具脚本）
 
-### 本地运行
+### 1. 拉取代码
 
-1. 用微信开发者工具导入本目录，在 `project.config.json` 中确认 AppID
-2. 在 `app.js` 与 `utils/db.js` 中填入自己的云环境 ID
-3. 在云开发控制台创建业务集合（`clothes`、`outfits`、`users`、`invite_codes`、`auth_attempts`、`upload_tickets`、`cleanup_jobs`、`expenses`、`wear_records`、`outfit_plans`、`ai_chats`、`wardrobe_meta`、`ai_cache`、`subscriptions`），权限统一设为「所有用户不可读写」
-4. 部署四个云函数并按 `package-lock.json` 安装依赖：
-   - `auth`：核心认证与数据操作（超时建议 60 秒）
-   - `chat-stream`：**HTTP 云函数**（Node.js 18+，保持 `scf_bootstrap` 为 LF 换行及可执行权限，超时 ≥ 45 秒）
-   - `monthly-report`：定时触发器 `0 0 9 1 * * *`（Asia/Shanghai 每月 1 日 09:00，超时 300 秒）
-   - `weather-alert`：定时触发器 `0 30 21 * * * *`（Asia/Shanghai 每日 21:30，超时 300 秒）；同时提供城市设置接口
+```bash
+git clone <仓库地址> clothes
+```
 
-   两个定时函数均需配置 `subscribeMessage.send` 权限，并通过微信 IDE 配置微信云开发定时触发器。Cron 按秒、分钟、小时、日、月、星期、年填写；标准 SCF 定时触发不支持本项目使用的微信云调用，本地 `config.json` 只保存配置声明。迁移与测试步骤见 [推送复测](GUIDE.md#推送复测2026-10-14)。
+### 2. 导入项目并绑定 AppID
 
-5. 配置环境变量（只存在于云函数环境，不写入代码库）：
+1. 微信开发者工具「导入项目」选择仓库目录；
+2. 在 `project.config.json` 中把 `appid` 换成你自己的 AppID；
+3. 详情 → 本地设置确认基础库 ≥ 3.15.2。
 
-   | 变量 | 说明 |
-   | --- | --- |
-   | `AI_API_KEY` / `AI_API_BASE` / `AI_MODEL` | 模型服务密钥 / 接口地址 / 模型名 |
-   | `CHAT_STREAM_SECRET` | `auth` 与 `chat-stream` 共享的流式凭证密钥（≥ 32 随机字符） |
-   | `CLOUDBASE_APIKEY` / `CLOUDBASE_ENV_ID` | `chat-stream` 服务端凭证消费所需 |
-   | `REPORT_TMPL_ID` | 月报订阅消息模板 ID |
-   | `WEATHER_API_KEY` | `weather-alert` 使用的高德 Web 服务 key |
-   | `WEATHER_TMPL_ID` | 天气订阅消息模板 ID，需与个人页客户端常量一致 |
-   | `WEATHER_API_HOST` | 可选，高德接口地址，默认 `https://restapi.amap.com` |
+### 3. 开通云开发并替换环境 ID
 
-6. 向 `invite_codes` 集合添加一次性注册码，编译后从启动页注册登录
+1. 工具栏「云开发」首次打开即开通，得到环境 ID（形如 `cloud1-xxxxxxxx`）；
+2. 修改 `utils/config.js` 中的 `CLOUD_ENV` 为你的环境 ID——客户端所有云调用（含 `chat-stream`）统一从这里取值，只需改这一处。
+
+### 4. 创建数据库集合
+
+在云开发控制台创建以下集合，权限统一设为「所有用户不可读写」（客户端一律经云函数鉴权）：
+
+```
+clothes  outfits  users  invite_codes  auth_attempts  upload_tickets
+cleanup_jobs  expenses  wear_records  outfit_plans  ai_chats
+wardrobe_meta  ai_cache  subscriptions
+```
+
+复合查询（`where` + `orderBy` 组合）首次执行时控制台会提示创建索引，按提示添加即可。
+
+### 5. 部署四个云函数
+
+对每个云函数目录「上传并部署：云端安装依赖」（或本地 `npm install` 后上传全部文件）：
+
+| 函数 | 说明 |
+| --- | --- |
+| `auth` | 核心认证、数据 CRUD、对话、识别、购买评估、订阅；超时建议 60 秒 |
+| `chat-stream` | **HTTP 云函数**，Node.js 18+；保持 `scf_bootstrap` 为 LF 换行及可执行权限，超时 ≥ 45 秒 |
+| `monthly-report` | 定时触发器 `0 0 9 1 * * *`（Asia/Shanghai 每月 1 日 09:00），超时 300 秒 |
+| `weather-alert` | 定时触发器 `0 30 21 * * * *`（Asia/Shanghai 每日 21:30），超时 300 秒；同时提供城市设置 / 定位设置接口 |
+
+两个定时函数均需在云函数配置中开通「订阅消息」的 `subscribeMessage.send` 权限，并通过微信 IDE 的云开发控制台配置定时触发器。Cron 按秒、分钟、小时、日、月、星期、年填写；本地 `config.json` 仅作配置声明，微信云调用不支持标准 SCF 定时触发，需在控制台手动配置。迁移与测试步骤见 [推送复测](GUIDE.md#推送复测2026-10-14)。
+
+### 6. 配置环境变量
+
+以下变量只存在于各云函数的环境变量中，**不写入代码库**：
+
+| 变量 | 部署位置 | 说明 |
+| --- | --- | --- |
+| `AI_API_KEY` / `AI_API_BASE` / `AI_MODEL` | `auth` | 模型服务密钥 / 接口地址 / 模型名（兼容 chat completions） |
+| `CHAT_STREAM_SECRET` | `auth`、`chat-stream` | 流式凭证签名密钥（≥ 32 随机字符，两函数保持一致） |
+| `CLOUDBASE_APIKEY` / `CLOUDBASE_ENV_ID` | `chat-stream` | 服务端凭证消费所需 |
+| `REPORT_TMPL_ID` | `monthly-report` | 月报订阅消息模板 ID |
+| `WEATHER_API_KEY` | `weather-alert` | 高德 Web 服务 key（地理编码 + 逆地理编码 + 天气） |
+| `WEATHER_TMPL_ID` | `weather-alert` | 天气订阅消息模板 ID |
+| `WEATHER_API_HOST` | `weather-alert` | 可选，高德接口地址，默认 `https://restapi.amap.com` |
+
+订阅消息模板需在 mp 后台「功能 → 订阅消息」申请，并把模板 ID 同步到 `pages/profile/profile.js` 顶部的 `WEATHER_TEMPLATE_ID` / `REPORT_TEMPLATE_ID` 常量。
+
+### 7. 位置能力（天气城市自动定位）
+
+天气城市自动定位依赖两项平台配置，缺一不可：
+
+1. **隐私保护指引**：mp 后台声明「位置信息」，用途如「自动获取所在城市以提供天气提醒与穿搭建议」，并随版本提审；
+2. **接口权限**：mp 后台「开发管理 → 接口设置」申请开通 `getFuzzyLocation`（按类目人工审核，工具类目一般可过）。开通前自动定位会报 `no permission`，可先用地图选点 / 手动输入。
+
+`app.json` 已声明 `permission.scope.userFuzzyLocation` 与 `requiredPrivateInfos: ["getFuzzyLocation", "chooseLocation"]`，无需额外修改。
+
+### 8. 添加注册码并登录
+
+向 `invite_codes` 集合插入一条一次性注册码（`code`、`used: false`），编译后从启动页进入登录页注册（注册即绑定当前微信 openid，此后自动登录）。
+
+### 9. 验证跑通
+
+```bash
+node --test   # 20 个测试文件、320 项，全绿
+```
+
+微信开发者工具编译无报错，注册登录后：录入衣物 → 我的穿搭 → AI 助手对话（流式回复应正确渲染 Markdown）→ 个人页订阅天气 / 月报提醒并设置城市。
 
 ## 测试
 
@@ -97,7 +155,9 @@ node --test              # 单元与故障回归（模拟云接口）
 node tools/benchmark.js  # 100 / 500 / 1000 件规模逻辑耗时测量
 ```
 
-2026-10-16 本轮 MATCH 执行 `node --test`，19 个测试文件、307 项全部通过，失败、取消、跳过及 todo 均为 0。微信编译、真机走查、`monthly-report` 部署、客户端发布与月报真实推送均于 2026-10-16 由用户确认验收。
+2026-10-17 执行 `node --test`，20 个测试文件、320 项全部通过，失败、取消、跳过及 todo 均为 0（含 SSE Markdown 渲染、流式滚动、定位设置城市、跳过原因细分等新增用例）。
+
+历史：2026-10-16 MATCH 发布验收（19 文件、307 项）与月报真实推送由用户确认；当时的 `auth`、`weather-alert`、`monthly-report` 上传、客户端发布与真机验收完成。
 
 历史验证（2026-10-15，MATCH 之前）：281 项测试通过，195/250 项及更早结果亦保留为历史；当时的 `auth`、`weather-alert`、`monthly-report` 上传、客户端发布与真机验收由用户确认完成。天气与月报定时触发器的自动执行及送达已验收；天气手动路径于 10-14 验收（`sent: 1, failed: 0`）。这些记录不代表本轮 MATCH 已部署，详情见 [推送复测](GUIDE.md#推送复测2026-10-14)。
 

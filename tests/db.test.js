@@ -18,7 +18,7 @@ test('文字对话按 SSE 分块显示，含跨块 UTF-8 中文', async () => {
     },
     callHTTPFunction: options => {
       assert.equal(options.name, 'chat-stream')
-      assert.equal(options.config.env, 'cloud1-d3gxekd39e66fd769')
+      assert.equal(options.config.env, require('../utils/config').CLOUD_ENV)
       assert.equal(options.method, 'POST')
       assert.deepEqual(options.header, { 'Content-Type': 'application/json' })
       assert.deepEqual(options.data, { ticket: 'signed-ticket' })

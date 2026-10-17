@@ -8,7 +8,8 @@ function loadPage(name, db = {}, wx = {}, auth = {}) {
   const file = path.resolve(__dirname, `../../pages/${name}/${name}.js`)
   const localRequire = createRequire(file)
   let page, app
-  vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../../app.js'), 'utf8'), { App(value) { app = value } })
+  vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../../app.js'), 'utf8'),
+    { App(value) { app = value }, require: createRequire(path.resolve(__dirname, '../../app.js')) })
   vm.runInNewContext(fs.readFileSync(file, 'utf8'), {
     Page(value) { page = value }, getApp: () => app,
     require: name => name === '../../utils/db' ? db : name === '../../utils/auth' ? { ensureLogin: async () => true, ...auth } : localRequire(name),
@@ -33,7 +34,8 @@ function loadComponent(name, db = {}, wx = {}, auth = {}) {
   const file = path.resolve(__dirname, `../../components/${name}/${name}.js`)
   const localRequire = createRequire(file)
   let definition, app
-  vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../../app.js'), 'utf8'), { App(value) { app = value } })
+  vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../../app.js'), 'utf8'),
+    { App(value) { app = value }, require: createRequire(path.resolve(__dirname, '../../app.js')) })
   vm.runInNewContext(fs.readFileSync(file, 'utf8'), {
     Component(value) { definition = value }, getApp: () => app,
     require: name => name === '../../utils/db' ? db : name === '../../utils/auth' ? { ensureLogin: async () => true, ...auth } : localRequire(name),

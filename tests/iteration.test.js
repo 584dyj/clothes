@@ -4,6 +4,7 @@ const crypto = require('node:crypto')
 const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
+const { createRequire } = require('node:module')
 const { loadCloud } = require('./support/cloud')
 const { loadPage } = require('./support/page')
 const { validDate } = require('../utils/date')
@@ -15,7 +16,8 @@ const dataCall = (operation, collection = 'clothes', extra = {}) => ({ action: '
 
 test('客户端与云端 18 类顺序、配饰子类及推荐资格一致', () => {
   let app
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8'), { App(value) { app = value } })
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8'),
+    { App(value) { app = value }, require: createRequire(path.join(__dirname, '../app.js')) })
   assert.deepEqual(CATEGORIES, ['外套', '短袖', '长袖', '衬衫', '羽绒服', '保暖衣', '毛衣', '家居服', '连衣裙', '长裙', '短裙', '长裤', '短裤', '配饰', '挂件', '包袋', '鞋', '其他'])
   assert.deepEqual(Array.from(app.globalData.categories), CATEGORIES)
   assert.deepEqual(ACCESSORY_TYPES, ['袜子', '帽子', '围巾', '首饰', '其他'])

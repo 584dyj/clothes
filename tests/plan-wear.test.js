@@ -266,8 +266,13 @@ test('原挂件连衣裙及历史关联读取保持，其他可保存手工关�
   const { loadCloud } = require('./support/cloud')
   const cloud = loadCloud({ ...structuredClone(original), users: [{ _id: 'user', openid: 'openid-1', username: 'alice' }] })
   const client = { exports: {} }
-  require('node:vm').runInNewContext(require('node:fs').readFileSync(require.resolve('../utils/db'), 'utf8'), {
-    module: client, wx: { cloud: { callFunction: async ({ data }) => ({ result: await cloud.main(data) }) } }, console, Date
+  const { runInNewContext } = require('node:vm')
+  const fs = require('node:fs')
+  const { createRequire } = require('node:module')
+  const dbPath = require.resolve('../utils/db')
+  runInNewContext(fs.readFileSync(dbPath, 'utf8'), {
+    module: client, require: createRequire(dbPath),
+    wx: { cloud: { callFunction: async ({ data }) => ({ result: await cloud.main(data) }) } }, console, Date
   })
   const db = client.exports
   assert.deepEqual(structuredClone(await db.listItems()), original.clothes)

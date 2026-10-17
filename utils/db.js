@@ -1,4 +1,6 @@
 // 数据读写由 auth 云函数验证账号与记录归属。
+const { CLOUD_ENV } = require('./config')
+
 function call(action, data = {}) {
   return wx.cloud.callFunction({ name: 'auth', data: { ...data, action } }).then(res => {
     if (!res.result || !res.result.success) {
@@ -216,7 +218,7 @@ function streamReply(ticket, onDelta) {
       }
       if (buffer.length > 200000) finish(new Error('流式响应过大'))
     }
-    wx.cloud.callHTTPFunction({ name: 'chat-stream', config: { env: 'cloud1-d3gxekd39e66fd769' }, path: '/', method: 'POST',
+    wx.cloud.callHTTPFunction({ name: 'chat-stream', config: { env: CLOUD_ENV }, path: '/', method: 'POST',
       header: { 'Content-Type': 'application/json' }, data: { ticket }, enableChunked: true,
       onHeadersReceived: res => { httpStatus = res.statusCode || 0 },
       onChunkedReceived: res => { if (!settled) receive(res.data) },

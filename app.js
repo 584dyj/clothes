@@ -1,3 +1,5 @@
+const { CLOUD_ENV } = require('./utils/config')
+
 App({
   onLaunch() {
     if (!wx.cloud) {
@@ -5,7 +7,7 @@ App({
       return
     }
     wx.cloud.init({
-      env: 'cloud1-d3gxekd39e66fd769',
+      env: CLOUD_ENV,
       traceUser: true
     })
   },
