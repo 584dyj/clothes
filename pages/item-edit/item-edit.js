@@ -374,6 +374,11 @@ Page({
         wx.showLoading({ title: '删除中…' })
         try {
           const result = await db.deleteItem(this.data.id)
+          // 删除明确成功（含清理待重试）后通知来源页（如衣物详情）；无监听者时无副作用
+          try {
+            const channel = typeof this.getOpenerEventChannel === 'function' && this.getOpenerEventChannel()
+            if (channel && typeof channel.emit === 'function') channel.emit('itemDeleted', { id: this.data.id })
+          } catch (e) { console.error(e) }
           wx.hideLoading()
           if (result.cleanupFailed) {
             wx.showModal({

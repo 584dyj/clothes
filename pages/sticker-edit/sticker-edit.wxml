@@ -61,7 +61,7 @@
     </view>
 
     <view wx:if="{{id && status === 'done'}}" class="done-info card">
-      <image class="done-image" src="{{doneImageFileID}}" mode="aspectFill" />
+      <image class="done-image" src="{{doneImageFileID}}" mode="aspectFill" bindtap="onPreviewDoneImage" />
       <view class="done-date">完成于 {{doneAt}}</view>
     </view>
 

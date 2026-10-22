@@ -112,6 +112,11 @@ Page({
     }
   },
 
+  // 已拼贴作品照点击全屏预览（与衣物照片一致的原生预览）
+  onPreviewDoneImage() {
+    if (this.data.doneImageFileID) wx.previewImage({ urls: [this.data.doneImageFileID] })
+  },
+
   openDatePicker() {
     if (this.data.saving) return
     this.setData({ picker: {

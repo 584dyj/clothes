@@ -14,6 +14,8 @@ function loadPage(name, db = {}, wx = {}, auth = {}) {
     Page(value) { page = value }, getApp: () => app,
     require: name => name === '../../utils/db' ? db : name === '../../utils/auth' ? { ensureLogin: async () => true, ...auth } : localRequire(name),
     wx: { showToast() {}, showLoading() {}, hideLoading() {}, setNavigationBarTitle() {}, getStorageSync() {}, setStorageSync() {}, navigateBack() {}, pageScrollTo() {}, ...wx },
+    // 默认无上一页（触发 switchTab 兜底分支）；需要页面栈的用例经 wx.getCurrentPages 覆盖
+    getCurrentPages: wx.getCurrentPages || (() => [{}]),
     console: { error() {} },
     setTimeout: wx.testSetTimeout || (name === 'today-wear' ? fn => fn() : () => {}),
     clearTimeout: wx.testClearTimeout || (() => {}), Date

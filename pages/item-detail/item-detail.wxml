@@ -1,0 +1,94 @@
+<view class="page" bindtouchstart="onSwipeBackStart" bindtouchend="onSwipeBackEnd">
+  <!-- 不可访问：不存在 / 无权访问 / 非法 id，不暴露归属信息 -->
+  <view wx:if="{{unavailable}}" class="empty">
+    这件衣物不存在或暂不可访问
+    <button bindtap="onBack">返回</button>
+  </view>
+
+  <block wx:else>
+    <!-- 主记录：初次加载 / 失败重试 / 内容（刷新时保留旧内容静默更新） -->
+    <view wx:if="{{loading && !item}}" class="empty">加载中…</view>
+    <view wx:elif="{{loadError}}" class="empty">{{loadError}}<button bindtap="onRetry">重新加载</button></view>
+
+    <block wx:if="{{item}}">
+      <!-- 名称与编辑同排：名称最多两行，编辑不换行、随首行滚动 -->
+      <view class="title-row">
+        <view class="item-name">{{item.name}}</view>
+        <view class="edit-entry {{!ready || navigating ? 'edit-disabled' : ''}}" bindtap="onEditTap">编辑</view>
+      </view>
+
+      <!-- 衣物大图：aspectFit 不裁切；无图与加载失败分别占位，不显示破图 -->
+      <view class="hero card">
+        <image
+          wx:if="{{item.imageFileID && !item.imageBroken}}"
+          class="hero-img"
+          src="{{item.imageFileID}}"
+          mode="aspectFit"
+          bindtap="onPreviewMain"
+          binderror="onMainImageError"
+        />
+        <view wx:else class="hero-img hero-placeholder">{{item.imageFileID ? '图片加载失败' : '无图'}}</view>
+      </view>
+
+      <!-- 基础信息：选填行仅有值才显示，全部只读 -->
+      <view class="card info-card">
+        <view wx:if="{{item.categoryText}}" class="info-row"><text class="info-label">类别</text><text class="info-value">{{item.categoryText}}</text></view>
+        <view wx:if="{{item.seasonsText}}" class="info-row"><text class="info-label">季节</text><text class="info-value">{{item.seasonsText}}</text></view>
+        <view wx:if="{{item.color}}" class="info-row"><text class="info-label">颜色</text><text class="info-value">{{item.color}}</text></view>
+        <view wx:if="{{item.size}}" class="info-row"><text class="info-label">尺码</text><text class="info-value">{{item.size}}</text></view>
+        <view wx:if="{{item.brand}}" class="info-row"><text class="info-label">品牌</text><text class="info-value">{{item.brand}}</text></view>
+        <view wx:if="{{item.hasPrice}}" class="info-row"><text class="info-label">价格</text><text class="info-value">{{item.priceText}}</text></view>
+        <view wx:if="{{item.purchaseDate}}" class="info-row"><text class="info-label">购买日期</text><text class="info-value">{{item.purchaseDate}}</text></view>
+        <view wx:if="{{item.note}}" class="info-row"><text class="info-label">备注</text><text class="info-value note-value">{{item.note}}</text></view>
+      </view>
+    </block>
+
+    <!-- 关联穿搭：与主记录独立加载，主记录失败时仍可展示 -->
+    <view class="related-header">
+      <text class="related-title">相关穿搭</text>
+      <text wx:if="{{relatedReady}}" class="related-count">{{relatedTotal}} 套</text>
+    </view>
+
+    <view wx:if="{{relatedLoading && !relatedReady}}" class="empty related-empty">加载中…</view>
+    <view wx:elif="{{relatedError}}" class="empty related-empty">{{relatedError}}<button size="mini" bindtap="onRelatedRetry">重试</button></view>
+    <view wx:elif="{{relatedReady && relatedTotal === 0}}" class="empty related-empty">还没有包含这件衣物的穿搭</view>
+
+    <view wx:else class="outfit-list">
+      <view wx:for="{{outfits}}" wx:key="_id" class="outfit-card card">
+        <view class="outfit-head">
+          <view class="outfit-name">{{item.name}}</view>
+          <view wx:if="{{item.imageFileID}}" class="outfit-photo" data-url="{{item.imageFileID}}" bindtap="onPreviewOutfitPhoto">穿搭照片</view>
+        </view>
+        <view wx:if="{{item.occasion}}" class="outfit-meta"><text class="tag">{{item.occasion}}</text></view>
+
+        <!-- 套内单品横向滚动：全部有效引用可看全；本件带描边与角标 -->
+        <scroll-view scroll-x class="item-strip" show-scrollbar="{{false}}">
+          <view
+            wx:for="{{item.items}}"
+            wx:for-item="part"
+            wx:key="id"
+            class="strip-item {{part.isCurrent ? 'strip-current' : ''}}"
+          >
+            <block wx:if="{{part.available}}">
+              <image
+                wx:if="{{part.imageFileID}}"
+                class="strip-img"
+                src="{{part.imageFileID}}"
+                mode="aspectFill"
+                data-url="{{part.imageFileID}}"
+                bindtap="onPreviewItemImage"
+              />
+              <view wx:else class="strip-img strip-placeholder">无图</view>
+              <view class="strip-name">{{part.name}}</view>
+            </block>
+            <view wx:else class="strip-img strip-placeholder">衣物信息暂不可用</view>
+            <view wx:if="{{part.isCurrent}}" class="strip-badge">本件</view>
+          </view>
+        </scroll-view>
+
+        <view wx:if="{{item.note}}" class="outfit-note">{{item.note}}</view>
+      </view>
+      <view wx:if="{{hasMore}}" class="more-hint">上拉加载更多</view>
+    </view>
+  </block>
+</view>

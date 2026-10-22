@@ -1,0 +1,219 @@
+.page {
+  padding: 24rpx;
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
+/* 名称与编辑同排：名称最多两行，编辑不换行且保持可点击面积 */
+.title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin: 8rpx 4rpx 20rpx;
+}
+
+.item-name {
+  flex: 1;
+  margin-right: 24rpx;
+  font-size: 36rpx;
+  font-weight: 600;
+  line-height: 1.4;
+  word-break: break-all;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.edit-entry {
+  flex-shrink: 0;
+  padding: 12rpx 36rpx;
+  font-size: 26rpx;
+  color: #3a3835;
+  background: #ffffff;
+  border-radius: 32rpx;
+  box-shadow: 0 2rpx 12rpx rgba(58, 56, 53, 0.06);
+}
+
+.edit-disabled {
+  color: #9a958c;
+}
+
+/* 衣物大图：满宽 560rpx，aspectFit 不裁掉服装，浅色底与主题一致 */
+.hero {
+  overflow: hidden;
+  margin-bottom: 24rpx;
+}
+
+.hero-img {
+  width: 100%;
+  height: 560rpx;
+  display: block;
+  background: #efede8;
+}
+
+.hero-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9a958c;
+  font-size: 26rpx;
+}
+
+/* 基础信息卡 */
+.info-card {
+  padding: 12rpx 24rpx;
+  margin-bottom: 24rpx;
+}
+
+.info-row {
+  display: flex;
+  padding: 12rpx 0;
+  font-size: 28rpx;
+}
+
+.info-label {
+  width: 140rpx;
+  flex-shrink: 0;
+  color: #9a958c;
+}
+
+.info-value {
+  flex: 1;
+  color: #3a3835;
+  word-break: break-all;
+}
+
+/* 备注保留换行、自然换行显示，不截断 */
+.note-value {
+  white-space: pre-wrap;
+}
+
+/* 关联穿搭区 */
+.related-header {
+  display: flex;
+  align-items: baseline;
+  margin: 32rpx 4rpx 20rpx;
+}
+
+.related-title {
+  font-size: 32rpx;
+  font-weight: 600;
+}
+
+.related-count {
+  margin-left: 12rpx;
+  font-size: 26rpx;
+  color: #9a958c;
+}
+
+.related-empty {
+  padding: 60rpx 0;
+}
+
+.outfit-card {
+  padding: 24rpx;
+  margin-bottom: 24rpx;
+}
+
+.outfit-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.outfit-name {
+  flex: 1;
+  margin-right: 16rpx;
+  font-size: 30rpx;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.outfit-photo {
+  flex-shrink: 0;
+  padding: 6rpx 20rpx;
+  font-size: 24rpx;
+  color: #6b675f;
+  background: #efede8;
+  border-radius: 24rpx;
+}
+
+.outfit-meta {
+  margin-top: 12rpx;
+}
+
+/* 套内单品横向滚动：缩略图 144 × 192rpx */
+.item-strip {
+  margin-top: 16rpx;
+  white-space: nowrap;
+}
+
+.strip-item {
+  position: relative;
+  display: inline-block;
+  width: 144rpx;
+  margin-right: 16rpx;
+  vertical-align: top;
+}
+
+.strip-img {
+  width: 144rpx;
+  height: 192rpx;
+  display: block;
+  border-radius: 12rpx;
+  background: #efede8;
+  box-sizing: border-box;
+}
+
+/* 本件：细描边 + 角标，角标带文字不只依赖颜色 */
+.strip-current .strip-img {
+  border: 2rpx solid #3a3835;
+}
+
+.strip-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8rpx;
+  color: #9a958c;
+  font-size: 22rpx;
+  text-align: center;
+}
+
+.strip-badge {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 2rpx 10rpx;
+  background: #3a3835;
+  color: #ffffff;
+  font-size: 20rpx;
+  border-radius: 12rpx 0 12rpx 0;
+}
+
+.strip-name {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #6b675f;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.outfit-note {
+  margin-top: 12rpx;
+  font-size: 26rpx;
+  color: #6b675f;
+  white-space: pre-wrap;
+}
+
+.more-hint {
+  padding: 20rpx 0 40rpx;
+  text-align: center;
+  color: #9a958c;
+  font-size: 24rpx;
+}

@@ -185,7 +185,7 @@ Page({
   onDayTap(e) { this.selectDate(e.currentTarget.dataset.date) },
 
   onItemTap(e) {
-    wx.navigateTo({ url: '/pages/item-edit/item-edit?id=' + encodeURIComponent(e.currentTarget.dataset.id) })
+    wx.navigateTo({ url: '/pages/item-detail/item-detail?id=' + encodeURIComponent(e.currentTarget.dataset.id) })
   },
 
   onExpenseTap(e) {

@@ -189,6 +189,6 @@ Page({
 
   onItemTap(e) {
     const id = e.currentTarget.dataset.id
-    wx.navigateTo({ url: `/pages/item-edit/item-edit?id=${id}` })
+    wx.navigateTo({ url: `/pages/item-detail/item-detail?id=${encodeURIComponent(id)}` })
   }
 })

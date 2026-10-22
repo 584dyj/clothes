@@ -486,6 +486,22 @@ test('贴纸编辑页载入回显并保持原状态普通保存', async () => {
   assert.equal(updated.data.doneImageFileID, 'cloud://env/stickers/done.jpg')
 })
 
+test('已拼贴作品照点击全屏预览，无作品照不响应', async () => {
+  const previews = []
+  const page = loadPage('sticker-edit', {
+    listStickers: async () => [{
+      _id: 's1', name: '咖啡街景', status: 'done', imageFileID: 'cloud://env/stickers/cover.jpg',
+      doneAt: '2026-10-20', doneImageFileID: 'cloud://env/stickers/done.jpg'
+    }]
+  }, { previewImage: opts => previews.push(opts.urls) })
+  await page.onLoad({ id: 's1' })
+  page.onPreviewDoneImage()
+  assert.deepEqual(previews.map(urls => Array.from(urls)), [['cloud://env/stickers/done.jpg']])
+  page.setData({ doneImageFileID: '' })
+  page.onPreviewDoneImage()
+  assert.equal(previews.length, 1)
+})
+
 test('贴纸封面上传失败保留表单并可原样重试', async () => {
   let attempts = 0
   let saved
