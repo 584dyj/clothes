@@ -32,6 +32,7 @@ Page({
     selectedDate: '',
     dayItems: [],
     dayExpenses: [],
+    dayStickers: [],
     dayPlans: [],
     hasDayRecords: false,
     selectedTotal: 0,
@@ -173,12 +174,14 @@ Page({
       .map(expense => ({ ...expense, amount: Math.round(Number(expense.amount) * 100) / 100 }))
     const dayPlans = (this._plans || []).filter(plan => plan.date === date)
       .map(plan => ({ ...plan, outfitName: this.outfitNameOf(plan.outfitId) }))
-    const dayStickers = (this._stickers || []).filter(row => isStocked(row) && row.purchasedAt === date)
-    const stickerCents = dayStickers.reduce((total, row) => total + Math.round(lineTotal(row) * 100), 0)
+    const dayStickers = (this._stickers || [])
+      .filter(row => isStocked(row) && row.purchasedAt === date)
+      .map(row => ({ ...row, amount: Math.round(lineTotal(row) * 100) / 100 }))
+    const stickerCents = dayStickers.reduce((total, row) => total + Math.round(row.amount * 100), 0)
     const cents = dayItems.reduce((total, item) => total + Math.round(item.price * 100), 0) +
       dayExpenses.reduce((total, expense) => total + Math.round(expense.amount * 100), 0) +
       stickerCents
-    this.setData({ selectedDate: date, dayItems, dayExpenses, dayPlans, selectedTotal: cents / 100,
+    this.setData({ selectedDate: date, dayItems, dayExpenses, dayStickers, dayPlans, selectedTotal: cents / 100,
       hasDayRecords: dayItems.length + dayExpenses.length + dayPlans.length + dayStickers.length > 0 })
   },
 
@@ -190,6 +193,10 @@ Page({
 
   onExpenseTap(e) {
     wx.navigateTo({ url: '/pages/expense-edit/expense-edit?id=' + encodeURIComponent(e.currentTarget.dataset.id) })
+  },
+
+  onStickerTap(e) {
+    wx.navigateTo({ url: '/pages/sticker-edit/sticker-edit?id=' + encodeURIComponent(e.currentTarget.dataset.id) })
   },
 
   onPlanTap(e) {

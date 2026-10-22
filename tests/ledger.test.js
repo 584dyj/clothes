@@ -136,23 +136,33 @@ test('月历账本加载失败显示错误可重试', async () => {
 test('仅有贴纸购买的日期显示合计并关闭空态，心愿单不算记录', async () => {
   const purchasedAt = thisMonth(20)
   const wishDate = thisMonth(21)
+  const navigations = []
   const page = loadPage('calendar', {
     listItems: async () => [], listExpenses: async () => [],
     listPlans: async () => [], listOutfits: async () => [],
     listStickers: async () => [
-      { _id: 'owned', status: 'owned', price: 10, quantity: 2, purchasedAt },
-      { _id: 'wish', status: 'wishlist', price: 999, quantity: 1, purchasedAt: wishDate }
+      { _id: 'owned/1', name: '森林贴纸', status: 'owned', price: 10, quantity: 2, purchasedAt },
+      { _id: 'wish', name: '心愿贴纸', status: 'wishlist', price: 999, quantity: 1, purchasedAt: wishDate }
     ]
-  })
+  }, { navigateTo: ({ url }) => navigations.push(url) })
   page.onLoad()
   await page.loadData()
   page.onDayTap({ currentTarget: { dataset: { date: purchasedAt } } })
   assert.equal(page.data.selectedTotal, 20)
   assert.equal(page.data.hasDayRecords, true)
-  assert.equal(page.data.dayItems.length + page.data.dayExpenses.length + page.data.dayPlans.length, 0)
+  assert.equal(page.data.dayStickers.length, 1)
+  assert.equal(page.data.dayStickers[0].amount, 20)
+  page.onStickerTap({ currentTarget: { dataset: { id: 'owned/1' } } })
+  assert.equal(navigations[0], '/pages/sticker-edit/sticker-edit?id=owned%2F1')
   page.onDayTap({ currentTarget: { dataset: { date: wishDate } } })
   assert.equal(page.data.selectedTotal, 0)
   assert.equal(page.data.hasDayRecords, false)
+  assert.equal(page.data.dayStickers.length, 0)
+
+  const fs = require('node:fs'), path = require('node:path')
+  const markup = fs.readFileSync(path.join(__dirname, '../pages/calendar/calendar.wxml'), 'utf8')
+  assert.match(markup, /wx:for="\{\{dayStickers\}\}"/)
+  assert.match(markup, /bindtap="onStickerTap"/)
 })
 
 // ---------- stats 账本分布 ----------
@@ -160,14 +170,17 @@ test('仅有贴纸购买的日期显示合计并关闭空态，心愿单不算�
 test('衣橱统计总花费仅合并衣物与账本，不依赖贴纸读取', async () => {
   let stickerReads = 0
   const page = loadPage('stats', {
-    listItems: async () => [{ _id: 'item', price: 100 }],
+    listItems: async () => [{ _id: 'item', price: 100, category: '长袖' }],
     listExpenses: async () => [{ _id: 'expense', amount: 40, category: '洗护' }],
     listOutfits: async () => [], listWearRecords: async () => [],
     listStickers: async () => { stickerReads++; throw Error('贴纸接口不可用') }
   })
   await page.loadStats()
   assert.equal(page.data.totalSpent, 140)
+  assert.equal(page.data.itemSpent, 100)
   assert.equal(page.data.expenseTotal, 40)
+  assert.deepEqual(Array.from(page.data.categoryStats.filter(row => row.count > 0 || row.spent > 0), row => row.name), ['长袖'])
+  assert.equal(page.data.emptyCategoryCount, 17)
   assert.equal(page.data.loadError, '')
   assert.equal(stickerReads, 0)
 })
@@ -217,10 +230,10 @@ test('品牌分布将未填写品牌的衣物归入无品牌', async () => {
   assert.deepEqual(Array.from(page.data.brandStats), [])
 })
 
-test('分类统计按18类固定顺序保留空类，袜子与其他的件数金额完整', async () => {
+test('分类统计按金额降序且同价保留类别顺序，袜子与其他的件数金额完整', async () => {
   let clothes = CATEGORIES.map((category, index) => ({
     _id: `item-${index}`, name: category, category, subcategory: category === '配饰' ? '袜子' : '',
-    price: index + 1.01, brand: category === '其他' ? '其他品牌' : '测试品牌',
+    price: index < 2 ? 1.51 : index + 1.01, brand: category === '其他' ? '其他品牌' : '测试品牌',
     seasons: [category === '其他' ? '冬' : '夏']
   }))
   clothes.push({ _id: 'other-2', name: '第二件其他', category: '其他', price: 0.02, brand: '其他品牌', seasons: ['冬'] })
@@ -230,9 +243,11 @@ test('分类统计按18类固定顺序保留空类，袜子与其他的件数金
     listExpenses: async () => [], listWearRecords: async () => []
   })
   await page.loadStats()
-  assert.deepEqual(Array.from(page.data.categoryStats, row => row.name), CATEGORIES)
+  assert.deepEqual(Array.from(page.data.categoryStats, row => row.name), [...CATEGORIES.slice(2)].reverse().concat(CATEGORIES.slice(0, 2)))
   assert.equal(page.data.totalItems, 19)
   assert.equal(page.data.totalSpent, 171.2)
+  assert.equal(page.data.itemSpent, 171.2)
+  assert.equal(page.data.emptyCategoryCount, 0)
   assert.equal(page.data.totalOutfits, 1)
   assert.equal(page.data.categoryStats.reduce((sum, row) => sum + row.count, 0), 19)
   assert.equal(page.data.categoryStats.reduce((sum, row) => sum + Math.round(row.spent * 100), 0), 17120)
@@ -255,6 +270,8 @@ test('分类统计按18类固定顺序保留空类，袜子与其他的件数金
   assert.deepEqual(Array.from(page.data.categoryStats, row => row.name), CATEGORIES)
   assert.equal(page.data.totalItems, 0)
   assert.equal(page.data.totalSpent, 0)
+  assert.equal(page.data.itemSpent, 0)
+  assert.equal(page.data.emptyCategoryCount, 18)
   assert.ok(page.data.categoryStats.every(row => row.count === 0 && row.spent === 0 && row.percent === 0))
 })
 

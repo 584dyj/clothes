@@ -66,10 +66,14 @@
       </view>
     </view>
 
-    <!-- 衣物与账本开销 -->
+    <!-- 开销明细 -->
     <view wx:if="{{dayItems.length > 0}}" class="details-section">
       <view class="details-subtitle">衣物</view>
       <button wx:for="{{dayItems}}" wx:key="_id" class="day-item" data-id="{{item._id}}" bindtap="onItemTap">{{item.name}} · ¥{{item.price}} ›</button>
+    </view>
+    <view wx:if="{{dayStickers.length > 0}}" class="details-section">
+      <view class="details-subtitle">造景贴纸</view>
+      <button wx:for="{{dayStickers}}" wx:key="_id" class="day-item" data-id="{{item._id}}" bindtap="onStickerTap">{{item.name}} · ¥{{item.amount}} ›</button>
     </view>
     <view wx:if="{{dayExpenses.length > 0}}" class="details-section">
       <view class="details-subtitle">账本</view>

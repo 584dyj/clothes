@@ -39,7 +39,9 @@ Page({
     totalOutfits: 0,
     totalBrands: 0,
     totalSpent: 0,
+    itemSpent: 0,
     categoryStats: [],   // [{ name, count, spent, percent }]
+    emptyCategoryCount: 0,
     brandStats: [],      // [{ name, count, percent }]
     seasonStats: [],     // [{ name, count }]
     expenseTotal: 0,     // 账本总开销
@@ -73,9 +75,10 @@ Page({
       const totalBrands = new Set(items.map(item => (item.brand || '').trim()).filter(Boolean)).size
       // 衣橱总花费仅包含衣物与账本，贴纸开销在贴纸主页独立展示。
       const expenseTotal = expenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0)
-      const totalSpent = items.reduce((sum, item) => sum + (Number(item.price) || 0), 0) + expenseTotal
+      const itemSpent = items.reduce((sum, item) => sum + (Number(item.price) || 0), 0)
+      const totalSpent = itemSpent + expenseTotal
 
-      // 类别分布 + 分类花费（按全局类别顺序，空类别显示 0）
+      // 类别分布 + 分类花费（金额降序，同价保留全局类别顺序）
       const categoryStats = app.globalData.categories
         .map(name => {
           const inCategory = items.filter(item => item.category === name)
@@ -88,7 +91,7 @@ Page({
             percent: totalItems ? Math.round((count / totalItems) * 100) : 0
           }
         })
-
+        .sort((a, b) => b.spent - a.spent || app.globalData.categories.indexOf(a.name) - app.globalData.categories.indexOf(b.name))
       // 季节分布（一件衣物可属多个季节）
       const seasonStats = app.globalData.seasons.map(name => ({
         name,
@@ -213,11 +216,10 @@ Page({
         totalOutfits,
         totalBrands,
         totalSpent: Math.round(totalSpent * 100) / 100,
+        itemSpent: Math.round(itemSpent * 100) / 100,
       
-        categoryStats: categoryStats.map(item => ({
-          ...item,
-          barStyle: `width: ${item.percent}%;`
-        })),
+        categoryStats,
+        emptyCategoryCount: categoryStats.filter(item => !(item.count > 0 || item.spent > 0)).length,
       
         brandStats: brandStats.map(item => ({
           ...item,

@@ -20,26 +20,30 @@
       </view>
     </view>
 
-    <!-- 总花费（单独一行，点击进入月历）+ 各分类花费 -->
-    <view class="section card" bindtap="onCalendarTap">
-      <view class="spent-total">
-        <view class="spent-num">¥{{totalSpent}}</view>
-        <view class="spent-label">总花费 · 月历 ›</view>
-      </view>
-      <view wx:for="{{categoryStats}}" wx:key="name" class="spent-row">
-        <text class="spent-name">{{item.name}}</text>
-        <text class="spent-value">¥{{item.spent}}</text>
-      </view>
-    </view>
-
-    <!-- 类别分布（全部类别） -->
+    <!-- 分类统计：合并总花费、分类件数与衣物金额 -->
     <view class="section card">
-      <view class="section-title">类别分布</view>
-      <view wx:for="{{categoryStats}}" wx:key="name" class="bar-row">
-        <text class="bar-label">{{item.name}}</text>
-        <view class="bar-track" aria-hidden="true"><view class="bar-fill" style="{{item.barStyle}}"></view></view>
-        <text class="bar-count">{{item.percent}}%（{{item.count}}件）</text>
+      <view class="stats-heading">
+        <view class="section-title">分类统计</view>
+        <view class="calendar-link" bindtap="onCalendarTap" hover-class="calendar-link-active" aria-role="button" aria-label="查看开销月历">开销月历 ›</view>
       </view>
+      <view class="spent-summary">
+        <view class="spent-summary-main">
+          <text class="spent-label">衣物购置</text>
+          <text class="spent-num">¥{{itemSpent}}</text>
+        </view>
+        <view class="spent-breakdown" wx:if="{{expenseTotal > 0}}">含账本后总花费 ¥{{totalSpent}}</view>
+      </view>
+      <block wx:for="{{categoryStats}}" wx:key="name">
+        <view wx:if="{{item.count > 0 || item.spent > 0}}" class="spent-row">
+          <view class="spent-row-main">
+            <text class="spent-name">{{item.name}}</text>
+            <text class="spent-meta">{{item.count}}件 · {{item.percent}}%</text>
+          </view>
+          <text class="spent-value {{item.spent ? '' : 'spent-zero'}}">¥{{item.spent}}</text>
+        </view>
+      </block>
+      <view wx:if="{{totalItems === 0}}" class="category-empty">还没有衣物记录</view>
+      <view wx:elif="{{emptyCategoryCount > 0}}" class="category-empty">其余{{emptyCategoryCount}}个分类暂无衣物</view>
     </view>
 
     <!-- 账本开销分布（有账本记录才显示） -->
@@ -55,9 +59,8 @@
     <!-- 品牌分布 -->
     <view class="section card" wx:if="{{brandStats.length > 0}}">
       <view class="section-title">品牌分布</view>
-      <view wx:for="{{brandStats}}" wx:key="name" class="bar-row">
+      <view wx:for="{{brandStats}}" wx:key="name" class="bar-row barless-row">
         <text class="bar-label">{{item.name}}</text>
-        <view class="bar-track" aria-hidden="true"><view class="bar-fill" style="{{item.barStyle}}"></view></view>
         <text class="bar-count">{{item.percent}}%（{{item.count}}件）</text>
       </view>
     </view>
@@ -88,9 +91,8 @@
     <!-- 搭配频次（无搭配时整块隐藏） -->
     <view class="section card" wx:if="{{outfitRank.length > 0}}">
       <view class="section-title">常被搭配</view>
-      <view wx:for="{{outfitRank}}" wx:key="name" class="bar-row">
+      <view wx:for="{{outfitRank}}" wx:key="name" class="bar-row barless-row">
         <text class="bar-label">{{item.name}}</text>
-        <view class="bar-track" aria-hidden="true"><view class="bar-fill" style="{{item.barStyle}}"></view></view>
         <text class="bar-count">{{item.count}}套</text>
       </view>
     </view>
