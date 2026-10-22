@@ -17,7 +17,7 @@
           wx:if="{{imagePath || imageFileID}}"
           class="preview"
           src="{{imagePath || imageFileID}}"
-          mode="aspectFill"
+          mode="aspectFit"
         />
         <view wx:else class="image-placeholder">
           <view class="plus">+</view>
@@ -46,7 +46,7 @@
         wx:if="{{imagePath || imageFileID}}"
         class="preview"
         src="{{imagePath || imageFileID}}"
-        mode="aspectFill"
+        mode="aspectFit"
       />
       <view wx:else class="image-placeholder">
         <view class="plus">+</view>
@@ -120,8 +120,10 @@
   </view>
 
   <view wx:if="{{linkError}}" class="link-error">{{linkError}}</view>
-  <button class="btn-primary save-btn" bindtap="onSave" disabled="{{saving || !ready}}">{{createdOutfitId ? (linkNeedsReturn ? '返回实穿' : '重试关联') : '保存'}}</button>
-  <button wx:if="{{id}}" class="btn-danger delete-btn" bindtap="onDelete" disabled="{{saving || !ready}}">删除</button>
+  <view class="form-actions">
+    <button class="btn-primary" bindtap="onSave" disabled="{{saving || !ready}}">{{createdOutfitId ? (linkNeedsReturn ? '返回实穿' : '重试关联') : '保存'}}</button>
+    <button wx:if="{{id}}" class="btn-danger" bindtap="onDelete" disabled="{{saving || !ready}}">删除</button>
+  </view>
 
   <wheel-picker
     show="{{picker.show}}"

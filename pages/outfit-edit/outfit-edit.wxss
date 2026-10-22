@@ -229,8 +229,14 @@
   text-align: center;
 }
 
-.page .save-btn {
-  width: 100%;
-  margin: 0 0 24rpx;
-  box-sizing: border-box;
+/* 保存 / 删除 并排各占一半；仅保存时自动拉满整行 */
+.form-actions {
+  display: flex;
+  gap: 24rpx;
+}
+
+.form-actions button {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
 }

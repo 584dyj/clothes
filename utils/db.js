@@ -287,6 +287,7 @@ const subscribeWeather = () => call('subscribeWeather')
 const cancelReport = () => call('cancelReport')
 const cancelWeather = () => call('cancelWeather')
 const getSubscriptionStatus = () => call('subscriptionStatus')
+const getWeatherRecommendation = date => call('weatherRecommendation', { date }).then(result => result.recommendation)
 
 // 天气提醒云函数（城市设置等），与 auth 分离部署，错误处理同构
 function callWeather(data) {
@@ -308,4 +309,4 @@ module.exports = { chooseImage, uploadImage, uploadStickerImage, removeImage, re
   listWearRecords, getWearRecord, addWearRecord, updateWearRecord, deleteWearRecord, linkWearOutfit,
   listPlans, addPlan, updatePlan, deletePlan,
   listStickers, stickerStats, addSticker, updateSticker, deleteSticker,
-  chatList, chatGet, chatSend, chatDelete, chatRename, purchaseAssess, purchaseVisual, itemScan, subscribeReport, subscribeWeather, cancelReport, cancelWeather, getSubscriptionStatus, setCity, setCityByLocation }
+  chatList, chatGet, chatSend, chatDelete, chatRename, purchaseAssess, purchaseVisual, itemScan, subscribeReport, subscribeWeather, cancelReport, cancelWeather, getSubscriptionStatus, getWeatherRecommendation, setCity, setCityByLocation }

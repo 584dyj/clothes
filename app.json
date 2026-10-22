@@ -17,6 +17,7 @@
     "pages/plan-edit/plan-edit",
     "pages/wear-edit/wear-edit",
     "pages/today-wear/today-wear",
+    "pages/weather-outfit/weather-outfit",
     "pages/login/login"
   ],
   "window": {

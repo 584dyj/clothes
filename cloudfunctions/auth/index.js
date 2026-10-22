@@ -263,6 +263,12 @@ async function main(event = {}) {
     return recommendation.handle({ db, openid, user, event })
   }
 
+  if (action === 'weatherRecommendation') {
+    const user = await getBoundUser(openid)
+    if (!user || user.autoLoginEnabled === false) throw new Error('登录状态已失效')
+    return recommendation.getWeatherRecommendation({ db, openid, date: event.date })
+  }
+
   if (action === 'purchaseAssess') {
     const user = await getBoundUser(openid)
     if (!user || user.autoLoginEnabled === false) throw new Error('登录状态已失效')

@@ -274,5 +274,22 @@ async function handle({ db, openid, user, event }, request = requestCompletion, 
   }
 }
 
+// 天气提醒每日推荐的确定性 ID，与 weather-alert/alert.js 保持同构（两函数各自自包含）。
+const recommendationId = (openid, date) => 'weather-reco-' + crypto.createHash('sha256').update(openid + ':' + date).digest('hex')
+
+// 读取天气提醒落库的每日推荐（ai_cache 中的 weather-reco-* 文档），供落地页展示与保存。
+async function getWeatherRecommendation({ db, openid, date }) {
+  if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('日期无效')
+  const doc = await readDoc(db.collection('ai_cache').doc(recommendationId(openid, date)))
+  if (!doc || doc._openid !== openid) return { success: true, recommendation: null }
+  return { success: true, recommendation: {
+    date: doc.date || date,
+    advice: typeof doc.advice === 'string' ? doc.advice : '',
+    weather: doc.weather && typeof doc.weather === 'object' ? doc.weather : null,
+    itemIds: Array.isArray(doc.itemIds) ? doc.itemIds : [],
+    items: Array.isArray(doc.items) ? doc.items : []
+  } }
+}
+
 module.exports = { handle, cleanResult, requestCompletion, loadItems, inventory, findGaps, getInventory,
-  getWardrobeVersion, INVENTORY_CACHE_VERSION, STYLING_RULES, GAP_ROLES }
+  getWardrobeVersion, getWeatherRecommendation, recommendationId, INVENTORY_CACHE_VERSION, STYLING_RULES, GAP_ROLES }

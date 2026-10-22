@@ -120,6 +120,26 @@ test('普通天气按明天温度取冬夏春秋衣物，雨天提醒带伞，�
   assert.match(advice, /伞/)
 })
 
+test('buildRecommendation 返回文案、具体衣物 ID 与展示快照', () => {
+  const items = [
+    item('i1', 'u', '羽绒服', { seasons: ['冬'], category: '羽绒服', imageFileID: 'cloud://x/wardrobe/1.jpg' }),
+    item('i2', 'u', '毛衣', { seasons: ['冬', '春秋'], category: '毛衣' }),
+    item('i3', 'u', '短袖', { seasons: ['夏'], category: '短袖' })
+  ]
+  const rec = alert.buildRecommendation({ type: 'drop', delta: 8 }, items)
+  assert.equal(rec.advice, '降温8度：羽绒服、毛衣')
+  assert.deepEqual(rec.itemIds, ['i1', 'i2'])
+  assert.deepEqual(rec.items, [
+    { _id: 'i1', name: '羽绒服', category: '羽绒服', subcategory: '', imageFileID: 'cloud://x/wardrobe/1.jpg' },
+    { _id: 'i2', name: '毛衣', category: '毛衣', subcategory: '', imageFileID: '' }
+  ])
+  // 空候选：advice 回退固定文案，itemIds/items 为空
+  const empty = alert.buildRecommendation({ type: 'drop', delta: 8 }, [])
+  assert.equal(empty.advice, '降温8度，注意添衣')
+  assert.deepEqual(empty.itemIds, [])
+  assert.deepEqual(empty.items, [])
+})
+
 // ---------- 发送主流程 ----------
 
 test('命中降温发送一条，额度与模板字段正确', async () => {
@@ -134,7 +154,7 @@ test('命中降温发送一条，额度与模板字段正确', async () => {
   const message = cloud.sentMessages[0]
   assert.equal(message.touser, 'u1')
   assert.equal(message.templateId, TEMPLATE_ID)
-  assert.equal(message.page, 'pages/wardrobe/wardrobe')
+  assert.equal(message.page, 'pages/weather-outfit/weather-outfit?date=2026-10-10')
   assert.equal(message.data.thing12.value, '阴')
   assert.equal(message.data.character_string41.value, '12~22℃')
   assert.equal(message.data.thing2.value, '降温8度：羽绒服')
@@ -145,6 +165,30 @@ test('命中降温发送一条，额度与模板字段正确', async () => {
   const again = await run(cloud, stubWeather({ ['city=' + CITY]: DROP_FORECAST }))
   assert.equal(again.sent, 0)
   assert.equal(cloud.sentMessages.length, 1)
+})
+
+test('发送成功后把每日推荐落库到 ai_cache，落地页可按日期读取', async () => {
+  const cloud = loadCloud({
+    users: [cityUser('u1')],
+    subscriptions: [sub('w1', 'u1'), quota('u1')],
+    clothes: [
+      item('down', 'u1', '羽绒服', { seasons: ['冬'], category: '羽绒服', imageFileID: 'cloud://x/down.jpg' }),
+      item('tee', 'u1', '短袖', { seasons: ['夏'], category: '短袖' })
+    ]
+  })
+  const summary = await run(cloud, stubWeather({ ['city=' + CITY]: DROP_FORECAST }))
+  assert.equal(summary.sent, 1)
+  const id = alert.recommendationId('u1', '2026-10-10')
+  const rec = cloud.records.ai_cache.find(row => row._id === id)
+  assert.ok(rec, '推荐文档已落库')
+  assert.equal(rec._openid, 'u1')
+  assert.equal(rec.date, '2026-10-10')
+  assert.equal(rec.advice, '降温8度：羽绒服')
+  assert.deepEqual(rec.itemIds, ['down'])
+  assert.equal(rec.items.length, 1)
+  assert.equal(rec.items[0]._id, 'down')
+  assert.equal(rec.items[0].imageFileID, 'cloud://x/down.jpg')
+  assert.equal(rec.weather.textDay, '阴')
 })
 
 test('幂等标记存在时同账号同日只发一次且不消耗额度', async () => {
@@ -561,4 +605,61 @@ test('天气候选先排除一级其他：混合衣橱不含其他，只剩其�
   const second = await run(onlyMisc, stubWeather({ ['city=' + CITY]: DROP_FORECAST }))
   assert.equal(second.sent, 1)
   assert.equal(onlyMisc.sentMessages[0].data.thing2.value, '降温8度，注意添衣')
+})
+
+// ---------- weatherRecommendation（auth 动作，落地页读取） ----------
+
+test('weatherRecommendation 读取落库推荐、未命中返回空、日期与登录校验', async () => {
+  const authUser = () => ({ _id: 'user', openid: 'openid-1', username: 'alice', autoLoginEnabled: true })
+  const recId = require('../cloudfunctions/auth/recommend').recommendationId('openid-1', '2026-10-10')
+  const cloud = loadCloud({
+    users: [authUser()],
+    ai_cache: [{ _id: recId, _openid: 'openid-1', date: '2026-10-10', advice: '降温8度：羽绒服',
+      weather: { textDay: '阴', tempMin: '12', tempMax: '22' },
+      itemIds: ['i1'], items: [{ _id: 'i1', name: '羽绒服', category: '羽绒服', subcategory: '', imageFileID: '' }] }]
+  })
+  const result = await cloud.main({ action: 'weatherRecommendation', date: '2026-10-10' })
+  assert.equal(result.success, true)
+  assert.equal(result.recommendation.advice, '降温8度：羽绒服')
+  assert.deepEqual(result.recommendation.itemIds, ['i1'])
+  assert.equal(result.recommendation.weather.textDay, '阴')
+  // 未命中返回 null
+  assert.equal((await cloud.main({ action: 'weatherRecommendation', date: '2026-10-11' })).recommendation, null)
+  // 日期非法
+  assert.match((await cloud.main({ action: 'weatherRecommendation', date: 'bad' })).error, /日期无效/)
+  // 未登录
+  await cloud.main({ action: 'logout' })
+  assert.match((await cloud.main({ action: 'weatherRecommendation', date: '2026-10-10' })).error, /登录状态已失效/)
+})
+
+// ---------- previewRecommendation（测试用：只落库、不查额度幂等、不真发消息） ----------
+
+test('previewRecommendation 生成并落库推荐，不发送消息也不消耗额度', async () => {
+  const cloud = loadCloud({
+    users: [cityUser('u1')],
+    subscriptions: [sub('w1', 'u1'), quota('u1')],
+    clothes: [item('down', 'u1', '羽绒服', { seasons: ['冬'], category: '羽绒服' })]
+  })
+  const result = await alert.previewRecommendation({ db: cloud.db, openid: 'u1', now: NOW,
+    request: stubWeather({ ['city=' + CITY]: DROP_FORECAST }), env: ENV })
+  assert.equal(result.success, true)
+  assert.equal(result.date, '2026-10-10')
+  assert.equal(result.advice, '降温8度：羽绒服')
+  assert.deepEqual(result.itemIds, ['down'])
+  assert.equal(result.count, 1)
+  assert.equal(cloud.sentMessages.length, 0)
+  const rec = cloud.records.ai_cache.find(row => row._id === alert.recommendationId('u1', '2026-10-10'))
+  assert.ok(rec, '推荐已写入 ai_cache')
+  assert.equal(rec.advice, '降温8度：羽绒服')
+  assert.deepEqual(rec.itemIds, ['down'])
+  // 幂等/额度不受影响
+  assert.equal(cloud.records.subscriptions.find(row => row._id === 'w1').consumedAt, undefined)
+  assert.equal(cloud.records.subscriptions.find(row => row.scene === 'weather-alert-quota').unused, 1)
+})
+
+test('previewRecommendation 未设城市时拒绝', async () => {
+  const cloud = loadCloud({ users: [cityUser('u1', { cityId: '', cityName: '' })] })
+  await assert.rejects(
+    alert.previewRecommendation({ db: cloud.db, openid: 'u1', now: NOW, request: stubWeather({}), env: ENV }),
+    /请先在「我的」页设置城市/)
 })

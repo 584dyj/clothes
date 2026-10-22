@@ -19,6 +19,8 @@ const sha256 = value => crypto.createHash('sha256').update(value).digest('hex')
 const quotaId = openid => 'quota-weather-alert-' + sha256(openid)
 // 账号+日期的持久幂等标记：同日重跑、触发器重试或并发执行都只发送一次
 const sentId = (openid, day) => `wsent-${openid}-${day}`
+// 每日推荐落库位置：复用 ai_cache 集合（keyed 文档存储），按 openid+日期取确定性 ID，幂等覆盖。
+const recommendationId = (openid, date) => 'weather-reco-' + crypto.createHash('sha256').update(openid + ':' + date).digest('hex')
 
 // ---------- 时间与文本（与 monthly-report 同款，云函数保持自包含） ----------
 function shanghaiParts(date) {
@@ -186,12 +188,30 @@ const RULES = {
   }
 }
 
-function buildAdvice(trigger, items) {
+// 推荐衣物快照：仅保留落地页展示所需字段，避免依赖衣橱当前状态（衣物之后被删也不影响展示）。
+function itemSnapshot(item) {
+  return {
+    _id: item._id,
+    name: String(item.name || '未命名'),
+    category: String(item.category || ''),
+    subcategory: item.category === '配饰' ? String(item.subcategory || '') : '',
+    imageFileID: String(item.imageFileID || '')
+  }
+}
+
+// 生成推荐：advice 为推送文案，itemIds/items 落库给落地页展示与保存为穿搭。
+function buildRecommendation(trigger, items) {
   const rule = RULES[trigger.type]
-  const names = rule.pick(items, trigger).map(item => trimText(item.name || '未命名', 10))
-  if (!names.length) return rule.empty(trigger)
-  const prefix = rule.prefix(trigger)
-  return prefix + summarize(names, TEXT_LIMIT - Array.from(prefix).length)
+  const picked = rule.pick(items, trigger)
+  const names = picked.map(item => trimText(item.name || '未命名', 10))
+  const advice = names.length
+    ? rule.prefix(trigger) + summarize(names, TEXT_LIMIT - Array.from(rule.prefix(trigger)).length)
+    : rule.empty(trigger)
+  return { advice, itemIds: picked.map(item => item._id), items: picked.map(itemSnapshot) }
+}
+
+function buildAdvice(trigger, items) {
+  return buildRecommendation(trigger, items).advice
 }
 
 // ---------- 额度认领 / 恢复（与 monthly-report 同构，scene 独立） ----------
@@ -239,20 +259,30 @@ function errorCode(error) {
   return Number(error && (error.errCode || error.errcode || error.code))
 }
 
+// 推荐落库：点击推送进入落地页时读取。先于发送写入，保证用户点开时数据已就绪；
+// 发送失败留下的残留文档无害（无消息可点，次日被覆盖）。
+async function saveRecommendation(db, openid, date, recommendation) {
+  await db.collection('ai_cache').doc(recommendationId(openid, date)).set({
+    data: { _openid: openid, date, ...recommendation, createdAt: new Date() }
+  })
+}
+
 async function sendAlert({ db, cloud, subscription, trigger, forecast, tomorrow, templateId, now }) {
   // 一级「其他」仅作基础记录，不进入天气穿搭候选；本函数独立部署，使用本地最小过滤，不引用 auth。
   // 配饰子类「其他」仍属配饰，不受一级排除影响；只剩其他时按既有空候选规则发送通用提示。
   const items = (await listAll(db, 'clothes', { _openid: subscription._openid })).filter(item => item.category !== '其他')
   if (!await claim(db, subscription._id, now)) return 'claimed'
+  const recommendation = buildRecommendation(trigger, items)
   try {
+    await saveRecommendation(db, subscription._openid, tomorrow, { trigger, weather: forecast.tomorrow, ...recommendation })
     const result = await cloud.openapi.subscribeMessage.send({
       touser: subscription._openid,
       templateId,
-      page: 'pages/wardrobe/wardrobe',
+      page: `pages/weather-outfit/weather-outfit?date=${tomorrow}`,
       data: {
         thing12: { value: trimText(forecast.tomorrow.textDay) },
         character_string41: { value: `${forecast.tomorrow.tempMin}~${forecast.tomorrow.tempMax}℃` },
-        thing2: { value: buildAdvice(trigger, items) },
+        thing2: { value: recommendation.advice },
         date4: { value: dateCn(tomorrow) }
       }
     })
@@ -412,5 +442,24 @@ async function setCityByLocation({ db, openid, longitude, latitude, request = re
   return { success: true, cityId: adcode, cityName: display }
 }
 
-module.exports = { handle, setCity, setCityByLocation, evaluate, buildAdvice, fetchForecast, quotaId, sentId,
+// ---------- 预览推荐（客户端测试入口）：按当前登录用户生成并落库一份推荐 ----------
+// 只写 ai_cache、不查额度/幂等、不真正发消息，专供落地页联调。
+// date 可指定，缺省取「明天」。
+async function previewRecommendation({ db, openid, now = new Date(), request = requestWeather, env = process.env, date }) {
+  const tomorrow = date || shiftDate(shanghaiDate(now), 1)
+  const key = env.WEATHER_API_KEY
+  if (!key) throw new Error('WEATHER_API_KEY 未配置')
+  const host = env.WEATHER_API_HOST || 'https://restapi.amap.com'
+  const user = await activeCityUser(db, openid)
+  if (!user.cityId) throw new Error('请先在「我的」页设置城市')
+  const forecast = await fetchForecast({ request, host, key, cityId: user.cityId })
+  const trigger = evaluate(forecast.today, forecast.tomorrow) || { type: 'normal', ...forecast.tomorrow }
+  const items = (await listAll(db, 'clothes', { _openid: openid })).filter(item => item.category !== '其他')
+  const recommendation = buildRecommendation(trigger, items)
+  await saveRecommendation(db, openid, tomorrow, { trigger, weather: forecast.tomorrow, ...recommendation })
+  return { success: true, date: tomorrow, advice: recommendation.advice, weather: forecast.tomorrow,
+    itemIds: recommendation.itemIds, count: recommendation.items.length }
+}
+
+module.exports = { handle, setCity, setCityByLocation, previewRecommendation, evaluate, buildAdvice, buildRecommendation, fetchForecast, quotaId, sentId, recommendationId,
   SCENE, QUOTA_SCENE, SENT_SCENE, shanghaiDate, shiftDate, dateCn, summarize }

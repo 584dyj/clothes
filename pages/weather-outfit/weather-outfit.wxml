@@ -1,0 +1,46 @@
+<view class="page">
+  <view wx:if="{{loadError}}" class="empty">{{loadError}}<button bindtap="onRetry">重新加载</button></view>
+
+  <block wx:else>
+    <view wx:if="{{loading}}" class="empty">加载中…</view>
+
+    <block wx:else>
+      <!-- 头部：天气与推荐说明 -->
+      <view class="head card">
+        <view class="head-title">{{weatherText}}</view>
+        <view class="head-advice">{{advice}}</view>
+        <view class="head-count">已选 {{selectedCount}} / 共 {{count}} 件</view>
+      </view>
+
+      <!-- 推荐衣物列表：点击卡片勾选/取消勾选 -->
+      <view wx:if="{{count > 0}}" class="list">
+        <view
+          wx:for="{{items}}"
+          wx:key="_id"
+          class="row card"
+          data-id="{{item._id}}"
+          bindtap="onItemTap"
+        >
+          <image wx:if="{{item.imageFileID}}" class="row-img" src="{{item.imageFileID}}" mode="aspectFill" />
+          <view wx:else class="row-img row-img-placeholder">无图</view>
+          <view class="row-info">
+            <view class="row-name">{{item.name}}</view>
+            <view class="row-tags">
+              <text class="tag">{{item.subcategory || item.category}}</text>
+              <text wx:if="{{!item.available}}" class="tag tag-gone">已删除</text>
+            </view>
+          </view>
+          <view wx:if="{{item.available}}" class="row-check {{item.selected ? 'row-check-on' : ''}}">{{item.selected ? '✓' : ''}}</view>
+        </view>
+      </view>
+      <view wx:else class="empty">当前没有匹配的衣物可推荐</view>
+    </block>
+  </block>
+
+  <!-- 底部操作 -->
+  <view wx:if="{{!loading && !loadError && !saved && count > 0}}" class="footer">
+    <button class="btn-primary" bindtap="onSaveOutfit" disabled="{{saving || !ready || selectedCount === 0}}">保存为一套穿搭</button>
+    <button class="btn-secondary" bindtap="onSaveAndPlan" disabled="{{saving || !ready || selectedCount === 0}}">保存并明天穿</button>
+  </view>
+  <view wx:if="{{!loading && !loadError && saved}}" class="footer saved-hint">{{savedAsPlan ? '已保存并设为明天穿着' : '已保存为一套穿搭'}}</view>
+</view>
