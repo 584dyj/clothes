@@ -82,7 +82,7 @@
       <button wx:for="{{dayPlans}}" wx:key="_id" class="day-item plan-item" data-id="{{item._id}}" bindtap="onPlanTap"><image class="day-item-icon" src="/assets/icons/plan.svg" mode="aspectFit" /> {{item.outfitName}}{{item.note ? ' · ' + item.note : ''}} ›</button>
     </view>
 
-    <view wx:if="{{dayItems.length === 0 && dayExpenses.length === 0 && dayPlans.length === 0}}" class="calendar-note day-empty-note">当天没有记录</view>
+    <view wx:if="{{!hasDayRecords}}" class="calendar-note day-empty-note">当天没有记录</view>
   </view>
 
   <!-- 年月快速选择滚轮 -->

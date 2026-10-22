@@ -28,6 +28,7 @@ const revision = crypto.createHash('sha256')
   .update(fs.readFileSync(path.join(__dirname, 'chat.js')))
   .update(fs.readFileSync(path.join(__dirname, 'scan.js')))
   .update(fs.readFileSync(path.join(__dirname, 'subscription.js')))
+  .update(fs.readFileSync(path.join(__dirname, 'stickers.js')))
   .update(fs.readFileSync(path.join(__dirname, 'ai-http.js')))
   .digest('hex').slice(0, 12)
 
@@ -39,6 +40,7 @@ const purchase = require('./purchase')
 const chatApi = require('./chat')
 const scanApi = require('./scan')
 const subscriptionApi = require('./subscription')
+const stickersApi = require('./stickers')
 const { readDoc } = dataApi
 const USERS = 'users'
 const CODES = 'invite_codes'
@@ -297,6 +299,11 @@ async function main(event = {}) {
   if (action === 'subscriptionStatus') {
     await requireLoggedInUser(openid)
     return subscriptionApi.status({ db, openid })
+  }
+
+  if (action === 'stickerStats') {
+    await requireLoggedInUser(openid)
+    return stickersApi.stats({ db, openid })
   }
 
   if (action === 'chatList' || action === 'chatGet' || action === 'chatSend' || action === 'chatDelete' || action === 'chatRename' ||

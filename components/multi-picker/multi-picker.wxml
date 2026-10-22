@@ -6,7 +6,7 @@
       <view class="mp-title">{{title}}</view>
       <view class="mp-btn mp-confirm" bindtap="onConfirm">确定</view>
     </view>
-    <view class="mp-options">
+    <view class="mp-options {{fourColumns ? 'mp-options-grid' : ''}}">
       <view
         wx:for="{{list}}"
         wx:key="value"

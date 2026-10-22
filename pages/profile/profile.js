@@ -122,6 +122,10 @@ Page({
     return { name, count: counts[name], initial }
   },
 
+  onStickersTap() {
+    wx.navigateTo({ url: '/pages/stickers/stickers' })
+  },
+
   async onChooseAvatar(e) {
     const tempPath = e.detail.avatarUrl
     if (!tempPath || this.data.avatarSaving) return
@@ -248,13 +252,13 @@ Page({
       wx.hideLoading()
       console.error(e)
       const raw = String(e && (e.errMsg || e.message) || '')
-      // errno 112：隐私指引中的位置声明未生效（如审核中），此期间地图选点同样被拦，只引导手动输入
-      const undeclared = e && e.errno === 112 || /privacy agreement|privacy permission/i.test(raw)
+      // errno 112 / no permission：位置能力未对当前小程序开放（隐私指引或接口权限审核中），此期间地图选点同样被拦，只引导手动输入
+      const undeclared = e && e.errno === 112 || /privacy agreement|privacy permission|no permission/i.test(raw)
       const denied = /auth deny|authorize no response/i.test(raw)
       wx.showModal({
         title: '定位失败',
         content: undeclared
-          ? '定位能力尚未开放（隐私指引审核中），请改用手动输入城市'
+          ? '定位能力尚未开放（位置能力审核中），请改用手动输入城市'
           : denied
             ? '定位授权被拒绝，可改用手动输入或地图选点；如需定位，请在微信设置中开启位置权限'
             : raw || '请改用手动输入或地图选点',
@@ -278,8 +282,8 @@ Page({
       if (e && /cancel/i.test(String(e.errMsg || ''))) return
       console.error(e)
       const raw = String(e && (e.errMsg || e.message) || '')
-      // errno 112：位置声明未生效时与定位口径一致
-      const undeclared = e && e.errno === 112 || /privacy agreement|privacy permission/i.test(raw)
+      // errno 112 / no permission：位置能力未开放时与定位口径一致
+      const undeclared = e && e.errno === 112 || /privacy agreement|privacy permission|no permission/i.test(raw)
       wx.showToast({ title: undeclared ? '选点暂不可用，请手动输入城市' : raw || '选点失败，请重试', icon: 'none' })
     } finally {
       this.setData({ locating: false })

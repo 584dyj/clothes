@@ -246,8 +246,10 @@
   text-align: center;
 }
 
-.save-btn {
-  margin-bottom: 24rpx;
+.wear-form-content .save-btn {
+  width: 100%;
+  margin: 0 0 24rpx;
+  box-sizing: border-box;
 }
 
 /* 「保存并记为穿搭」降级为文字链接，不抢主按钮 */

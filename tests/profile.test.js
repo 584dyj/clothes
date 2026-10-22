@@ -497,8 +497,19 @@ test('城市定位：模糊定位成功写入区县并弹确认，授权被拒�
   undeclared.onCityTap()
   await new Promise(resolve => setImmediate(resolve))
   assert.equal(modals.at(-1).title, '定位失败')
-  assert.match(modals.at(-1).content, /隐私指引审核中/)
+  assert.match(modals.at(-1).content, /位置能力审核中/)
   assert.doesNotMatch(modals.at(-1).content, /privacy agreement/)
+  // no permission：接口权限未开通（mp 后台审核中），同样引导手动输入而非弹出英文 errMsg
+  const noPermission = loadPage('profile', {}, {
+    showActionSheet: options => options.success({ tapIndex: 0 }),
+    getFuzzyLocation: options => options.fail({ errMsg: 'getFuzzyLocation:fail no permission' }),
+    showModal: options => { modals.push(options); options.success && options.success({ confirm: true }) }
+  })
+  noPermission.onCityTap()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(modals.at(-1).title, '定位失败')
+  assert.match(modals.at(-1).content, /位置能力审核中/)
+  assert.doesNotMatch(modals.at(-1).content, /no permission/)
 })
 
 test('城市地图选点：选点坐标走逆地理编码，取消不提示', async () => {
@@ -536,6 +547,15 @@ test('城市地图选点：选点坐标走逆地理编码，取消不提示', as
     showToast: options => toasts.push(options.title)
   })
   undeclared.onCityTap()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(toasts.at(-1), '选点暂不可用，请手动输入城市')
+  // no permission：接口权限未开通时同样给中文提示
+  const noPermission = loadPage('profile', {}, {
+    showActionSheet: options => options.success({ tapIndex: 2 }),
+    chooseLocation: options => options.fail({ errMsg: 'chooseLocation:fail no permission' }),
+    showToast: options => toasts.push(options.title)
+  })
+  noPermission.onCityTap()
   await new Promise(resolve => setImmediate(resolve))
   assert.equal(toasts.at(-1), '选点暂不可用，请手动输入城市')
 })

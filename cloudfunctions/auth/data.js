@@ -23,7 +23,7 @@ async function queueImage(tx, openid, fileID) {
 async function claimImage(tx, openid, fileID, previous, target) {
   if (!fileID || fileID === previous) return
   if (typeof fileID !== 'string' || fileID.length > 1024) throw new Error('图片无效')
-  const match = fileID.match(/^cloud:\/\/[^/]+\/(?:wardrobe|avatars)\/([a-f0-9]{32})\.(jpg|jpeg|png|webp|gif)$/)
+  const match = fileID.match(/^cloud:\/\/[^/]+\/(?:wardrobe|avatars|stickers)\/([a-f0-9]{32})\.(jpg|jpeg|png|webp|gif)$/)
   if (!match) throw new Error('请重新上传图片')
   const ref = tx.collection('upload_tickets').doc(match[1])
   const ticket = await readDoc(ref)
@@ -38,12 +38,16 @@ const FIELDS = {
   outfits: ['name', 'occasion', 'note', 'imageFileID'],
   expenses: ['category', 'date', 'note', 'itemId'],
   wear_records: ['date', 'note', 'outfitId'],
-  outfit_plans: ['date', 'note', 'outfitId']
+  outfit_plans: ['date', 'note', 'outfitId'],
+  stickers: ['name', 'brand', 'series', 'channel', 'themeTag', 'purchasedAt', 'status', 'doneAt', 'imageFileID', 'doneImageFileID']
 }
 
 const COLLECTIONS = Object.keys(FIELDS)
 
 const EXPENSE_CATEGORIES = ['服饰', '鞋包', '洗护', '修改', '其他']
+// 造景贴纸：心愿单 / 库存 / 已拼贴；done 的完成字段（doneAt、doneImageFileID）由后续流转动作开放
+const STICKER_STATUS = ['wishlist', 'owned', 'done']
+const STICKER_THEME_TAGS = ['古风造景', '街景造景', '自然造景', '室内造景', '美食造景', '节日造景', '其他']
 const MAX_YEAR = 2030
 const WEAR_DUPLICATE = '同一天已记录相同衣物组合'
 const WEAR_RESCAN = 'WEAR_RESCAN'
@@ -91,12 +95,12 @@ function cleanItemIds(value) {
   return [...new Set(value)]
 }
 
-function cleanData(collection, input) {
+function cleanData(collection, input, previous = null) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('记录格式无效')
   const data = {}
   for (const key of FIELDS[collection]) {
     const value = input[key] === undefined ? '' : input[key]
-    if (typeof value !== 'string' || value.length > (key === 'note' ? 2000 : key === 'imageFileID' ? 1024 : 100)) throw new Error('字段格式或长度无效')
+    if (typeof value !== 'string' || value.length > (key === 'note' ? 2000 : key.endsWith('FileID') ? 1024 : 100)) throw new Error('字段格式或长度无效')
     data[key] = value.trim()
   }
   if (collection === 'clothes') {
@@ -121,6 +125,44 @@ function cleanData(collection, input) {
     if (!validDateString(data.date)) throw new Error('日期无效')
     if (data.date > shanghaiToday()) throw new Error('不能记录未来日期')
     data.itemIds = cleanItemIds(input.itemIds)
+  } else if (collection === 'stickers') {
+    if (!data.name) throw new Error('名称不能为空')
+    if (!data.imageFileID) throw new Error('请上传封面图')
+    if (!STICKER_STATUS.includes(data.status)) throw new Error('状态无效')
+    if (data.themeTag && !STICKER_THEME_TAGS.includes(data.themeTag)) throw new Error('主题标签无效')
+    if (data.purchasedAt && !validDateString(data.purchasedAt)) throw new Error('购入日期无效')
+    if (data.purchasedAt && data.purchasedAt > shanghaiToday()) throw new Error('购入日期不能是未来')
+    if (data.doneAt && (!validDateString(data.doneAt) || data.doneAt > shanghaiToday())) throw new Error('完成日期无效')
+    if (input.price === undefined || input.price === null || input.price === '') data.price = null
+    else if (typeof input.price !== 'number' || !Number.isFinite(input.price) || input.price < 0 || input.price > 1e9) throw new Error('价格无效')
+    else data.price = Math.round(input.price * 100) / 100
+    if (input.quantity === undefined || input.quantity === null || input.quantity === '') data.quantity = 1
+    else if (!Number.isInteger(input.quantity) || input.quantity < 1 || input.quantity > 9999) throw new Error('数量无效')
+    else data.quantity = input.quantity
+    // 状态机：建档只允许心愿单/库存；编辑按 SPEC 3.1 流转表裁决
+    const from = previous && previous.status
+    if (!previous) {
+      // 建档只允许心愿单或库存；已拼贴须经标记完成流转
+      if (data.status === 'done') throw new Error('状态无效')
+      if (data.doneAt || data.doneImageFileID) throw new Error('建档时不支持完成字段')
+    } else if (from === data.status) {
+      // 普通编辑：已拼贴态必须保留完成字段，其余状态不允许携带
+      if (data.status === 'done') {
+        if (!data.doneAt || !data.doneImageFileID) throw new Error('已拼贴需保留完成日期与作品照')
+      } else if (data.doneAt || data.doneImageFileID) throw new Error('非已拼贴状态不支持完成字段')
+    } else if (from === 'wishlist' && data.status === 'owned') {
+      // 心愿转正与直接建档库存同规则：价格和购入日期可留空
+      if (data.doneAt || data.doneImageFileID) throw new Error('非已拼贴状态不支持完成字段')
+    } else if (from === 'owned' && data.status === 'done') {
+      // 标记已拼贴：完成日期与作品照缺一不可（作品照归属由调用方票据校验）
+      if (!data.doneAt || !data.doneImageFileID) throw new Error('标记已拼贴需同时提供完成日期与作品照')
+    } else if (from === 'done' && data.status === 'owned') {
+      // 撤销完成：完成字段清空，被清作品照由调用方入清理队列
+      if (data.doneAt || data.doneImageFileID) throw new Error('撤销完成请勿携带完成字段')
+    } else {
+      // owned → wishlist 已购不回退心愿；wishlist → done 须先转正
+      throw new Error(data.status === 'wishlist' ? '已购物品不能回退为心愿单' : '请先转为库存再标记拼贴完成')
+    }
   } else {
     if (!validDateString(data.date)) throw new Error('日期无效')
     if (!data.outfitId) throw new Error('请选择穿搭')
@@ -181,7 +223,7 @@ async function retryCleanup({ db, cloud, openid }) {
           await db.collection('cleanup_jobs').doc(job._id).update({ data: { state: 'review', lastError: '旧图片需管理员核验归属后清理', updatedAt: new Date() } })
           continue
         }
-        for (const [collection, field] of [['clothes', 'imageFileID'], ['outfits', 'imageFileID'], ['users', 'avatarFileID']]) {
+        for (const [collection, field] of [['clothes', 'imageFileID'], ['outfits', 'imageFileID'], ['users', 'avatarFileID'], ['stickers', 'imageFileID'], ['stickers', 'doneImageFileID']]) {
           const refs = await db.collection(collection).where({ [field]: job.fileID }).limit(1).get()
           if (refs.data.length) throw new Error('图片仍被记录引用，已保留')
         }
@@ -202,7 +244,7 @@ async function retryCleanup({ db, cloud, openid }) {
 async function handle(context) {
   const { db, cloud, user, openid, event } = context
   if (event.action === 'prepareUpload') {
-    if (!['wardrobe', 'avatars'].includes(event.directory) || !['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(event.ext)) throw new Error('图片格式无效')
+    if (!['wardrobe', 'avatars', 'stickers'].includes(event.directory) || !['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(event.ext)) throw new Error('图片格式无效')
     const id = crypto.randomBytes(16).toString('hex')
     const cloudPath = `${event.directory}/${id}.${event.ext}`
     await db.collection('upload_tickets').doc(id).set({ data: { _openid: openid, cloudPath, createdAt: new Date() } })
@@ -215,7 +257,7 @@ async function handle(context) {
     await db.runTransaction(async tx => {
       const queued = await readDoc(tx.collection('cleanup_jobs').doc(jobId(fileID)))
       if (queued && queued._openid === openid) return
-      const match = fileID.match(/^cloud:\/\/[^/]+\/(?:wardrobe|avatars)\/([a-f0-9]{32})\.(?:jpg|jpeg|png|webp|gif)$/)
+      const match = fileID.match(/^cloud:\/\/[^/]+\/(?:wardrobe|avatars|stickers)\/([a-f0-9]{32})\.(?:jpg|jpeg|png|webp|gif)$/)
       const ticket = match && await readDoc(tx.collection('upload_tickets').doc(match[1]))
       if (!ticket || ticket._openid !== openid || !fileID.endsWith('/' + ticket.cloudPath)) throw new Error('无权删除此图片')
       // 已提交图片的删除必须由替换或删除记录创建清理任务，防止响应丢失后的错误回滚。
@@ -228,9 +270,15 @@ async function handle(context) {
 
   const { collection, operation, id } = event
   if (!COLLECTIONS.includes(collection)) throw new Error('集合无效')
+  // stickers 全操作已开放（ST-01 读取建档、ST-02 编辑流转、ST-03 删除清理）
   if (operation === 'list') {
     if (!Number.isInteger(event.offset) || event.offset < 0) throw new Error('分页参数无效')
-    const res = await db.collection(collection).where({ _openid: openid }).orderBy('createdAt', 'desc').orderBy('_id', 'desc').skip(event.offset).limit(20).get()
+    const where = { _openid: openid }
+    if (collection === 'stickers' && event.status !== undefined) {
+      if (!STICKER_STATUS.includes(event.status)) throw new Error('状态无效')
+      where.status = event.status
+    }
+    const res = await db.collection(collection).where(where).orderBy('createdAt', 'desc').orderBy('_id', 'desc').skip(event.offset).limit(20).get()
     return { success: true, data: res.data }
   }
   if (!['get', 'add', 'update', 'delete'].includes(operation) && !(collection === 'wear_records' && operation === 'linkOutfit')) throw new Error('操作无效')
@@ -288,6 +336,8 @@ async function handle(context) {
         if (operation === 'delete') {
           await ref.remove()
           await queueImage(tx, openid, previous.imageFileID)
+          // 贴纸：作品照随删除一并入清理队列（空值由 queueImage 跳过）
+          if (collection === 'stickers') await queueImage(tx, openid, previous.doneImageFileID)
           if (collection === 'clothes') {
             await tx.collection('cleanup_jobs').doc('refs-' + targetId).set({ data: { _openid: openid, kind: 'references', itemId: targetId, state: 'pending' } })
             await bumpWardrobeVersion(tx, openid)
@@ -301,7 +351,7 @@ async function handle(context) {
           }
           return
         }
-        const data = wearData || cleanData(collection, event.data)
+        const data = wearData || cleanData(collection, event.data, previous)
         const previousWearKey = collection === 'wear_records' && previous
           ? wearKey(openid, previous.date, previous.itemIds || []) : null
         const changedWearKey = nextWearKey && nextWearKey !== previousWearKey
@@ -321,7 +371,11 @@ async function handle(context) {
           if (!outfit || outfit._openid !== openid) throw new Error('所选穿搭已删除或无权访问')
         }
         await claimImage(tx, openid, data.imageFileID, previous && previous.imageFileID, collection + '/' + targetId)
-        if (previous) await ref.update({ data })
+        // 贴纸作品照与封面图同规则：换图认领新票据、旧图入清理队列（撤销完成时清空亦触发入队）
+        if (collection === 'stickers') {
+          await claimImage(tx, openid, data.doneImageFileID, previous && previous.doneImageFileID, collection + '/' + targetId + '/done')
+        }
+        if (previous) await ref.update({ data: collection === 'stickers' ? { ...data, updatedAt: db.serverDate() } : data })
         else await ref.set({ data: { ...data, _openid: openid, createdAt: db.serverDate() } })
         if (collection === 'clothes' || collection === 'wear_records') {
           await bumpWardrobeVersion(tx, openid, changedWearKey ? scannedVersion : undefined)
@@ -335,6 +389,7 @@ async function handle(context) {
           if (previousWearKey) await releaseWearKey(tx, previousWearKey, targetId)
         }
         if (previous && previous.imageFileID !== data.imageFileID) await queueImage(tx, openid, previous.imageFileID)
+        if (collection === 'stickers' && previous && previous.doneImageFileID !== data.doneImageFileID) await queueImage(tx, openid, previous.doneImageFileID)
       })
       break
     } catch (error) {

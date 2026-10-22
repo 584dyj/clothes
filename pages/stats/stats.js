@@ -71,7 +71,9 @@ Page({
       const totalItems = items.length
       const totalOutfits = outfits.length
       const totalBrands = new Set(items.map(item => (item.brand || '').trim()).filter(Boolean)).size
-      const totalSpent = items.reduce((sum, item) => sum + (Number(item.price) || 0), 0)
+      // 衣橱总花费仅包含衣物与账本，贴纸开销在贴纸主页独立展示。
+      const expenseTotal = expenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0)
+      const totalSpent = items.reduce((sum, item) => sum + (Number(item.price) || 0), 0) + expenseTotal
 
       // 类别分布 + 分类花费（按全局类别顺序，空类别显示 0）
       const categoryStats = app.globalData.categories
@@ -108,7 +110,6 @@ Page({
         .sort((a, b) => b.count - a.count)
 
       // 账本开销分布（按金额，展示全部分类，空分类显示 0）
-      const expenseTotal = expenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0)
       const expenseStats = app.globalData.expenseCategories
         .map(name => {
           const amount = expenses.filter(expense => expense.category === name)

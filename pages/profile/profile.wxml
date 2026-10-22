@@ -31,6 +31,13 @@
           <text class="info-value code-value">{{registerCode}}</text>
         </view>
       </view>
+      <view class="feature-entry card" bindtap="onStickersTap">
+        <view>
+          <view class="feature-entry-title">造景贴纸</view>
+          <view class="feature-entry-hint">查看库存与心愿单，记录贴纸款式</view>
+        </view>
+        <text class="feature-entry-arrow">›</text>
+      </view>
       <view class="section-title">衣橱偏好</view>
       <view class="insight-row">
         <view class="insight-card card">

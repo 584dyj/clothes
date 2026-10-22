@@ -76,6 +76,35 @@
   margin-bottom: 32rpx;
 }
 
+.feature-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28rpx 32rpx;
+  margin-bottom: 32rpx;
+}
+
+.feature-entry:active {
+  opacity: 0.6;
+}
+
+.feature-entry-title {
+  font-size: 30rpx;
+  font-weight: 600;
+}
+
+.feature-entry-hint {
+  margin-top: 8rpx;
+  color: #9a958c;
+  font-size: 24rpx;
+}
+
+.feature-entry-arrow {
+  color: #9a958c;
+  font-size: 46rpx;
+  line-height: 1;
+}
+
 .info-row {
   display: flex;
   align-items: center;
@@ -235,7 +264,7 @@
   font-size: 24rpx;
 }
 
-.logout-btn {
+.page .logout-btn {
   width: 100%;
   margin-top: 56rpx;
 }

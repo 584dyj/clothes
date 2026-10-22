@@ -1,0 +1,37 @@
+<view class="page" bindtouchstart="onSwipeBackStart" bindtouchend="onSwipeBackEnd">
+  <view class="tabs" role="tablist" aria-label="贴纸状态">
+    <view class="tab-indicator {{activeTab === 'wishlist' ? 'tab-indicator-right' : ''}}" aria-hidden="true"></view>
+    <view class="tab {{activeTab === 'owned' ? 'tab-active' : ''}}" data-value="owned" bindtap="onTabTap" role="tab" aria-selected="{{activeTab === 'owned'}}">库存</view>
+    <view class="tab {{activeTab === 'wishlist' ? 'tab-active' : ''}}" data-value="wishlist" bindtap="onTabTap" role="tab" aria-selected="{{activeTab === 'wishlist'}}">心愿单</view>
+  </view>
+
+  <view class="stats card">
+    <view class="stats-numbers">
+      <view class="stat"><text class="stat-value">{{statsView.owned}}</text><text class="stat-label">拥有</text></view>
+      <view class="stat"><text class="stat-value">{{statsView.done}}</text><text class="stat-label">已贴</text></view>
+      <view class="stat"><text class="stat-value">{{statsView.undone}}</text><text class="stat-label">未贴</text></view>
+      <view class="stat"><text class="stat-value">¥{{statsView.spent}}</text><text class="stat-label">开销</text></view>
+    </view>
+  </view>
+
+  <view wx:if="{{loadError}}" class="empty">{{loadError}}<button bindtap="onRetry">重新加载</button></view>
+  <view wx:elif="{{loading}}" class="empty">加载中…</view>
+  <view wx:elif="{{items.length === 0}}" class="empty">{{emptyText}}</view>
+
+  <view wx:else class="grid">
+    <view wx:for="{{items}}" wx:key="_id" class="sticker-card card" data-id="{{item._id}}" bindtap="onItemTap">
+      <view class="cover">
+        <image class="cover-image" src="{{item.status === 'done' && item.doneImageFileID ? item.doneImageFileID : item.imageFileID}}" mode="aspectFill" />
+        <text wx:if="{{item.status === 'done'}}" class="done-badge">已拼贴</text>
+      </view>
+      <view class="body">
+        <view class="name">{{item.name}}</view>
+        <view wx:if="{{item.brand || item.series}}" class="meta">
+          <text>{{item.brand}}</text><text wx:if="{{item.brand && item.series}}"> · </text><text>{{item.series}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="fab" bindtap="onAddTap">+</view>
+</view>

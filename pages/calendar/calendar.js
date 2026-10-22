@@ -2,9 +2,10 @@ const db = require('../../utils/db')
 const auth = require('../../utils/auth')
 const swipeBack = require('../../utils/swipe-back')
 
-// 月历：统一合计衣物购买与独立账本开销，展示穿搭计划。
+// 月历：统一合计衣物购买、贴纸购买与独立账本开销，展示穿搭计划。
 
 const { validDate, MIN_YEAR, MAX_YEAR } = require('../../utils/date')
+const { isStocked, lineTotal } = require('../../utils/stickers')
 const WEEK_LABELS = ['日', '一', '二', '三', '四', '五', '六']
 
 Page({
@@ -32,6 +33,7 @@ Page({
     dayItems: [],
     dayExpenses: [],
     dayPlans: [],
+    hasDayRecords: false,
     selectedTotal: 0,
     undatedTotal: 0,
     canPrev: true,
@@ -63,13 +65,14 @@ Page({
   async loadData(force = false) {
     this.setData({ loadError: '' })
     try {
-      const [items, expenses, plans, outfits] = await Promise.all([
-        db.listItems(force), db.listExpenses(force), db.listPlans(force), db.listOutfits(force)
+      const [items, expenses, plans, outfits, stickers] = await Promise.all([
+        db.listItems(force), db.listExpenses(force), db.listPlans(force), db.listOutfits(force), db.listStickers(force)
       ])
       this._items = items
       this._expenses = expenses
       this._plans = plans
       this._outfits = outfits
+      this._stickers = stickers
       this.setData({ loading: false })
       this.render()
     } catch (e) {
@@ -111,6 +114,16 @@ Page({
       dayTotal[expense.date] = (dayTotal[expense.date] || 0) + amount
       if (y === year && m === month) monthTotal += amount
       if (y === year) yearTotal += amount
+    })
+    // 贴纸购买（owned + done，单价 × 数量）：心愿单不计；购入日期缺失不计（SPEC 3.4）
+    ;(this._stickers || []).forEach(row => {
+      if (!isStocked(row)) return
+      const cents = Math.round(lineTotal(row) * 100)
+      if (cents <= 0 || !validDate(row.purchasedAt || '')) return
+      const [y, m] = row.purchasedAt.split('-').map(Number)
+      dayTotal[row.purchasedAt] = (dayTotal[row.purchasedAt] || 0) + cents
+      if (y === year && m === month) monthTotal += cents
+      if (y === year) yearTotal += cents
     })
     // 计划标记
     const planDates = {}
@@ -160,9 +173,13 @@ Page({
       .map(expense => ({ ...expense, amount: Math.round(Number(expense.amount) * 100) / 100 }))
     const dayPlans = (this._plans || []).filter(plan => plan.date === date)
       .map(plan => ({ ...plan, outfitName: this.outfitNameOf(plan.outfitId) }))
+    const dayStickers = (this._stickers || []).filter(row => isStocked(row) && row.purchasedAt === date)
+    const stickerCents = dayStickers.reduce((total, row) => total + Math.round(lineTotal(row) * 100), 0)
     const cents = dayItems.reduce((total, item) => total + Math.round(item.price * 100), 0) +
-      dayExpenses.reduce((total, expense) => total + Math.round(expense.amount * 100), 0)
-    this.setData({ selectedDate: date, dayItems, dayExpenses, dayPlans, selectedTotal: cents / 100 })
+      dayExpenses.reduce((total, expense) => total + Math.round(expense.amount * 100), 0) +
+      stickerCents
+    this.setData({ selectedDate: date, dayItems, dayExpenses, dayPlans, selectedTotal: cents / 100,
+      hasDayRecords: dayItems.length + dayExpenses.length + dayPlans.length + dayStickers.length > 0 })
   },
 
   onDayTap(e) { this.selectDate(e.currentTarget.dataset.date) },

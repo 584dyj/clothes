@@ -112,6 +112,7 @@
     title="{{multiPicker.title}}"
     options="{{multiPicker.options}}"
     selected="{{multiPicker.selected}}"
+    four-columns="{{multiPicker.target === 'category'}}"
     bind:confirm="onMultiConfirm"
     bind:cancel="onMultiCancel"
   />

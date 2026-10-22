@@ -8,7 +8,7 @@ function loadCloud(records = {}) {
   let openid = 'openid-1', sequence = 0, chain = Promise.resolve()
   const calls = [], deletedFiles = [], downloads = [], sentMessages = []
   const faults = { before: null, deleteStatus: 0, download: null, send: null }
-  for (const name of ['users', 'invite_codes', 'auth_attempts', 'clothes', 'outfits', 'upload_tickets', 'cleanup_jobs', 'expenses', 'wear_records', 'outfit_plans', 'ai_chats', 'wardrobe_meta', 'ai_cache', 'subscriptions']) records[name] ||= []
+  for (const name of ['users', 'invite_codes', 'auth_attempts', 'clothes', 'outfits', 'upload_tickets', 'cleanup_jobs', 'expenses', 'wear_records', 'outfit_plans', 'ai_chats', 'wardrobe_meta', 'ai_cache', 'subscriptions', 'stickers']) records[name] ||= []
   const clone = value => structuredClone(value)
   const command = { all: values => ({ all: values }), pull: value => ({ pull: value }), remove: () => ({ remove: true }),
     gt: value => ({ gt: value }), gte: value => ({ gte: value }), in: values => ({ in: values }) }

@@ -52,6 +52,9 @@ async function uploadImage(tempFilePath, directory = 'wardrobe') {
   return res.fileID
 }
 
+// 贴纸封面图与作品照统一走 stickers 目录（封面/作品照之分体现在认领时的 target）
+const uploadStickerImage = tempFilePath => uploadImage(tempFilePath, 'stickers')
+
 // 清理任务在云端持久保存，失败可从个人页重试。
 async function removeImage(fileID) {
   if (!fileID) return true
@@ -74,7 +77,8 @@ const cache = {
   outfits: { version: 0, data: null, at: 0, promise: null },
   expenses: { version: 0, data: null, at: 0, promise: null },
   wear_records: { version: 0, data: null, at: 0, promise: null },
-  outfit_plans: { version: 0, data: null, at: 0, promise: null }
+  outfit_plans: { version: 0, data: null, at: 0, promise: null },
+  stickers: { version: 0, data: null, at: 0, promise: null }
 }
 
 function invalidate(collection) {
@@ -132,6 +136,8 @@ const listOutfitsPage = offset => call('data', { operation: 'list', collection: 
 const listExpenses = (force = false) => list('expenses', force)
 const listWearRecords = (force = false) => list('wear_records', force)
 const listPlans = (force = false) => list('outfit_plans', force)
+// 贴纸全量缓存读取，心愿/库存/已拼贴由页面按 status 过滤（与衣橱同模式）
+const listStickers = (force = false) => list('stickers', force)
 const getItem = id => call('data', { operation: 'get', collection: 'clothes', id }).then(res => normalizeItem(res.data))
 const getOutfit = id => call('data', { operation: 'get', collection: 'outfits', id }).then(res => res.data)
 const getWearRecord = id => call('data', { operation: 'get', collection: 'wear_records', id }).then(res => res.data)
@@ -162,6 +168,11 @@ const linkWearOutfit = (id, outfitId) => write('wear_records', 'linkOutfit', id,
 const addPlan = data => write('outfit_plans', 'add', undefined, data).then(res => res._id)
 const updatePlan = (id, data) => write('outfit_plans', 'update', id, data)
 const deletePlan = id => write('outfit_plans', 'delete', id)
+// 贴纸统计：实时聚合，不走列表缓存（与列表数据同源自洽）
+const stickerStats = () => call('stickerStats').then(result => result.stats)
+const addSticker = data => write('stickers', 'add', undefined, data).then(res => res._id)
+const updateSticker = (id, data) => write('stickers', 'update', id, data)
+const deleteSticker = id => write('stickers', 'delete', id)
 
 // 通过已有接口读取可选字段，兼容尚未部署清理状态功能的云函数。
 const cleanupStatus = () => call('profile').then(result => ({ pendingCleanup: result.profile && result.profile.pendingCleanup === true }))
@@ -291,9 +302,10 @@ function callWeather(data) {
 const setCity = cityName => callWeather({ action: 'setCity', cityName })
 const setCityByLocation = (longitude, latitude) => callWeather({ action: 'setCityByLocation', longitude, latitude })
 
-module.exports = { chooseImage, uploadImage, removeImage, retryCleanup, cleanupStatus, clearCache, getWardrobeVersion,
+module.exports = { chooseImage, uploadImage, uploadStickerImage, removeImage, retryCleanup, cleanupStatus, clearCache, getWardrobeVersion,
   listItems, getItem, addItem, updateItem, deleteItem, listOutfits, listOutfitsPage, getOutfit, addOutfit, updateOutfit, deleteOutfit,
   listExpenses, addExpense, updateExpense, deleteExpense,
   listWearRecords, getWearRecord, addWearRecord, updateWearRecord, deleteWearRecord, linkWearOutfit,
   listPlans, addPlan, updatePlan, deletePlan,
+  listStickers, stickerStats, addSticker, updateSticker, deleteSticker,
   chatList, chatGet, chatSend, chatDelete, chatRename, purchaseAssess, purchaseVisual, itemScan, subscribeReport, subscribeWeather, cancelReport, cancelWeather, getSubscriptionStatus, setCity, setCityByLocation }

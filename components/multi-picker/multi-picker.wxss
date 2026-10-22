@@ -69,6 +69,20 @@
   font-size: 30rpx;
 }
 
+.mp-options-grid {
+  gap: 16rpx;
+}
+
+.mp-options-grid .mp-opt {
+  flex: 0 0 calc((100% - 48rpx) / 4);
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 14rpx 8rpx;
+  margin: 0;
+  text-align: center;
+  white-space: nowrap;
+}
+
 .mp-opt-active {
   background: #3a3835;
   color: #ffffff;

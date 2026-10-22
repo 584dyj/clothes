@@ -133,7 +133,44 @@ test('月历账本加载失败显示错误可重试', async () => {
   assert.equal(page.data.loadError, '加载失败，请重试')
 })
 
+test('仅有贴纸购买的日期显示合计并关闭空态，心愿单不算记录', async () => {
+  const purchasedAt = thisMonth(20)
+  const wishDate = thisMonth(21)
+  const page = loadPage('calendar', {
+    listItems: async () => [], listExpenses: async () => [],
+    listPlans: async () => [], listOutfits: async () => [],
+    listStickers: async () => [
+      { _id: 'owned', status: 'owned', price: 10, quantity: 2, purchasedAt },
+      { _id: 'wish', status: 'wishlist', price: 999, quantity: 1, purchasedAt: wishDate }
+    ]
+  })
+  page.onLoad()
+  await page.loadData()
+  page.onDayTap({ currentTarget: { dataset: { date: purchasedAt } } })
+  assert.equal(page.data.selectedTotal, 20)
+  assert.equal(page.data.hasDayRecords, true)
+  assert.equal(page.data.dayItems.length + page.data.dayExpenses.length + page.data.dayPlans.length, 0)
+  page.onDayTap({ currentTarget: { dataset: { date: wishDate } } })
+  assert.equal(page.data.selectedTotal, 0)
+  assert.equal(page.data.hasDayRecords, false)
+})
+
 // ---------- stats 账本分布 ----------
+
+test('衣橱统计总花费仅合并衣物与账本，不依赖贴纸读取', async () => {
+  let stickerReads = 0
+  const page = loadPage('stats', {
+    listItems: async () => [{ _id: 'item', price: 100 }],
+    listExpenses: async () => [{ _id: 'expense', amount: 40, category: '洗护' }],
+    listOutfits: async () => [], listWearRecords: async () => [],
+    listStickers: async () => { stickerReads++; throw Error('贴纸接口不可用') }
+  })
+  await page.loadStats()
+  assert.equal(page.data.totalSpent, 140)
+  assert.equal(page.data.expenseTotal, 40)
+  assert.equal(page.data.loadError, '')
+  assert.equal(stickerReads, 0)
+})
 
 test('统计页账本分布按金额排序，无账本时总额为零', async () => {
   const page = loadPage('stats', {

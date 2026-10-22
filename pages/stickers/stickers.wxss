@@ -1,0 +1,154 @@
+.page {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 24rpx 24rpx 160rpx;
+}
+
+.tabs {
+  position: relative;
+  display: flex;
+  padding: 6rpx;
+  margin-bottom: 20rpx;
+  border-radius: 36rpx;
+  background: #e9e5de;
+}
+
+.tab-indicator {
+  position: absolute;
+  top: 6rpx;
+  bottom: 6rpx;
+  left: 6rpx;
+  width: calc(50% - 6rpx);
+  border-radius: 32rpx;
+  background: #ffffff;
+  transform: translateX(0);
+  transition: transform 240ms ease;
+}
+
+.tab-indicator-right {
+  transform: translateX(100%);
+}
+
+.tab {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  height: 64rpx;
+  line-height: 64rpx;
+  border-radius: 32rpx;
+  color: #77716a;
+  text-align: center;
+  font-size: 26rpx;
+  transition: color 240ms ease;
+}
+
+.tab-active {
+  color: #3a3835;
+  font-weight: 600;
+}
+
+.grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.sticker-card {
+  width: 48.5%;
+  margin-bottom: 20rpx;
+  overflow: hidden;
+}
+
+.cover {
+  position: relative;
+  width: 100%;
+  padding-top: 100%;
+  background: #efede8;
+}
+
+.cover-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.done-badge {
+  position: absolute;
+  top: 14rpx;
+  right: 14rpx;
+  padding: 6rpx 14rpx;
+  border-radius: 20rpx;
+  background: rgba(58, 56, 53, 0.82);
+  color: #ffffff;
+  font-size: 22rpx;
+}
+
+.body {
+  padding: 16rpx 18rpx 20rpx;
+}
+
+.name {
+  overflow: hidden;
+  color: #3a3835;
+  font-size: 28rpx;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  overflow: hidden;
+  margin-top: 8rpx;
+  color: #9a958c;
+  font-size: 23rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stats {
+  margin-bottom: 24rpx;
+  padding: 12rpx 24rpx;
+}
+
+.stats-numbers {
+  display: flex;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  padding: 12rpx 0;
+}
+
+.stat-value {
+  color: #3a3835;
+  font-size: 32rpx;
+  font-weight: 600;
+}
+
+.stat-label {
+  margin-top: 6rpx;
+  color: #9a958c;
+  font-size: 22rpx;
+}
+
+.fab {
+  position: fixed;
+  right: 40rpx;
+  bottom: 60rpx;
+  width: 100rpx;
+  height: 100rpx;
+  border-radius: 50%;
+  background: #3a3835;
+  box-shadow: 0 6rpx 20rpx rgba(58, 56, 53, 0.3);
+  color: #ffffff;
+  font-size: 60rpx;
+  line-height: 96rpx;
+  text-align: center;
+}

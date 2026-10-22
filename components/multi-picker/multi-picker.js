@@ -5,6 +5,7 @@
 //   title    标题
 //   options  全部可选项（字符串数组）
 //   selected 当前已选项（字符串数组）
+//   fourColumns 类型筛选使用四列等宽布局
 // 事件：
 //   bind:confirm  确定，e.detail.selected 为已选数组
 //   bind:cancel   取消 / 点遮罩
@@ -13,7 +14,8 @@ Component({
     show: { type: Boolean, value: false },
     title: { type: String, value: '' },
     options: { type: Array, value: [] },
-    selected: { type: Array, value: [] }
+    selected: { type: Array, value: [] },
+    fourColumns: { type: Boolean, value: false }
   },
 
   data: {

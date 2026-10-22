@@ -229,6 +229,8 @@
   text-align: center;
 }
 
-.save-btn {
-  margin-bottom: 24rpx;
+.page .save-btn {
+  width: 100%;
+  margin: 0 0 24rpx;
+  box-sizing: border-box;
 }

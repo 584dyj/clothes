@@ -1,0 +1,108 @@
+<view class="page" bindtouchstart="onSwipeBackStart" bindtouchend="onSwipeBackEnd">
+  <view wx:if="{{loading}}" class="empty">加载中…</view>
+  <view wx:elif="{{loadError}}" class="empty">{{loadError}}<button bindtap="onRetry">重新加载</button></view>
+
+  <view wx:if="{{!loading && !loadError}}">
+    <view class="cover card" bindtap="onChooseImage">
+      <image wx:if="{{imagePath || imageFileID}}" class="cover-image" src="{{imagePath || imageFileID}}" mode="aspectFill" />
+      <view wx:else class="cover-empty">＋<text>上传封面图</text></view>
+    </view>
+
+    <view class="form card">
+      <view class="field {{id ? '' : 'field-column'}}">
+        <text class="label">状态</text>
+        <view wx:if="{{!id}}" class="chip-row">
+          <view wx:for="{{statusOptions}}" wx:key="value"
+            class="chip {{status === item.value ? 'chip-active' : ''}}"
+            data-value="{{item.value}}" bindtap="onStatusTap"
+          >{{item.label}}</view>
+        </view>
+        <text wx:else class="value-text">{{status === 'wishlist' ? '心愿单' : status === 'done' ? '已拼贴' : '库存'}}</text>
+      </view>
+
+      <view class="field">
+        <text class="label">名称 *</text>
+        <input class="input" maxlength="100" value="{{name}}" placeholder="必填" data-field="name" bindinput="onInput" />
+      </view>
+      <view class="field">
+        <text class="label">店铺</text>
+        <input class="input" maxlength="100" value="{{brand}}" placeholder="可选" data-field="brand" bindinput="onInput" />
+      </view>
+      <view class="field">
+        <text class="label">系列名</text>
+        <input class="input" maxlength="100" value="{{series}}" placeholder="可选" data-field="series" bindinput="onInput" />
+      </view>
+      <view class="field">
+        <text class="label">单价</text>
+        <input class="input" type="digit" value="{{price}}" placeholder="可选，单位：元" data-field="price" bindinput="onInput" />
+      </view>
+      <view class="field">
+        <text class="label">数量</text>
+        <input class="input" type="number" value="{{quantity}}" placeholder="默认 1" data-field="quantity" bindinput="onInput" />
+      </view>
+      <view class="field">
+        <text class="label">购入日期</text>
+        <view class="date-value {{purchasedAt ? '' : 'placeholder'}}" bindtap="openDatePicker">{{purchasedAt || '可选'}}</view>
+        <text wx:if="{{purchasedAt}}" class="clear" bindtap="onClearDate">清除</text>
+      </view>
+      <view class="field">
+        <text class="label">渠道</text>
+        <input class="input" maxlength="100" value="{{channel}}" placeholder="可选" data-field="channel" bindinput="onInput" />
+      </view>
+      <view class="field field-column field-last">
+        <text class="label">主题标签</text>
+        <view class="chip-row">
+          <view wx:for="{{themeTags}}" wx:key="*this"
+            class="chip theme-chip {{themeTag === item ? 'chip-active' : ''}}"
+            data-value="{{item}}" bindtap="onThemeTap"
+          >{{item}}</view>
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{id && status === 'done'}}" class="done-info card">
+      <image class="done-image" src="{{doneImageFileID}}" mode="aspectFill" />
+      <view class="done-date">完成于 {{doneAt}}</view>
+    </view>
+
+    <!-- 底部操作等宽排列，状态动作仅在编辑已有贴纸时显示 -->
+    <view class="actions">
+      <button class="btn-primary" bindtap="onSave" disabled="{{saving || !ready}}">{{saving ? '保存中…' : '保存'}}</button>
+      <block wx:if="{{id}}">
+        <button wx:if="{{status === 'wishlist'}}" class="btn-plain" bindtap="onConvert" disabled="{{saving || acting}}">转为库存</button>
+        <button wx:elif="{{status === 'done'}}" class="btn-plain" bindtap="onRevertDone" disabled="{{saving || acting}}">撤销完成</button>
+        <button wx:else class="btn-plain" bindtap="onOpenDoneSheet" disabled="{{saving || acting}}">标记已拼贴</button>
+        <button class="btn-danger" bindtap="onDelete" disabled="{{saving || acting}}">删除</button>
+      </block>
+    </view>
+  </view>
+
+  <!-- 标记已拼贴弹层：完成日期（默认今天、不可未来）+ 作品照（必传） -->
+  <view wx:if="{{doneSheet.show}}" class="sheet-mask" bindtap="onDoneSheetCancel">
+    <view class="sheet" catchtap="noop">
+      <view class="sheet-title">标记已拼贴</view>
+      <view class="done-cover card" bindtap="onChooseDoneImage">
+        <image wx:if="{{doneSheet.imagePath}}" class="cover-image" src="{{doneSheet.imagePath}}" mode="aspectFill" />
+        <view wx:else class="cover-empty">＋<text>上传作品照（必传）</text></view>
+      </view>
+      <view class="field">
+        <text class="label">完成日期</text>
+        <view class="date-value" bindtap="openDoneDatePicker">{{doneSheet.doneAt}}</view>
+      </view>
+      <view class="sheet-buttons">
+        <button class="btn-plain" bindtap="onDoneSheetCancel" disabled="{{acting}}">取消</button>
+        <button class="btn-primary" bindtap="onConfirmDone" disabled="{{acting}}">{{acting ? '提交中…' : '确认完成'}}</button>
+      </view>
+    </view>
+  </view>
+
+  <wheel-picker
+    show="{{picker.show}}"
+    title="{{picker.title}}"
+    columns="{{picker.columns}}"
+    values="{{picker.values}}"
+    bind:confirm="onPickerConfirm"
+    bind:cancel="onPickerCancel"
+    bind:columnchange="onPickerColumnChange"
+  />
+</view>
