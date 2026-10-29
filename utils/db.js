@@ -78,7 +78,8 @@ const cache = {
   expenses: { version: 0, data: null, at: 0, promise: null },
   wear_records: { version: 0, data: null, at: 0, promise: null },
   outfit_plans: { version: 0, data: null, at: 0, promise: null },
-  stickers: { version: 0, data: null, at: 0, promise: null }
+  stickers: { version: 0, data: null, at: 0, promise: null },
+  brands: { version: 0, data: null, at: 0, promise: null }
 }
 
 function invalidate(collection) {
@@ -86,6 +87,7 @@ function invalidate(collection) {
   state.version++
   state.data = null
   state.promise = null
+  if (collection === 'clothes') invalidate('brands')
 }
 
 function clearCache() { for (const collection of Object.keys(cache)) invalidate(collection) }
@@ -106,7 +108,8 @@ function list(collection, force = false) {
   if (state.data && Date.now() - state.at < CACHE_TTL) return Promise.resolve(state.data)
   if (state.promise) return state.promise
   const version = state.version
-  const promise = listAll(collection).then(data => {
+  const load = collection === 'brands' ? call('listBrands').then(result => result.brands) : listAll(collection)
+  const promise = load.then(data => {
     if (version !== state.version) return list(collection)
     state.data = collection === 'clothes' ? data.map(normalizeItem) : data
     state.at = Date.now()
@@ -131,6 +134,7 @@ function normalizeItem(item) {
 }
 
 const listItems = (force = false) => list('clothes', force)
+const listBrands = (force = false) => list('brands', force)
 const listOutfits = (force = false) => list('outfits', force)
 const listOutfitsPage = offset => call('data', { operation: 'list', collection: 'outfits', offset }).then(result => result.data)
 const listExpenses = (force = false) => list('expenses', force)
@@ -155,7 +159,7 @@ async function write(collection, operation, id, data, extra = {}) {
 const addItem = data => write('clothes', 'add', undefined, data).then(res => res._id)
 const updateItem = (id, data) => write('clothes', 'update', id, data)
 const deleteItem = id => write('clothes', 'delete', id)
-const addOutfit = data => write('outfits', 'add', undefined, data).then(res => res._id)
+const addOutfit = (data, requestId) => write('outfits', 'add', undefined, data, requestId === undefined ? {} : { requestId }).then(res => res._id)
 const updateOutfit = (id, data) => write('outfits', 'update', id, data)
 const deleteOutfit = id => write('outfits', 'delete', id)
 const addExpense = data => write('expenses', 'add', undefined, data).then(res => res._id)
@@ -165,7 +169,7 @@ const addWearRecord = data => write('wear_records', 'add', undefined, data).then
 const updateWearRecord = (id, data) => write('wear_records', 'update', id, data)
 const deleteWearRecord = id => write('wear_records', 'delete', id)
 const linkWearOutfit = (id, outfitId) => write('wear_records', 'linkOutfit', id, undefined, { outfitId })
-const addPlan = data => write('outfit_plans', 'add', undefined, data).then(res => res._id)
+const addPlan = (data, requestId) => write('outfit_plans', 'add', undefined, data, requestId === undefined ? {} : { requestId }).then(res => res._id)
 const updatePlan = (id, data) => write('outfit_plans', 'update', id, data)
 const deletePlan = id => write('outfit_plans', 'delete', id)
 // 贴纸统计：实时聚合，不走列表缓存（与列表数据同源自洽）
@@ -302,11 +306,12 @@ function callWeather(data) {
 }
 const setCity = cityName => callWeather({ action: 'setCity', cityName })
 const setCityByLocation = (longitude, latitude) => callWeather({ action: 'setCityByLocation', longitude, latitude })
+const dailyRecommendation = (data = {}) => callWeather({ ...data, action: 'dailyRecommendation' })
 
 module.exports = { chooseImage, uploadImage, uploadStickerImage, removeImage, retryCleanup, cleanupStatus, clearCache, getWardrobeVersion,
-  listItems, getItem, addItem, updateItem, deleteItem, listOutfits, listOutfitsPage, getOutfit, addOutfit, updateOutfit, deleteOutfit,
+  listItems, listBrands, getItem, addItem, updateItem, deleteItem, listOutfits, listOutfitsPage, getOutfit, addOutfit, updateOutfit, deleteOutfit,
   listExpenses, addExpense, updateExpense, deleteExpense,
   listWearRecords, getWearRecord, addWearRecord, updateWearRecord, deleteWearRecord, linkWearOutfit,
   listPlans, addPlan, updatePlan, deletePlan,
   listStickers, stickerStats, addSticker, updateSticker, deleteSticker,
-  chatList, chatGet, chatSend, chatDelete, chatRename, purchaseAssess, purchaseVisual, itemScan, subscribeReport, subscribeWeather, cancelReport, cancelWeather, getSubscriptionStatus, getWeatherRecommendation, setCity, setCityByLocation }
+  chatList, chatGet, chatSend, chatDelete, chatRename, purchaseAssess, purchaseVisual, itemScan, subscribeReport, subscribeWeather, cancelReport, cancelWeather, getSubscriptionStatus, getWeatherRecommendation, dailyRecommendation, setCity, setCityByLocation }

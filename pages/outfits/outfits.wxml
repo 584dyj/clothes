@@ -1,6 +1,20 @@
 <view class="page">
+  <view class="wear-entry card" bindtap="onDailyTap" role="button" aria-label="查看明日穿搭推荐">
+    <view>
+      <view class="wear-entry-title">明日穿什么</view>
+      <view class="wear-entry-hint">按天气搭配，可换一套或替换单件</view>
+    </view>
+    <text class="wear-entry-arrow">›</text>
+  </view>
   <view wx:if="{{loadError}}" class="empty">{{loadError}}<button bindtap="onRetry">重新加载</button></view>
   <block wx:if="{{!loadError}}">
+  <view wx:for="{{todayPlans}}" wx:key="_id" class="wear-entry card">
+    <view>
+      <view class="wear-entry-title">今日计划：{{item.name}}</view>
+      <view class="wear-entry-hint">{{item.date}} · {{item.wornToday ? '已记录实穿，可查看或调整' : '确认实际衣物后才计入实穿'}}</view>
+      <button data-id="{{item._id}}" bindtap="onPlanWearTap" disabled="{{!item.available}}">{{item.wornToday ? '查看或调整实穿' : '调整并确认实穿'}}</button>
+    </view>
+  </view>
   <!-- 实穿记录入口：保持在页面顶部（搭配本本身不设日期录入入口） -->
   <view class="wear-entry card" bindtap="onWearTap">
     <view>

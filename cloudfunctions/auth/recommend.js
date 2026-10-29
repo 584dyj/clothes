@@ -7,7 +7,7 @@ const MAX_ITEMS = 120
 const RECENT_ITEMS = 60
 const SCAN_LIMIT = 500
 const MAX_WEAR_RECORDS = 500
-const INVENTORY_CACHE_VERSION = 3
+const INVENTORY_CACHE_VERSION = 4
 const CACHE_MS = 10 * 60 * 1000
 const COOLDOWN_MS = 60 * 1000
 const BUSY_MS = 25 * 1000
@@ -20,7 +20,8 @@ const STYLING_RULES = `专业穿搭原则（必须遵守）：
 3. 风格统一：一套只走一种风格基调（简约/通勤/休闲/甜美/街头），不混搭冲突风格。
 4. 材质呼应：休闲配棉麻牛仔，正式配羊毛真丝西装料；同套材质软硬有层次。
 5. 场合适配：通勤求利落得体，约会求精致温柔，运动求功能轻便，正式求质感挺括。
-6. 点睛：全身只保留一个视觉焦点（一件亮色或一个配饰），避免处处是重点。`
+6. 点睛：全身只保留一个视觉焦点（一件亮色或一个配饰），避免处处是重点。
+7. 马甲作为独立叠穿层，需搭配内层上衣或连衣裙，不能单独充当上衣，也不能替代低温所需的保暖外套；按季节匹配，不凭马甲名称推断保暖程度。`
 
 async function getWardrobeVersion(db, openid) {
   const meta = await readDoc(db.collection('wardrobe_meta').doc(crypto.createHash('sha256').update('wardrobe:' + openid).digest('hex')))
@@ -139,7 +140,7 @@ function inventory(items) {
   }))
 }
 
-// 缺口按搭配角色判断，不按 18 细类逐个检查：缺少某个款式不构成补购缺口
+// 缺口按搭配角色判断，不按细类逐个检查：缺少某个款式不构成补购缺口
 const GAP_ROLES = [['top', '上衣'], ['bottom', '下装'], ['shoes', '鞋']]
 
 function findGaps(items) {
@@ -280,11 +281,15 @@ const recommendationId = (openid, date) => 'weather-reco-' + crypto.createHash('
 // 读取天气提醒落库的每日推荐（ai_cache 中的 weather-reco-* 文档），供落地页展示与保存。
 async function getWeatherRecommendation({ db, openid, date }) {
   if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('日期无效')
-  const doc = await readDoc(db.collection('ai_cache').doc(recommendationId(openid, date)))
+  const formal = await readDoc(db.collection('ai_cache').doc(recommendationId(openid, date)))
+  const doc = formal && formal.status !== 'prepared' ? formal :
+    await readDoc(db.collection('ai_cache').doc(recommendationId(openid, date) + '-preview')) || formal
   if (!doc || doc._openid !== openid) return { success: true, recommendation: null }
   return { success: true, recommendation: {
     date: doc.date || date,
     advice: typeof doc.advice === 'string' ? doc.advice : '',
+    reason: typeof doc.reason === 'string' ? doc.reason : '',
+    missing: Array.isArray(doc.missing) ? doc.missing : [],
     weather: doc.weather && typeof doc.weather === 'object' ? doc.weather : null,
     itemIds: Array.isArray(doc.itemIds) ? doc.itemIds : [],
     items: Array.isArray(doc.items) ? doc.items : []

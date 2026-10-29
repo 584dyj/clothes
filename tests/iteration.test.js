@@ -14,11 +14,11 @@ const user = () => ({ _id: 'user', openid: 'openid-1', username: 'alice', salt: 
 const item = () => ({ name: '衬衫', category: '衬衫', seasons: ['春秋'], price: 10, imageFileID: '' })
 const dataCall = (operation, collection = 'clothes', extra = {}) => ({ action: 'data', operation, collection, ...extra })
 
-test('客户端与云端 18 类顺序、配饰子类及推荐资格一致', () => {
+test('客户端与云端 19 类顺序、配饰子类及推荐资格一致', () => {
   let app
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8'),
     { App(value) { app = value }, require: createRequire(path.join(__dirname, '../app.js')) })
-  assert.deepEqual(CATEGORIES, ['外套', '短袖', '长袖', '衬衫', '羽绒服', '保暖衣', '毛衣', '家居服', '连衣裙', '长裙', '短裙', '长裤', '短裤', '配饰', '挂件', '包袋', '鞋', '其他'])
+  assert.deepEqual(CATEGORIES, ['外套', '马甲', '短袖', '长袖', '衬衫', '羽绒服', '保暖衣', '毛衣', '家居服', '连衣裙', '长裙', '短裙', '长裤', '短裤', '配饰', '挂件', '包袋', '鞋', '其他'])
   assert.deepEqual(Array.from(app.globalData.categories), CATEGORIES)
   assert.deepEqual(ACCESSORY_TYPES, ['袜子', '帽子', '围巾', '首饰', '其他'])
   assert.deepEqual(Array.from(app.globalData.accessoryTypes), ACCESSORY_TYPES)
@@ -27,7 +27,7 @@ test('客户端与云端 18 类顺序、配饰子类及推荐资格一致', () =
   for (const value of [null, undefined, {}, { category: '未知' }, { category: '上衣' }]) assert.equal(isRecommendable(value), false)
 })
 
-test('18 类均可新增与更新，非配饰清空子类并保留原 ID 与历史引用', async () => {
+test('19 类均可新增与更新，非配饰清空子类并保留原 ID 与历史引用', async () => {
   const c = loadCloud({ users: [user()], clothes: [{ _id: 'one', _openid: 'openid-1', ...item() }],
     outfits: [{ _id: 'look', _openid: 'openid-1', itemIds: ['one'] }],
     wear_records: [{ _id: 'wear', _openid: 'openid-1', date: '2026-10-01', itemIds: ['one'] }] })

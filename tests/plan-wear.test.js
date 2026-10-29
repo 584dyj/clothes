@@ -196,7 +196,7 @@ test('统计页穿着频次与闲置榜按记录计算，删除单品不计入',
   assert.deepEqual(Array.from(page.data.idleRank, row => row.name), ['长裤'])
 })
 
-test('穿着页按 18 类分组选品，其他与配饰袜子跨分类选择不丢失并保存', async () => {
+test('穿着页按 19 类分组选品，其他与配饰袜子跨分类选择不丢失并保存', async () => {
   const saved = []
   const page = loadPage('wear-edit', {
     listItems: async () => [

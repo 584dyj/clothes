@@ -4,10 +4,10 @@ const { loadPage } = require('./support/page')
 const { loadCloud } = require('./support/cloud')
 const { CATEGORIES, ACCESSORY_TYPES } = require('../cloudfunctions/auth/categories')
 
-// 服装十三类：开放季节筛选的类别（与 category 页常量保持一致）
-const SEASON_CATEGORIES = ['外套', '短袖', '长袖', '衬衫', '羽绒服', '保暖衣', '毛衣', '家居服', '连衣裙', '长裙', '短裙', '长裤', '短裤']
+// 服装十四类：开放季节筛选的类别（与 category 页常量保持一致）
+const SEASON_CATEGORIES = ['外套', '马甲', '短袖', '长袖', '衬衫', '羽绒服', '保暖衣', '毛衣', '家居服', '连衣裙', '长裙', '短裙', '长裤', '短裤']
 
-test('衣橱首页按 18 类固定顺序分组，空类别保留且每类最近 5 件，挂件连衣裙与其他正常分组', async () => {
+test('衣橱首页按 19 类固定顺序分组，空类别保留且每类最近 5 件，挂件连衣裙与其他正常分组', async () => {
   const items = [
     { _id: 'charm', name: '玩偶', category: '挂件' },
     { _id: 'dress', name: '连体裙', category: '连衣裙' },
@@ -52,7 +52,7 @@ test('衣橱筛选模式按新类别与搜索词过滤', async () => {
   assert.deepEqual(Array.from(page.data.filtered.map(item => item._id)), ['misc'])
 })
 
-test('类别详情页仅服装十三类显示季节筛选，配饰显示全部子类筛选，其余类别均无', async () => {
+test('类别详情页仅服装十四类显示季节筛选，配饰显示全部子类筛选，其余类别均无', async () => {
   for (const category of CATEGORIES) {
     const page = loadPage('category', { listItems: async () => [] })
     await page.onLoad({ category })
@@ -93,7 +93,7 @@ test('类别详情页季节与子类筛选过滤正确，现有挂件与连衣�
   assert.equal(kept.data.showSubFilter, false)
 })
 
-test('单件页面按固定顺序手选全部 18 类并实际保存，袜子保留配饰子类', async () => {
+test('单件页面按固定顺序手选全部 19 类并实际保存，袜子保留配饰子类', async () => {
   const cloud = loadCloud({ users: [{ _id: 'user', openid: 'openid-1' }] })
   for (const category of CATEGORIES) {
     const page = loadPage('item-edit', { addItem: async data => {

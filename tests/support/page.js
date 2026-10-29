@@ -4,7 +4,7 @@ const path = require('node:path')
 const { createRequire } = require('node:module')
 
 function loadPage(name, db = {}, wx = {}, auth = {}) {
-  db = { getWardrobeVersion: () => 0, listStickers: async () => [], ...db }
+  db = { getWardrobeVersion: () => 0, listStickers: async () => [], listPlans: async () => [], ...db }
   const file = path.resolve(__dirname, `../../pages/${name}/${name}.js`)
   const localRequire = createRequire(file)
   let page, app
@@ -24,7 +24,7 @@ function loadPage(name, db = {}, wx = {}, auth = {}) {
   page.setData = (patch, callback) => {
     for (const [key, value] of Object.entries(patch)) {
       const parts = key.split('.'); let target = page.data
-      for (const part of parts.slice(0, -1)) target = target[part]
+      for (const part of parts.slice(0, -1)) target = target[part] ??= {}
       target[parts.at(-1)] = value
     }
     if (callback) callback()
@@ -49,7 +49,7 @@ function loadComponent(name, db = {}, wx = {}, auth = {}) {
   component.setData = patch => {
     for (const [key, value] of Object.entries(patch)) {
       const parts = key.split('.'); let target = component.data
-      for (const part of parts.slice(0, -1)) target = target[part]
+      for (const part of parts.slice(0, -1)) target = target[part] ??= {}
       target[parts.at(-1)] = value
     }
   }

@@ -133,7 +133,7 @@ test('衣橱画像命中缓存，衣物写入后按版本重建', async () => {
   const first = await recommendation.getInventory(cloud.db, 'openid-1')
   assert.equal(first.items.length, 1)
   assert.equal(cloud.records.ai_cache.length, 1)
-  assert.equal(cloud.records.ai_cache[0].strategyVersion, 3)
+  assert.equal(cloud.records.ai_cache[0].strategyVersion, 4)
   const reads = () => cloud.calls.filter(call => call.collection === 'clothes' && call.operation === 'get').length
   const count = reads()
   assert.deepEqual((await recommendation.getInventory(cloud.db, 'openid-1')).items, first.items)
@@ -217,13 +217,16 @@ test('推荐完整性按冻结角色判定：内搭加下装或连衣裙通过�
     { id: 'shirt', category: '衬衫' }, { id: 'tee', category: '短袖' }, { id: 'sweater', category: '毛衣' },
     { id: 'pants', category: '长裤' }, { id: 'skirt', category: '短裙' }, { id: 'longskirt', category: '长裙' },
     { id: 'dress', category: '连衣裙' }, { id: 'coat', category: '外套' }, { id: 'down', category: '羽绒服' },
-    { id: 'home', category: '家居服' }, { id: 'socks', category: '配饰', subcategory: '袜子' }
+    { id: 'home', category: '家居服' }, { id: 'socks', category: '配饰', subcategory: '袜子' },
+    { id: 'vest', category: '马甲' }
   ]
-  for (const ids of [['shirt', 'pants'], ['tee', 'skirt'], ['sweater', 'pants'], ['dress'], ['shirt', 'pants', 'coat'], ['dress', 'down']]) {
+  for (const ids of [['shirt', 'pants'], ['tee', 'skirt'], ['sweater', 'pants'], ['dress'], ['shirt', 'pants', 'coat'], ['dress', 'down'],
+    ['shirt', 'pants', 'vest'], ['dress', 'vest'], ['shirt', 'pants', 'vest', 'coat']]) {
     const result = recommendation.cleanResult(response(ids), owned, [])
     assert.deepEqual(result.outfits[0].itemIds, ids, ids.join('+'))
   }
-  for (const ids of [['longskirt'], ['coat', 'pants'], ['down', 'pants'], ['socks'], ['home'], ['home', 'pants']]) {
+  for (const ids of [['longskirt'], ['coat', 'pants'], ['down', 'pants'], ['socks'], ['home'], ['home', 'pants'],
+    ['vest'], ['vest', 'pants'], ['vest', 'coat', 'pants']]) {
     assert.throws(() => recommendation.cleanResult(response(ids), owned, []), /组合不完整/, ids.join('+'))
   }
 })
@@ -288,24 +291,27 @@ test('穿着记录增删改递增衣橱画像版本', async () => {
   assert.equal(cloud.records.wardrobe_meta[0].version, 3)
 })
 
-test('策略升级使旧画像和旧推荐失效，挂件与连衣裙按新策略重建', async () => {
+test('策略升级使旧画像和旧推荐失效，马甲按叠穿规则进入新画像', async () => {
   const hash = value => require('node:crypto').createHash('sha256').update(value).digest('hex')
-  const clothes = [item('dress', 'openid-1', '原连衣裙', '连衣裙', ['春秋']), item('pendant', 'openid-1', '原挂件', '挂件', ['春秋'])]
-  const items = recommendation.inventory(clothes)
-  const cloud = loadCloud({ clothes, ai_cache: [{ _id: hash('ai-cache:openid-1'), clothesVersion: 0, strategyVersion: 2, items }],
+  const clothes = [item('dress', 'openid-1', '原连衣裙', '连衣裙', ['春秋']), item('pendant', 'openid-1', '原挂件', '挂件', ['春秋']),
+    item('vest', 'openid-1', '针织马甲', '马甲', ['春秋'])]
+  const items = recommendation.inventory(clothes.filter(row => row.category !== '马甲'))
+  const cloud = loadCloud({ clothes, ai_cache: [{ _id: hash('ai-cache:openid-1'), clothesVersion: 0, strategyVersion: 3, items }],
     auth_attempts: [{ _id: hash('recommend:openid-1'), key: hash('recommend:openid-1'),
-      cacheHash: hash(JSON.stringify({ strategyVersion: 2, model: env.AI_MODEL, occasion: '日常', items, wearTruncated: false })),
+      cacheHash: hash(JSON.stringify({ strategyVersion: 3, model: env.AI_MODEL, occasion: '日常', items, wearTruncated: false })),
       cacheResult: { marker: 'old-policy' }, cacheUntil: new Date(Date.now() + 600000) }] })
   let requests = 0
-  const result = await recommendation.handle({ db: cloud.db, openid: 'openid-1', event: {} }, async () => {
+  const result = await recommendation.handle({ db: cloud.db, openid: 'openid-1', event: {} }, async args => {
     requests++
-    return response(['dress'])
+    assert.match(args.messages[0].content, /马甲作为独立叠穿层/)
+    assert.ok(JSON.parse(args.messages[1].content).items.some(row => row.id === 'vest'))
+    return response(['dress', 'vest'])
   }, env)
   assert.equal(result.cached, false)
   assert.equal(requests, 1)
-  assert.equal(cloud.records.ai_cache[0].strategyVersion, 3)
-  assert.deepEqual(cloud.records.ai_cache[0].items.map(row => row.id), ['dress', 'pendant'])
-  assert.deepEqual(result.outfits[0].itemIds, ['dress'])
+  assert.equal(cloud.records.ai_cache[0].strategyVersion, 4)
+  assert.deepEqual(cloud.records.ai_cache[0].items.map(row => row.id), ['dress', 'pendant', 'vest'])
+  assert.deepEqual(result.outfits[0].itemIds, ['dress', 'vest'])
 })
 
 test('大量其他不消耗扫描名额，高频候选也须过滤且截断只看合格衣物', async () => {

@@ -312,6 +312,11 @@ async function main(event = {}) {
     return stickersApi.stats({ db, openid })
   }
 
+  if (action === 'listBrands') {
+    await requireLoggedInUser(openid)
+    return dataApi.listBrands({ db, openid })
+  }
+
   if (action === 'chatList' || action === 'chatGet' || action === 'chatSend' || action === 'chatDelete' || action === 'chatRename' ||
       action === 'chatStart' || action === 'chatFinish' || action === 'chatCancel') {
     const user = await getBoundUser(openid)

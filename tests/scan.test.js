@@ -37,7 +37,7 @@ test('拍照识别校验票据并归一模型字段', async () => {
   assert.match(options.messages[1].content[1].image_url.url, /^data:image\/jpeg;base64,/)
 })
 
-test('识别合同接受18类与配饰子类，提示词包含冻结的交叉分类规则', () => {
+test('识别合同接受19类与配饰子类，提示词包含冻结的交叉分类规则', () => {
   for (const category of CATEGORIES) {
     const result = scan.cleanResult(reply({ name: '衣'.repeat(80), category, subcategory: '袜子', brand: '牌'.repeat(40) }))
     assert.equal(result.category, category)
@@ -51,6 +51,9 @@ test('识别合同接受18类与配饰子类，提示词包含冻结的交叉分
   const prompt = scan.systemPrompt()
   assert.ok(prompt.includes(`类别只能是：${CATEGORIES.join('、')}。`))
   assert.ok(prompt.includes(`配饰类型只能是：${ACCESSORY_TYPES.join('、')}。`))
+  assert.ok(prompt.includes(`其余 ${CATEGORIES.length - 1} 类`))
+  assert.match(prompt, /针织马甲、羽绒马甲和西装马甲.*统一归马甲/)
+  assert.match(prompt, /普通贴身无袖背心不凭袖长归马甲/)
   for (const rule of [
     /品类和用途优先于袖长/, /短袖衬衫、长袖衬衫.*归衬衫/,
     /羽绒服.*保暖衣.*毛衣.*家居服/, /套头针织.*毛衣.*针织开衫.*外套/,

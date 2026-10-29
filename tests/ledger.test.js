@@ -180,7 +180,7 @@ test('衣橱统计总花费仅合并衣物与账本，不依赖贴纸读取', as
   assert.equal(page.data.itemSpent, 100)
   assert.equal(page.data.expenseTotal, 40)
   assert.deepEqual(Array.from(page.data.categoryStats.filter(row => row.count > 0 || row.spent > 0), row => row.name), ['长袖'])
-  assert.equal(page.data.emptyCategoryCount, 17)
+  assert.equal(page.data.emptyCategoryCount, CATEGORIES.length - 1)
   assert.equal(page.data.loadError, '')
   assert.equal(stickerReads, 0)
 })
@@ -244,17 +244,17 @@ test('分类统计按金额降序且同价保留类别顺序，袜子与其他�
   })
   await page.loadStats()
   assert.deepEqual(Array.from(page.data.categoryStats, row => row.name), [...CATEGORIES.slice(2)].reverse().concat(CATEGORIES.slice(0, 2)))
-  assert.equal(page.data.totalItems, 19)
-  assert.equal(page.data.totalSpent, 171.2)
-  assert.equal(page.data.itemSpent, 171.2)
+  assert.equal(page.data.totalItems, 20)
+  assert.equal(page.data.totalSpent, 190.21)
+  assert.equal(page.data.itemSpent, 190.21)
   assert.equal(page.data.emptyCategoryCount, 0)
   assert.equal(page.data.totalOutfits, 1)
-  assert.equal(page.data.categoryStats.reduce((sum, row) => sum + row.count, 0), 19)
-  assert.equal(page.data.categoryStats.reduce((sum, row) => sum + Math.round(row.spent * 100), 0), 17120)
+  assert.equal(page.data.categoryStats.reduce((sum, row) => sum + row.count, 0), 20)
+  assert.equal(page.data.categoryStats.reduce((sum, row) => sum + Math.round(row.spent * 100), 0), 19021)
   const byCategory = Object.fromEntries(page.data.categoryStats.map(row => [row.name, row]))
   for (const [category, count, spent, percent] of [
-    ['连衣裙', 1, 9.01, 5], ['挂件', 1, 15.01, 5], ['配饰', 1, 14.01, 5],
-    ['包袋', 1, 16.01, 5], ['其他', 2, 18.03, 11]
+    ['连衣裙', 1, 10.01, 5], ['挂件', 1, 16.01, 5], ['配饰', 1, 15.01, 5],
+    ['包袋', 1, 17.01, 5], ['其他', 2, 19.03, 10], ['马甲', 1, 1.51, 5]
   ]) {
     assert.equal(byCategory[category].count, count, category)
     assert.equal(byCategory[category].spent, spent, category)
@@ -271,7 +271,7 @@ test('分类统计按金额降序且同价保留类别顺序，袜子与其他�
   assert.equal(page.data.totalItems, 0)
   assert.equal(page.data.totalSpent, 0)
   assert.equal(page.data.itemSpent, 0)
-  assert.equal(page.data.emptyCategoryCount, 18)
+  assert.equal(page.data.emptyCategoryCount, CATEGORIES.length)
   assert.ok(page.data.categoryStats.every(row => row.count === 0 && row.spent === 0 && row.percent === 0))
 })
 

@@ -1,5 +1,5 @@
 .page {
-  padding: 24rpx 24rpx 220rpx;
+  padding: 24rpx 24rpx 360rpx;
 }
 
 .head {
@@ -23,6 +23,10 @@
   color: #9a958c;
   font-size: 24rpx;
 }
+
+.adjust-panel { padding: 20rpx; margin-bottom: 20rpx; }
+.adjust-panel button { margin: 0; }
+.replace-btn { margin: 0 0 0 12rpx; padding: 0 16rpx; font-size: 24rpx; flex-shrink: 0; }
 
 .list {
   display: flex;
@@ -95,6 +99,7 @@
 }
 
 .footer {
+  flex-wrap: wrap;
   position: fixed;
   left: 0;
   right: 0;
@@ -112,6 +117,8 @@
   box-sizing: border-box;
   margin: 0;
 }
+
+.footer .head-count, .footer .head-advice { width: 100%; }
 
 .btn-secondary {
   background: #ffffff;

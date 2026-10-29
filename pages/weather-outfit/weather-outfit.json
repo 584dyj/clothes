@@ -1,3 +1,4 @@
 {
-  "navigationBarTitleText": "明日穿搭推荐"
+  "navigationBarTitleText": "明日穿搭推荐",
+  "enablePullDownRefresh": true
 }

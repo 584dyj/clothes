@@ -25,7 +25,7 @@ test('穿搭列表按服务端页追加，触底不会重复请求', async () =>
   assert.deepEqual(offsets, [0, 20, 40])
 })
 
-test('穿搭编辑按 18 类分组选品，跨分类选择含其他不丢失并保存', async () => {
+test('穿搭编辑按 19 类分组选品，跨分类选择含其他不丢失并保存', async () => {
   const saved = []
   const page = loadPage('outfit-edit', {
     listItems: async () => [

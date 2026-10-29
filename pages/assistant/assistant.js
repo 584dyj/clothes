@@ -473,8 +473,7 @@ Page({
   onPurchaseSeasonTap(e) {
     this.onPurchaseEdit()
     const value = e.currentTarget.dataset.value
-    const selected = this.data.purchaseForm.seasons
-    const seasons = selected.includes(value) ? selected.filter(item => item !== value) : [...selected, value]
+    const seasons = [value]
     this.setData({ 'purchaseForm.seasons': seasons,
       seasonOptions: this.data.seasonOptions.map(item => ({ ...item, selected: seasons.includes(item.value) })) })
   },

@@ -12,6 +12,18 @@ const item = (id, openid, name, purchaseDate) => ({ _id: id, _openid: openid, na
 const wear = (id, openid, date, itemIds = []) => ({ _id: id, _openid: openid, date, itemIds })
 const outfit = (id, openid, date, itemIds = []) => ({ _id: id, _openid: openid, createdAt: new Date(date), itemIds })
 
+test('马甲按普通衣物参与闲置月报，近期搭配引用后退出闲置候选', async () => {
+  const cloud = loadCloud({ clothes: [
+    { ...item('vest', 'u', '旧马甲', '2025-01-01'), category: '马甲' },
+    { ...item('top', 'u', '常穿上衣', '2025-01-01'), category: '长袖' }
+  ], wear_records: [wear('recent', 'u', '2026-10-01', ['top'])] })
+  const idle = await report.buildReport(cloud.db, 'u', NOW)
+  assert.equal(idle.count, 1)
+  assert.match(idle.summary, /旧马甲/)
+  cloud.records.outfits.push(outfit('look', 'u', '2026-10-01', ['top', 'vest']))
+  assert.equal(await report.buildReport(cloud.db, 'u', NOW), null)
+})
+
 test('订阅登记需要登录，并发写入不会超过十二条未消耗额度', async () => {
   const subscriptions = [quota('openid-1', 11), ...Array.from({ length: 11 }, (_, index) => subscription(`s${index}`, 'openid-1'))]
   const cloud = loadCloud({ users: [user()], subscriptions })

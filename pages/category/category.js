@@ -4,8 +4,8 @@ const swipeBack = require('../../utils/swipe-back')
 
 const app = getApp()
 
-// 服装十三类开放季节筛选，其余类别（配饰、挂件、包袋、鞋、其他）不显示
-const SEASON_FILTER_CATEGORIES = ['外套', '短袖', '长袖', '衬衫', '羽绒服', '保暖衣', '毛衣', '家居服', '连衣裙', '长裙', '短裙', '长裤', '短裤']
+// 服装类别开放季节筛选，其余类别（配饰、挂件、包袋、鞋、其他）不显示
+const SEASON_FILTER_CATEGORIES = ['外套', '马甲', '短袖', '长袖', '衬衫', '羽绒服', '保暖衣', '毛衣', '家居服', '连衣裙', '长裙', '短裙', '长裤', '短裤']
 // 配饰有二级分类，详情页底部显示类型筛选
 const SUB_FILTER_CATEGORY = '配饰'
 
@@ -32,7 +32,7 @@ Page({
     sortDesc: true,
     timeMark: '↓',    // 排序箭头，WXML 不适合嵌套三元，预计算
     priceMark: '',
-    showSeasonFilter: false, // 仅服装十三类为 true
+    showSeasonFilter: false, // 仅服装类别为 true
     seasonChips: [],  // [{value, active}]，选中态预计算
     filterSeasons: [],// 多选季节筛选条件
     showSubFilter: false,    // 仅配饰为 true

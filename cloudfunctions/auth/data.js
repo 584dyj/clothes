@@ -44,6 +44,24 @@ const FIELDS = {
 
 const COLLECTIONS = Object.keys(FIELDS)
 
+async function listBrands({ db, openid }) {
+  const brands = new Map()
+  // ponytail: 数据库先按原值去重，函数内再统一空白与大小写，兼容锁定 SDK。
+  // 只分页读取聚合结果，避免品牌数超过单次返回上限时遗漏。
+  for (let offset = 0; ; offset += 100) {
+    const { list } = await db.collection('clothes').aggregate()
+      .match({ _openid: openid }).group({ _id: '$brand' })
+      .sort({ _id: 1 }).skip(offset).limit(100).end()
+    for (const row of list) {
+      if (typeof row._id !== 'string') continue
+      const brand = row._id.trim(), key = brand.toLowerCase()
+      if (brand && !brands.has(key)) brands.set(key, brand)
+    }
+    if (list.length < 100) break
+  }
+  return { success: true, brands: [...brands.values()].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase())) }
+}
+
 const EXPENSE_CATEGORIES = ['服饰', '鞋包', '洗护', '修改', '其他']
 // 造景贴纸：心愿单 / 库存 / 已拼贴；done 的完成字段（doneAt、doneImageFileID）由后续流转动作开放
 const STICKER_STATUS = ['wishlist', 'owned', 'done']
@@ -318,7 +336,17 @@ async function handle(context) {
       }
     }
   }
-  const targetId = operation === 'add' ? crypto.randomBytes(16).toString('hex') : id
+  const requested = operation === 'add' && event.requestId !== undefined
+  if (requested && (!['outfits', 'outfit_plans'].includes(collection) ||
+      typeof event.requestId !== 'string' || !event.requestId || event.requestId.length > 16384)) throw new Error('保存请求标识无效')
+  const requestData = requested ? cleanData(collection, event.data) : null
+  const hashData = data => crypto.createHash('sha256').update(JSON.stringify(
+    collection === 'outfits' ? { ...data, itemIds: data.itemIds.slice().sort() } : data)).digest('hex')
+  const requestHash = requested ? hashData(requestData) : ''
+  // ponytail: 复用元数据集合保存新增回执；与业务记录同事务提交，删除后也不重建旧请求。
+  const requestKey = requested ? 'create-' + crypto.createHash('sha256')
+    .update(JSON.stringify([openid, collection, event.requestId])).digest('hex') : ''
+  const targetId = operation === 'add' ? requestKey || crypto.randomBytes(16).toString('hex') : id
   const wearData = collection === 'wear_records' && operation !== 'delete' ? cleanData(collection, event.data) : null
   const nextWearKey = wearData && wearKey(openid, wearData.date, wearData.itemIds)
   for (let attempt = 0; ; attempt++) {
@@ -331,6 +359,16 @@ async function handle(context) {
       await db.runTransaction(async tx => {
         await activeUser(tx, user, openid)
         const ref = tx.collection(collection).doc(targetId)
+        if (requested) {
+          const receipt = await readDoc(tx.collection('wardrobe_meta').doc(requestKey))
+          if (receipt) {
+            if (receipt._openid !== openid || receipt.requestHash !== requestHash) throw new Error('保存内容已变化，请发起新的保存')
+            const saved = await readDoc(ref)
+            if (!saved || saved._openid !== openid) throw new Error('已保存的记录已删除，请重新选择后保存')
+            if (hashData(cleanData(collection, saved)) !== requestHash) throw new Error('已保存的记录已修改，请到穿搭或月历查看')
+            return
+          }
+        }
         const previous = operation === 'add' ? null : await readDoc(ref)
         if (operation !== 'add' && (!previous || previous._openid !== openid)) throw new Error('记录不存在或无权访问')
         if (operation === 'delete') {
@@ -351,7 +389,7 @@ async function handle(context) {
           }
           return
         }
-        const data = wearData || cleanData(collection, event.data, previous)
+        const data = requestData || wearData || cleanData(collection, event.data, previous)
         const previousWearKey = collection === 'wear_records' && previous
           ? wearKey(openid, previous.date, previous.itemIds || []) : null
         const changedWearKey = nextWearKey && nextWearKey !== previousWearKey
@@ -390,12 +428,15 @@ async function handle(context) {
         }
         if (previous && previous.imageFileID !== data.imageFileID) await queueImage(tx, openid, previous.imageFileID)
         if (collection === 'stickers' && previous && previous.doneImageFileID !== data.doneImageFileID) await queueImage(tx, openid, previous.doneImageFileID)
+        if (requested) await tx.collection('wardrobe_meta').doc(requestKey).set({
+          data: { _openid: openid, collection, recordId: targetId, requestHash, createdAt: db.serverDate() }
+        })
       })
       break
     } catch (error) {
       const message = String(error.code || error.errCode || '') + ' ' + String(error.message || error.errMsg || '')
       const retryable = message.includes(WEAR_RESCAN) || /DATABASE_TRANSACTION_CONFLICT|DATABASE_DUPLICATE_WRITE|E11000/.test(message)
-      if (wearData && retryable && attempt < 2) continue
+      if ((wearData || requested) && retryable && attempt < 2) continue
       if (wearData && retryable) throw new Error('穿着记录正在更新，请重试')
       throw error
     }
@@ -406,4 +447,4 @@ async function handle(context) {
   return { success: true, _id: targetId, cleanupFailed }
 }
 
-module.exports = { handle, saveAvatar, readDoc }
+module.exports = { handle, saveAvatar, readDoc, listBrands }

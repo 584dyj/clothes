@@ -31,6 +31,37 @@ function loadCloud(records = {}) {
       }
     }
     const api = {
+      aggregate() {
+        const stages = [], pipeline = {}
+        for (const stage of ['match', 'group', 'sort', 'skip', 'limit']) pipeline[stage] = value => {
+          stages.push({ [stage]: value }); return pipeline
+        }
+        pipeline.end = async () => {
+          before('aggregate')
+          calls[calls.length - 1].stages = clone(stages)
+          let rows = clone(records[name])
+          for (const stage of stages) {
+            if (stage.match) rows = rows.filter(row => Object.entries(stage.match).every(([key, value]) => row[key] === value))
+            if (stage.group) {
+              const field = stage.group._id.slice(1)
+              rows = [...new Map(rows.map(row => {
+                const value = row[field] ?? null
+                return [JSON.stringify(value), { _id: value }]
+              })).values()]
+            }
+            if (stage.sort) rows.sort((a, b) => {
+              for (const [key, order] of Object.entries(stage.sort)) {
+                if (a[key] !== b[key]) return (a[key] < b[key] ? -1 : 1) * order
+              }
+              return 0
+            })
+            if (stage.skip !== undefined) rows = rows.slice(stage.skip)
+            if (stage.limit !== undefined) rows = rows.slice(0, stage.limit)
+          }
+          return { list: rows }
+        }
+        return pipeline
+      },
       where(value) { conditions = value; return this },
       orderBy() { return this },
       skip(value) { offset = value; return this },

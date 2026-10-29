@@ -189,7 +189,7 @@ test('F5 添加页切换入口和移除卡片清理票据', async () => {
   assert.deepEqual(titles, ['批量添加', '添加衣物'])
 })
 
-test('批量类别滚轮可手选保存全部 18 类，配饰保留袜子且非配饰清空子类', async () => {
+test('批量类别滚轮可手选保存全部 19 类，配饰保留袜子且非配饰清空子类', async () => {
   const saved = []
   const page = loadComponent('batch-panel', {
     uploadImage: async () => 'cloud://manual',
@@ -198,7 +198,7 @@ test('批量类别滚轮可手选保存全部 18 类，配饰保留袜子且非�
     listItems: async () => []
   }, { chooseMedia: options => options.success({ tempFiles: [{ tempFilePath: '/tmp/manual.jpg' }] }) })
   await page.attached()
-  assert.equal(page.data.categories.length, 18)
+  assert.equal(page.data.categories.length, 19)
   for (const category of page.data.categories) {
     await page.onChooseImages()
     const key = page.data.cards[0].key
@@ -221,7 +221,7 @@ test('批量类别滚轮可手选保存全部 18 类，配饰保留袜子且非�
     assert.equal(saved.at(-1).category, category)
     assert.equal(saved.at(-1).subcategory, category === '配饰' ? '袜子' : '')
   }
-  assert.equal(saved.length, 18)
+  assert.equal(saved.length, 19)
 })
 
 test('批量九张上限保持，移除卡片后只开放剩余名额并清理票据', async () => {

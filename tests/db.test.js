@@ -112,7 +112,7 @@ function loadDb(records) {
   return { api: require(MODULE_PATH), queryCalls, deletedFiles: cloud.deletedFiles }
 }
 
-test('listItems 分页和 getItem 保留 18 类，清理非配饰子类并归一化季节', async () => {
+test('listItems 分页和 getItem 保留 19 类，清理非配饰子类并归一化季节', async () => {
   const { CATEGORIES } = require('../cloudfunctions/auth/categories')
   const records = {
     clothes: Array.from({ length: 45 }, (_, index) => ({

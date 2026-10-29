@@ -77,7 +77,7 @@ test('个人页加载展示连续打卡卡片与城市', async () => {
   assert.equal(profile.data.monthCheckins, expectedMonthDays)
 })
 
-test('个人页全量偏好包含十八类与其他，手工穿着打卡保留原引用', async () => {
+test('个人页全量偏好包含十九类与其他，手工穿着打卡保留原引用', async () => {
   const { CATEGORIES } = require('../cloudfunctions/auth/categories')
   const items = CATEGORIES.map((category, index) => ({
     _id: `item-${category}`, category, name: category, brand: '全量品牌', price: index + 1,
@@ -95,9 +95,9 @@ test('个人页全量偏好包含十八类与其他，手工穿着打卡保留�
     cleanupStatus: async () => ({ pendingCleanup: false })
   }, {}, { profile: async () => ({ username: 'alice' }) })
   await profile.loadData()
-  assert.equal(profile.data.favoriteBrand.count, 18)
+  assert.equal(profile.data.favoriteBrand.count, 19)
   assert.equal(profile.data.mostExpensive.name, '其他')
-  assert.equal(profile.data.mostExpensive.price, 18)
+  assert.equal(profile.data.mostExpensive.price, 19)
   assert.equal(profile.data.hasWearRecords, true)
   assert.equal(profile.data.streakDays, 2)
   assert.equal(profile.data.monthCheckins, new Set(records.map(record => record.date).filter(date => date.startsWith(today.slice(0, 7)))).size)

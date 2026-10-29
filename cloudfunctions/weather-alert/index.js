@@ -28,5 +28,16 @@ exports.main = async (event = {}) => {
       return { success: false, error: e.message || '生成推荐失败，请重试' }
     }
   }
+  if (event.action === 'dailyRecommendation') {
+    const openid = cloud.getWXContext().OPENID
+    if (!openid) return { success: false, error: '无法获取用户身份' }
+    try {
+      return await alert.dailyRecommendation({ db, openid, operation: event.operation,
+        date: event.date, revision: event.revision, replaceId: event.replaceId })
+    } catch (e) {
+      console.error('dailyRecommendation 失败', e)
+      return { success: false, error: e.message || '推荐加载失败，请重试' }
+    }
+  }
   return alert.handle({ db, cloud, templateId: process.env.WEATHER_TMPL_ID })
 }

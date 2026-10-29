@@ -1,6 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { cleanScanFields } = require('../utils/item-fields')
+const brandSuggestions = require('../utils/brand-suggestions')
 const { CATEGORIES, ACCESSORY_TYPES } = require('../cloudfunctions/auth/categories')
 const { cleanResult } = require('../cloudfunctions/auth/scan')
 const { loadPage, loadComponent } = require('./support/page')
@@ -8,12 +9,72 @@ const options = { categories: CATEGORIES, accessoryTypes: ACCESSORY_TYPES, color
 const modelResult = raw => cleanResult({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify(raw) } }] })
 const imageFileID = `cloud://env/wardrobe/${'1'.repeat(32)}.jpg`
 
+test('品牌包含匹配忽略大小写、空白与重复，保留原写法并限制建议数量', () => {
+  const brands = [' nike ', 'NIKE', 'adidas', '', null, 'New Balance', '耐克', '耐克']
+  assert.deepEqual(brandSuggestions(brands, ' N '), ['nike', 'New Balance'])
+  assert.deepEqual(brandSuggestions(brands, 'IK'), ['nike'])
+  assert.deepEqual(brandSuggestions(brands, 'ad'), ['adidas'])
+  assert.deepEqual(brandSuggestions(brands, '耐'), ['耐克'])
+  assert.deepEqual(brandSuggestions(brands, '未知'), [])
+  assert.deepEqual(brandSuggestions(brands, '  '), [])
+  assert.deepEqual(brandSuggestions(Array.from({ length: 20 }, (_, n) => `brand${n}`), 'brand').length, 8)
+})
+
+test('单件输入使用最新文本匹配历史品牌，可选填或保留新品牌，失败与卸载不影响手填', async () => {
+  let finish
+  const page = loadPage('item-edit', { listBrands: () => new Promise(resolve => { finish = resolve }) })
+  await page.onLoad({})
+  const pending = page.onBrandFocus({ currentTarget: { dataset: { field: 'brand' } } })
+  page.onBrandInput({ detail: { value: 'n' } })
+  page.onBrandInput({ detail: { value: 'adi' } })
+  finish(['nike', 'adidas'])
+  await pending
+  assert.deepEqual(Array.from(page.data.brandSuggestions), ['adidas'])
+  page.onBrandPick({ currentTarget: { dataset: { brand: 'adidas' } } })
+  assert.equal(page.data.brand, 'adidas')
+  assert.equal(page.data.brandSuggestions.length, 0)
+  page.onBrandInput({ detail: { value: '新品牌' } })
+  page.onBrandPick({ currentTarget: { dataset: { brand: '伪造建议' } } })
+  assert.equal(page.data.brand, '新品牌')
+  assert.equal(page.data.brandSuggestions.length, 0)
+
+  const failed = loadPage('item-edit', { listBrands: async () => { throw Error('offline') } })
+  failed.onBrandInput({ detail: { value: '手填品牌' } })
+  await failed.onBrandFocus({ currentTarget: { dataset: { field: 'brand' } } })
+  assert.equal(failed.data.brand, '手填品牌')
+  const late = page.onBrandFocus({ currentTarget: { dataset: { field: 'brand' } } })
+  page.onUnload()
+  finish(['新品牌'])
+  await late
+  assert.equal(page.data.brandSuggestions.length, 0)
+})
+
+test('批量品牌建议只填入当前卡片，异步返回不覆盖其他卡片或已保存记录', async () => {
+  let finish
+  const batch = loadComponent('batch-panel', { listBrands: () => new Promise(resolve => { finish = resolve }) })
+  await batch.attached()
+  batch.setData({ cards: [{ key: 'one', brand: 'n', status: 'pending' }, { key: 'two', brand: 'adi', status: 'pending' }] })
+  const pending = batch.onBrandFocus({ currentTarget: { dataset: { key: 'one' } } })
+  batch.onInput({ currentTarget: { dataset: { key: 'two', field: 'brand' } }, detail: { value: 'adi' } })
+  finish(['nike', 'adidas'])
+  await pending
+  assert.deepEqual(Array.from(batch.data.brandSuggestions), ['adidas'])
+  batch.onBrandPick({ currentTarget: { dataset: { brand: 'adidas' } } })
+  assert.equal(batch.card('one').brand, 'n')
+  assert.equal(batch.card('two').brand, 'adidas')
+  assert.equal(batch.buildPayload(batch.card('two')).brand, 'adidas')
+  batch.patchCard('two', { status: 'saved' })
+  batch.setData({ brandSuggestions: ['nike'] })
+  batch.onBrandPick({ currentTarget: { dataset: { brand: 'nike' } } })
+  assert.equal(batch.card('two').brand, 'adidas')
+})
+
 test('扫描字段统一接受新枚举，拒绝过时和非法值，并保持源数据', () => {
   for (const category of CATEGORIES) {
     const input = { name: '  衣物  ', category, subcategory: '袜子', color: '黑色', seasons: ['冬', '冬', '未知', '春秋'], brand: '  品牌  ' }
     const before = structuredClone(input)
     assert.deepEqual(cleanScanFields(input, options), {
-      name: '衣物', category, subcategory: category === '配饰' ? '袜子' : '', color: '黑色', seasons: ['冬', '春秋'], brand: '品牌'
+      name: '衣物', category, subcategory: category === '配饰' ? '袜子' : '', color: '黑色', seasons: ['冬'], brand: '品牌'
     })
     assert.deepEqual(input, before)
   }
@@ -31,7 +92,30 @@ test('扫描字段统一接受新枚举，拒绝过时和非法值，并保持�
   assert.equal(cleanScanFields({ category: '配饰', subcategory: '其他' }, options).subcategory, '其他')
 })
 
-test('服务端识别清洗结果联调三处回填，18类可基础保存，其他及未知类别不能购买评估', async () => {
+test('三个录入入口的适合季节均为单选', async () => {
+  const single = loadPage('item-edit')
+  await single.onLoad({})
+  single.onSeasonTap({ currentTarget: { dataset: { value: '春秋' } } })
+  single.onSeasonTap({ currentTarget: { dataset: { value: '冬' } } })
+  assert.deepEqual(Array.from(single.data.selectedSeasons), ['冬'])
+
+  const batch = loadComponent('batch-panel')
+  await batch.attached()
+  batch.setData({ cards: [{ key: 'one', seasons: ['春秋'], seasonStates: batch.seasonStates(['春秋']) }] })
+  batch.onSeasonTap({ currentTarget: { dataset: { key: 'one', value: '夏' } } })
+  assert.deepEqual(Array.from(batch.card('one').seasons), ['夏'])
+
+  const purchase = loadPage('assistant')
+  purchase.onPurchaseSeasonTap({ currentTarget: { dataset: { value: '春秋' } } })
+  purchase.onPurchaseSeasonTap({ currentTarget: { dataset: { value: '夏' } } })
+  assert.deepEqual(Array.from(purchase.data.purchaseForm.seasons), ['夏'])
+
+  const legacy = loadPage('item-edit', { getItem: async () => ({ seasons: ['春秋', '冬'] }) })
+  await legacy.onLoad({ id: 'legacy' })
+  assert.deepEqual(Array.from(legacy.data.selectedSeasons), ['春秋'])
+})
+
+test('服务端识别清洗结果联调三处回填，19类可基础保存，其他及未知类别不能购买评估', async () => {
   const cases = [...CATEGORIES.map(category => ({ category, subcategory: '袜子' })),
     { category: '配饰', subcategory: '其他' },
     ...['上衣', '下装', '包', '袜子', '未知', ''].map(category => ({ category, subcategory: '袜子' }))]

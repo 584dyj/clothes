@@ -10,11 +10,12 @@ const OCCASIONS = ['日常', '通勤', '约会', '运动', '旅行', '正式']
 const NEUTRAL_COLORS = new Set(['白色', '黑色', '灰色', '米色', '卡其', '棕色', '驼色', '藏青', '藏蓝'])
 // 互补关系按搭配角色：外搭与内搭、下装、连体互配；配饰、包袋、挂件、家居服无结构互补
 const COMPLEMENTS = {
-  top: ['bottom', 'shoes'],
+  top: ['bottom', 'shoes', 'layer'],
   bottom: ['top', 'shoes'],
-  dress: ['shoes'],
+  dress: ['shoes', 'layer'],
   shoes: ['top', 'bottom', 'dress'],
-  outer: ['top', 'bottom', 'dress']
+  outer: ['top', 'bottom', 'dress'],
+  layer: ['top', 'dress']
 }
 const VERDICTS = [{ code: 'skip', label: '建议不买' }, { code: 'consider', label: '再考虑' }, { code: 'buy', label: '可以买' }]
 const IMAGE_RE = /^cloud:\/\/[^/]+\/wardrobe\/([a-f0-9]{32})\.(jpg|jpeg|png|webp|gif)$/

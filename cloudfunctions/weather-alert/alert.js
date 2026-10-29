@@ -3,6 +3,7 @@
 // scene 完全独立。本文件不 require wx-server-sdk，db/cloud/天气请求均由入口或测试注入。
 const crypto = require('crypto')
 const https = require('https')
+const { buildRecommendation, replaceItem, RULE_VERSION } = require('./outfit')
 
 const PAGE_SIZE = 100
 const SCENE = 'weather-alert'
@@ -12,8 +13,6 @@ const TEXT_LIMIT = 20
 const TEMP_DROP = 6            // 降温阈值（°C，最低温）
 const TEMP_RISE = 6            // 升温阈值（°C，最高温）
 const TEMP_HOT = 35            // 高温阈值（°C，最高温）
-const TEMP_COOL = 10           // 基础建议经验值：偏冷时优先冬季衣物
-const TEMP_WARM = 28           // 基础建议经验值：偏热时优先夏季衣物
 
 const sha256 = value => crypto.createHash('sha256').update(value).digest('hex')
 const quotaId = openid => 'quota-weather-alert-' + sha256(openid)
@@ -140,7 +139,6 @@ async function fetchForecast({ request, host, key, cityId }) {
 
 // 特殊天气只决定提示重点，普通天气仍提供明日穿搭建议。
 const isWet = text => /[雨雪雷]/.test(text || '')
-const seasonFor = day => Number(day.tempMin) <= TEMP_COOL ? '冬' : Number(day.tempMax) >= TEMP_WARM ? '夏' : '春秋'
 
 function evaluate(today, tomorrow) {
   const tMin1 = Number(today.tempMin), tMin2 = Number(tomorrow.tempMin)
@@ -153,65 +151,31 @@ function evaluate(today, tomorrow) {
   return null
 }
 
-// ---------- 内容生成（规则直出，不调用模型） ----------
-const RULES = {
-  drop: {
-    prefix: trigger => `降温${trigger.delta}度：`,
-    empty: trigger => `降温${trigger.delta}度，注意添衣`,
-    pick: items => items.filter(item => (item.seasons || []).includes('冬'))
-  },
-  rain: {
-    prefix: () => '有雨带伞，鞋选：',
-    empty: () => '明天有雨，记得带伞',
-    pick: items => items.filter(item => item.category === '鞋')
-  },
-  hot: {
-    prefix: trigger => `高温${trigger.temp}度：`,
-    empty: trigger => `高温${trigger.temp}度，注意防暑`,
-    pick: items => items.filter(item => (item.seasons || []).includes('夏'))
-  },
-  rise: {
-    prefix: trigger => `升温${trigger.delta}度：`,
-    empty: trigger => `升温${trigger.delta}度，可以轻薄些`,
-    pick: items => items.filter(item => (item.seasons || []).includes('春秋'))
-  },
-  normal: {
-    prefix: trigger => isWet(trigger.textDay) ? '有雨带伞，可穿：' : '明日可穿：',
-    empty: trigger => {
-      if (isWet(trigger.textDay)) return '明日有雨，带伞穿防水鞋'
-      const season = seasonFor(trigger)
-      if (season === '冬') return '明日偏冷，注意保暖'
-      if (season === '夏') return '明日偏热，穿轻薄衣物'
-      return '长袖搭配，备件薄外套'
-    },
-    pick: (items, trigger) => items.filter(item => (item.seasons || []).includes(seasonFor(trigger)))
+// ---------- 推荐上下文：日期逐条读历史，不引入新集合或复合查询索引 ----------
+async function recommendationContext(db, openid, date) {
+  const [items, wearRecords, previous] = await Promise.all([
+    listAll(db, 'clothes', { _openid: openid }),
+    listAll(db, 'wear_records', { _openid: openid, date: db.command.gte(shiftDate(date, -7)) }),
+    Promise.all(Array.from({ length: 7 }, async (_, index) => {
+      const id = recommendationId(openid, shiftDate(date, -index - 1))
+      const daily = await readDoc(db.collection('ai_cache').doc(id + '-daily'))
+      return daily && daily._openid === openid && daily.status === 'daily'
+        ? daily : readDoc(db.collection('ai_cache').doc(id))
+    }))
+  ])
+  const history = []
+  for (const row of previous) {
+    if (!row || row._openid !== openid) continue
+    // 站内已生成方案和成功推送参与轮换；预览及失败文档不参与。
+    if (!['sent', 'daily'].includes(row.status) && (row.status || !await readDoc(db.collection('subscriptions').doc(sentId(openid, shiftDate(row.date, -1)))))) continue
+    const bodyIds = (row.items || []).filter(item => ['短袖', '长袖', '衬衫', '毛衣', '长裙', '短裙', '长裤', '短裤', '连衣裙'].includes(item.category)).map(item => item._id)
+    history.push({ ...row, bodyKey: row.bodyKey || bodyIds.sort().join('|') })
   }
+  return { items, history, wearRecords }
 }
 
-// 推荐衣物快照：仅保留落地页展示所需字段，避免依赖衣橱当前状态（衣物之后被删也不影响展示）。
-function itemSnapshot(item) {
-  return {
-    _id: item._id,
-    name: String(item.name || '未命名'),
-    category: String(item.category || ''),
-    subcategory: item.category === '配饰' ? String(item.subcategory || '') : '',
-    imageFileID: String(item.imageFileID || '')
-  }
-}
-
-// 生成推荐：advice 为推送文案，itemIds/items 落库给落地页展示与保存为穿搭。
-function buildRecommendation(trigger, items) {
-  const rule = RULES[trigger.type]
-  const picked = rule.pick(items, trigger)
-  const names = picked.map(item => trimText(item.name || '未命名', 10))
-  const advice = names.length
-    ? rule.prefix(trigger) + summarize(names, TEXT_LIMIT - Array.from(rule.prefix(trigger)).length)
-    : rule.empty(trigger)
-  return { advice, itemIds: picked.map(item => item._id), items: picked.map(itemSnapshot) }
-}
-
-function buildAdvice(trigger, items) {
-  return buildRecommendation(trigger, items).advice
+function buildAdvice(weather, items, options) {
+  return buildRecommendation(weather, items, options).advice
 }
 
 // ---------- 额度认领 / 恢复（与 monthly-report 同构，scene 独立） ----------
@@ -259,22 +223,20 @@ function errorCode(error) {
   return Number(error && (error.errCode || error.errcode || error.code))
 }
 
-// 推荐落库：点击推送进入落地页时读取。先于发送写入，保证用户点开时数据已就绪；
-// 发送失败留下的残留文档无害（无消息可点，次日被覆盖）。
-async function saveRecommendation(db, openid, date, recommendation) {
-  await db.collection('ai_cache').doc(recommendationId(openid, date)).set({
+// 发送前准备页面数据，成功后标记 sent；预览另存，避免覆盖已送达的推荐。
+async function saveRecommendation(db, openid, date, recommendation, preview = false) {
+  await db.collection('ai_cache').doc(recommendationId(openid, date) + (preview ? '-preview' : '')).set({
     data: { _openid: openid, date, ...recommendation, createdAt: new Date() }
   })
 }
 
 async function sendAlert({ db, cloud, subscription, trigger, forecast, tomorrow, templateId, now }) {
-  // 一级「其他」仅作基础记录，不进入天气穿搭候选；本函数独立部署，使用本地最小过滤，不引用 auth。
-  // 配饰子类「其他」仍属配饰，不受一级排除影响；只剩其他时按既有空候选规则发送通用提示。
-  const items = (await listAll(db, 'clothes', { _openid: subscription._openid })).filter(item => item.category !== '其他')
+  const openid = subscription._openid
+  const { items, ...context } = await recommendationContext(db, openid, tomorrow)
+  const recommendation = buildRecommendation(forecast.tomorrow, items, { ...context, trigger, date: tomorrow, openid })
   if (!await claim(db, subscription._id, now)) return 'claimed'
-  const recommendation = buildRecommendation(trigger, items)
   try {
-    await saveRecommendation(db, subscription._openid, tomorrow, { trigger, weather: forecast.tomorrow, ...recommendation })
+    await saveRecommendation(db, openid, tomorrow, { trigger, weather: forecast.tomorrow, ...recommendation, status: 'prepared' })
     const result = await cloud.openapi.subscribeMessage.send({
       touser: subscription._openid,
       templateId,
@@ -291,7 +253,6 @@ async function sendAlert({ db, cloud, subscription, trigger, forecast, tomorrow,
       error.errCode = result.errCode || result.errcode
       throw error
     }
-    return 'sent'
   } catch (error) {
     if (errorCode(error) === 43101) {
       await db.collection('subscriptions').doc(subscription._id).remove()
@@ -300,6 +261,13 @@ async function sendAlert({ db, cloud, subscription, trigger, forecast, tomorrow,
     await restoreClaim(db, subscription._id, now)
     throw error
   }
+  // 已送达后，历史标记失败也不能恢复额度或触发重复推送。
+  try {
+    await db.collection('ai_cache').doc(recommendationId(openid, tomorrow)).update({ data: { status: 'sent', sentAt: now } })
+  } catch (error) {
+    console.error('天气推荐已发送，历史标记失败', openid, error)
+  }
+  return 'sent'
 }
 
 // ---------- 定时扫描主流程 ----------
@@ -444,9 +412,10 @@ async function setCityByLocation({ db, openid, longitude, latitude, request = re
 
 // ---------- 预览推荐（客户端测试入口）：按当前登录用户生成并落库一份推荐 ----------
 // 只写 ai_cache、不查额度/幂等、不真正发消息，专供落地页联调。
-// date 可指定，缺省取「明天」。
+// 日期仅允许明天，避免把同一份预报错误保存到其他日期。
 async function previewRecommendation({ db, openid, now = new Date(), request = requestWeather, env = process.env, date }) {
-  const tomorrow = date || shiftDate(shanghaiDate(now), 1)
+  const tomorrow = shiftDate(shanghaiDate(now), 1)
+  if (date && date !== tomorrow) throw new Error('只能预览明日穿搭')
   const key = env.WEATHER_API_KEY
   if (!key) throw new Error('WEATHER_API_KEY 未配置')
   const host = env.WEATHER_API_HOST || 'https://restapi.amap.com'
@@ -454,12 +423,64 @@ async function previewRecommendation({ db, openid, now = new Date(), request = r
   if (!user.cityId) throw new Error('请先在「我的」页设置城市')
   const forecast = await fetchForecast({ request, host, key, cityId: user.cityId })
   const trigger = evaluate(forecast.today, forecast.tomorrow) || { type: 'normal', ...forecast.tomorrow }
-  const items = (await listAll(db, 'clothes', { _openid: openid })).filter(item => item.category !== '其他')
-  const recommendation = buildRecommendation(trigger, items)
-  await saveRecommendation(db, openid, tomorrow, { trigger, weather: forecast.tomorrow, ...recommendation })
+  const { items, ...context } = await recommendationContext(db, openid, tomorrow)
+  const recommendation = buildRecommendation(forecast.tomorrow, items, { ...context, trigger, date: tomorrow, openid })
+  await saveRecommendation(db, openid, tomorrow, { trigger, weather: forecast.tomorrow, ...recommendation, status: 'preview' }, true)
   return { success: true, date: tomorrow, advice: recommendation.advice, weather: forecast.tomorrow,
-    itemIds: recommendation.itemIds, count: recommendation.items.length }
+    reason: recommendation.reason, missing: recommendation.missing, itemIds: recommendation.itemIds, count: recommendation.items.length }
 }
 
-module.exports = { handle, setCity, setCityByLocation, previewRecommendation, evaluate, buildAdvice, buildRecommendation, fetchForecast, quotaId, sentId, recommendationId,
+// 站内日常推荐独立保存，调整不会覆盖订阅消息或调试预览。
+async function dailyRecommendation({ db, openid, operation = 'get', date, revision, replaceId,
+  now = new Date(), request = requestWeather, env = process.env }) {
+  if (!['get', 'change', 'replace'].includes(operation)) throw new Error('推荐操作无效')
+  const tomorrow = shiftDate(shanghaiDate(now), 1)
+  if ((date && date !== tomorrow) || (operation !== 'get' && date !== tomorrow)) throw new Error('日期已变化，请刷新明日推荐')
+  if (operation !== 'get' && (!Number.isInteger(revision) || revision < 1)) throw new Error('推荐版本无效，请刷新')
+  if (operation === 'replace' && (typeof replaceId !== 'string' || !replaceId || replaceId.length > 100)) throw new Error('衣物无效')
+  const user = await activeCityUser(db, openid)
+  if (!user.cityId) throw new Error('请先在「我的」页设置城市')
+  if (!env.WEATHER_API_KEY) throw new Error('天气服务尚未配置，请稍后重试')
+  const [forecast, context] = await Promise.all([
+    fetchForecast({ request, host: env.WEATHER_API_HOST || 'https://restapi.amap.com', key: env.WEATHER_API_KEY, cityId: user.cityId }),
+    recommendationContext(db, openid, tomorrow)
+  ])
+  const weather = forecast.tomorrow
+  const options = { ...context, date: tomorrow, openid, trigger: evaluate(forecast.today, weather) || {} }
+  const signature = JSON.stringify([RULE_VERSION, user.cityId, weather])
+  const inventoryHash = sha256(JSON.stringify(context.items.slice().sort((a, b) => a._id.localeCompare(b._id))))
+  return db.runTransaction(async tx => {
+    const active = await readDoc(tx.collection('users').doc(user._id))
+    if (!active || active.openid !== openid || active.autoLoginEnabled === false) throw new Error('登录状态已失效')
+    if (active.cityId !== user.cityId) throw new Error('城市已变化，请刷新')
+    const ref = tx.collection('ai_cache').doc(recommendationId(openid, tomorrow) + '-daily')
+    const current = await readDoc(ref)
+    if (current && current._openid !== openid) throw new Error('无权访问推荐')
+    if (operation !== 'get' && (!current || current.revision !== revision)) throw new Error('推荐已更新，请刷新后再调整')
+    const valid = current && current.signature === signature && current.inventoryHash === inventoryHash
+    if (valid && operation === 'get') return { success: true, recommendation: current, message: '' }
+    let next, message = '', seenBodyKeys = valid ? current.seenBodyKeys : []
+    if (!valid) {
+      next = buildRecommendation(weather, context.items, options)
+      if (current) message = '推荐规则、天气或衣橱已更新，已重新匹配搭配'
+    } else if (operation === 'change') {
+      // ponytail: 每日最多记住 100 组已看主体，避免缓存随连点无限增长。
+      next = current.bodyKey && seenBodyKeys.length < 100
+        ? buildRecommendation(weather, context.items, { ...options, excludeBodyKeys: seenBodyKeys }) : null
+      if (!next) message = current.bodyKey ? '当前可换的适温主体已看过，已保留这套；也可替换单件' : '当前缺少完整主体，请先补齐适温衣物'
+    } else {
+      next = replaceItem(weather, context.items, current, replaceId, options)
+      if (!next) message = '暂无同位置的适温替代衣物，已保留当前搭配'
+    }
+    if (!next) return { success: true, recommendation: current, message }
+    seenBodyKeys = [...new Set([...seenBodyKeys, next.bodyKey].filter(Boolean))].slice(-100)
+    const recommendation = { ...next, _openid: openid, date: tomorrow, weather, cityName: user.cityName || '',
+      status: 'daily', signature, inventoryHash, seenBodyKeys,
+      revision: (current?.revision || 0) + 1, updatedAt: now }
+    await ref.set({ data: recommendation })
+    return { success: true, recommendation, message }
+  })
+}
+
+module.exports = { handle, setCity, setCityByLocation, previewRecommendation, dailyRecommendation, evaluate, buildAdvice, buildRecommendation, fetchForecast, quotaId, sentId, recommendationId,
   SCENE, QUOTA_SCENE, SENT_SCENE, shanghaiDate, shiftDate, dateCn, summarize }

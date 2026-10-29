@@ -806,7 +806,7 @@ test('流式及非流式隔离旧策略和编辑前上下文，历史仍展示�
     }
     const first = await send('本轮问题')
     assert.equal(seen[0].messages.length, 2)
-    assert.ok(first.messages.slice(-2).every(message => message.contextVersion === '3:0'))
+    assert.ok(first.messages.slice(-2).every(message => message.contextVersion === '4:0'))
     await send('同版本追问')
     assert.deepEqual(seen.at(-1).messages.slice(1).map(message => message.content), ['本轮问题', '回复本轮问题', '同版本追问'])
     let version = 0
@@ -815,7 +815,7 @@ test('流式及非流式隔离旧策略和编辑前上下文，历史仍展示�
         data: { ...cloud.records.clothes[0], ...patch } })
       const result = await send(`编辑后${++version}`)
       assert.equal(seen.at(-1).messages.length, 2)
-      assert.ok(result.messages.slice(-2).every(message => message.contextVersion === `3:${version}`))
+      assert.ok(result.messages.slice(-2).every(message => message.contextVersion === `4:${version}`))
       if (patch.category === '其他') assert.equal(seen.at(-1).messages[0].content.includes('"id":"own"'), false)
     }
     const display = await chatApi.handle({ ...ctx, event: { action: 'chatGet', chatId: 'conversation' } })

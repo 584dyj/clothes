@@ -160,20 +160,26 @@ module.exports = function createWearPage({ db, auth, app, wx, returnAfterSave = 
   async loadBase(recordId = '') {
     this.setData({ ready: false, loading: true, loadError: '' })
     try {
-      const [items, outfits, records] = await Promise.all([
-        db.listItems(), db.listOutfits(), recordId || !returnAfterSave ? db.listWearRecords() : []
+      const [items, outfits, records, plans] = await Promise.all([
+        db.listItems(), db.listOutfits(), recordId || !returnAfterSave ? db.listWearRecords() : [],
+        this._options?.planId && !recordId ? db.listPlans(true) : []
       ])
       const record = recordId ? records.find(row => row._id === recordId) : null
       if (recordId && !record) throw new Error('记录不存在')
+      const plan = this._options?.planId && !recordId ? plans.find(row => row._id === this._options.planId) : null
+      const plannedOutfit = plan && outfits.find(row => row._id === plan.outfitId)
+      if (this._options?.planId && !recordId && (!plan || plan.date !== this.today() || !plannedOutfit?.itemIds?.length)) {
+        throw new Error('今日计划不存在或穿搭已删除')
+      }
       this._items = items
       this._records = sortRecords(records)
-      const date = record ? record.date || '' : this.data.date
+      const date = record ? record.date || '' : plan ? plan.date : this.data.date
       this.setData({
         items, outfits, ready: true, loading: false,
-        selectedIds: record ? (record.itemIds || []).slice() : [],
-        outfitId: record ? record.outfitId || '' : '',
-        outfitName: record ? this.outfitNameOf(outfits, record.outfitId) : '',
-        note: record ? record.note || '' : '',
+        selectedIds: record ? (record.itemIds || []).slice() : (plannedOutfit?.itemIds || []).slice(),
+        outfitId: record ? record.outfitId || '' : plannedOutfit?._id || '',
+        outfitName: record ? this.outfitNameOf(outfits, record.outfitId) : plannedOutfit?.name || '',
+        note: record ? record.note || '' : plan?.note || '',
         date,
         dateText: dateTextOf(date, this.today()),
         historyError: ''

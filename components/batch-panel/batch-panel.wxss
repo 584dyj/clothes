@@ -179,6 +179,9 @@
 
 .input { flex: 1; }
 
+.brand-suggestions { display: flex; flex-wrap: wrap; gap: 12rpx; padding: 16rpx 0; }
+.brand-suggestions button { margin: 0; max-width: 100%; white-space: normal; word-break: break-all; background: #efede8; color: #6b675f; }
+
 .picker-value {
   flex: 1;
   min-width: 0;

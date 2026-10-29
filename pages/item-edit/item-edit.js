@@ -1,6 +1,7 @@
 const db = require('../../utils/db')
 const auth = require('../../utils/auth')
 const { cleanScanFields } = require('../../utils/item-fields')
+const brandSuggestions = require('../../utils/brand-suggestions')
 const swipeBack = require('../../utils/swipe-back')
 const focusPlaceholder = require('../../utils/focus-placeholder')
 
@@ -30,6 +31,7 @@ Page({
     colorIndex: -1,
     colorCustom: false, // 选了「其他」时显示手动输入框
     brand: '',
+    brandSuggestions: [],
     seasons: [],
     selectedSeasons: [],
     seasonStates: [],     // [{value, active}]，WXML 不支持方法调用，选中态在此预计算
@@ -108,7 +110,7 @@ Page({
         colorIndex: colorCustom ? this.data.colorOptions.length - 1 : colorIndex,
         colorCustom,
         brand: item.brand || '',
-        selectedSeasons: item.seasons || [],
+        selectedSeasons: (item.seasons || []).slice(0, 1),
         price: item.price != null ? String(item.price) : '',
         purchaseDate: item.purchaseDate || '',
         note: item.note || '',
@@ -209,7 +211,27 @@ Page({
 
   onNameInput(e) { this.setData({ name: e.detail.value }) },
   onColorInput(e) { this.setData({ color: e.detail.value }) },   // 「其他」时的自定义颜色
-  onBrandInput(e) { this.setData({ brand: e.detail.value }) },
+  onBrandInput(e) {
+    this.setData({ brand: e.detail.value, brandSuggestions: brandSuggestions(this._brandNames, e.detail.value) })
+  },
+
+  async onBrandFocus(e) {
+    this.onFieldFocus(e)
+    try {
+      const brands = await db.listBrands()
+      if (this._unloaded) return
+      this._brandNames = brands
+      this.setData({ brandSuggestions: brandSuggestions(this._brandNames, this.data.brand) })
+    } catch (error) {
+      if (!this._unloaded) wx.showToast({ title: '品牌建议加载失败，可手动填写', icon: 'none' })
+    }
+  },
+
+  onBrandPick(e) {
+    const brand = e.currentTarget.dataset.brand
+    if (this.data.saving || this.data.scanning || !this.data.brandSuggestions.includes(brand)) return
+    this.setData({ brand, brandSuggestions: [] })
+  },
 
   onSizeTap(e) {
     const size = e.currentTarget.dataset.value
@@ -280,14 +302,7 @@ Page({
 
   onSeasonTap(e) {
     const value = e.currentTarget.dataset.value
-    let selected = this.data.selectedSeasons.slice()
-    const idx = selected.indexOf(value)
-    if (idx >= 0) {
-      selected.splice(idx, 1)
-    } else {
-      selected.push(value)
-    }
-    this.setData({ selectedSeasons: selected })
+    this.setData({ selectedSeasons: [value] })
     this.syncSeasonStates()
   },
 

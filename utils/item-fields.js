@@ -7,7 +7,7 @@ function cleanScanFields(value, options) {
     category,
     subcategory: category === '配饰' && options.accessoryTypes.includes(item.subcategory) ? item.subcategory : '',
     color: options.colors.includes(item.color) ? item.color : '',
-    seasons: Array.isArray(item.seasons) ? [...new Set(item.seasons)].filter(value => options.seasons.includes(value)) : [],
+    seasons: Array.isArray(item.seasons) ? [...new Set(item.seasons)].filter(value => options.seasons.includes(value)).slice(0, 1) : [],
     brand: text(item.brand, 30)
   }
 }

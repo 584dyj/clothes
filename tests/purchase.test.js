@@ -12,6 +12,20 @@ const ticket = (number, patch = {}) => ({ _id: number.toString(16).padStart(32, 
   cloudPath: `wardrobe/${number.toString(16).padStart(32, '0')}.jpg`, fileID: fileID(number), target: 'itemScan', ...patch })
 const visualResponse = value => ({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify(value) } }] })
 
+test('马甲购买评估只计内层上衣与连衣裙互补，不消除上衣缺口', () => {
+  const vest = purchase.validate(candidate({ category: '马甲' }))
+  const wardrobe = [item('top'), item('dress', { category: '连衣裙' }), item('pants', { category: '长裤' }),
+    item('coat', { category: '外套' }), item('shoe', { category: '鞋' })]
+  assert.deepEqual(purchase.selectItems(vest, wardrobe).matches.map(row => row.id), ['top', 'dress'])
+  const assessed = purchase.evaluate(vest, wardrobe, [], [])
+  assert.equal(assessed.matchCount, 2)
+  assert.deepEqual(assessed.filledGaps, [])
+  const onlyVest = [item('vest', { category: '马甲' })]
+  const top = purchase.evaluate(purchase.validate(candidate({ color: '白色' })), onlyVest, [], [])
+  assert.ok(top.filledGaps.includes('夏季缺少上衣'))
+  assert.equal(purchase.selectItems(purchase.validate(candidate({})), onlyVest).matches[0].id, 'vest')
+})
+
 test('购买评估按重复、缺口和预算给出确定结果', () => {
   const now = new Date('2026-10-07T08:00:00Z')
   const duplicate = purchase.evaluate(candidate({}), [item('top'), item('pants', { category: '长裤', color: '黑色' })], [], [], now)

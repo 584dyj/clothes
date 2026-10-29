@@ -75,49 +75,13 @@ test('高德预报归一化：夜间温度作最低温，昼夜现象不同合�
 
 // ---------- 内容生成 ----------
 
-test('提醒文案按规则取件、超限截断、空候选回退固定文案', () => {
-  const items = [
-    item('i1', 'u', '羽绒服', { seasons: ['冬'], category: '上衣' }),
-    item('i2', 'u', '毛衣', { seasons: ['冬', '春秋'], category: '上衣' }),
-    item('i3', 'u', '短袖', { seasons: ['夏'], category: '上衣' }),
-    item('i4', 'u', '马丁靴', { category: '鞋' })
-  ]
-  assert.equal(alert.buildAdvice({ type: 'drop', delta: 8 }, items), '降温8度：羽绒服、毛衣')
-  assert.equal(alert.buildAdvice({ type: 'rain' }, items), '有雨带伞，鞋选：马丁靴')
-  assert.equal(alert.buildAdvice({ type: 'drop', delta: 8 }, []), '降温8度，注意添衣')
-  assert.equal(alert.buildAdvice({ type: 'rain' }, []), '明天有雨，记得带伞')
-  assert.equal(alert.buildAdvice({ type: 'hot', temp: 37 }, []), '高温37度，注意防暑')
-  assert.equal(alert.buildAdvice({ type: 'rise', delta: 7 }, []), '升温7度，可以轻薄些')
-  const long = Array.from({ length: 6 }, (_, i) => item('l' + i, 'u', '超长名称的冬季衣物' + i, { seasons: ['冬'] }))
-  const advice = alert.buildAdvice({ type: 'drop', delta: 8 }, long)
-  assert.ok(Array.from(advice).length <= 20, advice)
-  assert.match(advice, /等6件$/)
-})
-
-test('普通天气按明天温度取冬夏春秋衣物，雨天提醒带伞，空候选有建议且不超过二十字', () => {
-  const items = [
-    item('winter', 'u', '羽绒服', { seasons: ['冬'] }),
-    item('summer', 'u', '短袖', { seasons: ['夏'] }),
-    item('spring', 'u', '卫衣', { seasons: ['春秋'] })
-  ]
-  for (const [tempMin, tempMax, name, fallback] of [[10, 20, '羽绒服', /保暖/], [11, 28, '短袖', /轻薄/], [11, 27, '卫衣', /长袖/]]) {
-    const trigger = { type: 'normal', ...nday(tempMin, tempMax, '多云') }
-    const advice = alert.buildAdvice(trigger, items)
-    assert.ok(advice.includes(name), advice)
-    for (const other of items.filter(item => item.name !== name)) assert.ok(!advice.includes(other.name), advice)
-    assert.ok(Array.from(advice).length <= 20, advice)
-    const empty = alert.buildAdvice(trigger, [])
-    assert.ok(empty.length > 0 && Array.from(empty).length <= 20, empty)
-    assert.match(empty, fallback)
+test('推送摘要不超过二十字，空衣橱有提示，雨天完整说明仍提醒带伞', () => {
+  for (const weather of [nday(14, 20, '多云'), nday(2, 8, '阴'), nday(26, 36, '晴'), nday(18, 25, '小雨')]) {
+    const rec = alert.buildRecommendation(weather, [], { trigger: { type: 'drop', delta: 8 } })
+    assert.ok(Array.from(rec.advice).length <= 20)
+    assert.match(rec.advice, /暂无适温衣物/)
+    if (weather.textDay === '小雨') assert.match(rec.reason, /带伞/)
   }
-  const rain = { type: 'normal', ...nday(18, 25, '小雨') }
-  assert.match(alert.buildAdvice(rain, items), /伞/)
-  assert.match(alert.buildAdvice(rain, []), /伞/)
-  const long = Array.from({ length: 6 }, (_, i) => item('l' + i, 'u', '超长名称的冬季衣物' + i, { seasons: ['冬'] }))
-  const advice = alert.buildAdvice({ type: 'normal', ...nday(10, 20, '小雨') }, long)
-  assert.ok(Array.from(advice).length <= 20, advice)
-  assert.match(advice, /等6件$/)
-  assert.match(advice, /伞/)
 })
 
 test('buildRecommendation 返回文案、具体衣物 ID 与展示快照', () => {
@@ -126,16 +90,16 @@ test('buildRecommendation 返回文案、具体衣物 ID 与展示快照', () =>
     item('i2', 'u', '毛衣', { seasons: ['冬', '春秋'], category: '毛衣' }),
     item('i3', 'u', '短袖', { seasons: ['夏'], category: '短袖' })
   ]
-  const rec = alert.buildRecommendation({ type: 'drop', delta: 8 }, items)
-  assert.equal(rec.advice, '降温8度：羽绒服、毛衣')
-  assert.deepEqual(rec.itemIds, ['i1', 'i2'])
+  const rec = alert.buildRecommendation(nday(2, 8, '阴'), items)
+  assert.equal(rec.advice, '明日偏冷，注意保暖')
+  assert.deepEqual(rec.itemIds, ['i2', 'i1'])
   assert.deepEqual(rec.items, [
-    { _id: 'i1', name: '羽绒服', category: '羽绒服', subcategory: '', imageFileID: 'cloud://x/wardrobe/1.jpg' },
-    { _id: 'i2', name: '毛衣', category: '毛衣', subcategory: '', imageFileID: '' }
+    { _id: 'i2', name: '毛衣', category: '毛衣', subcategory: '', imageFileID: '' },
+    { _id: 'i1', name: '羽绒服', category: '羽绒服', subcategory: '', imageFileID: 'cloud://x/wardrobe/1.jpg' }
   ])
   // 空候选：advice 回退固定文案，itemIds/items 为空
-  const empty = alert.buildRecommendation({ type: 'drop', delta: 8 }, [])
-  assert.equal(empty.advice, '降温8度，注意添衣')
+  const empty = alert.buildRecommendation(nday(14, 20, '阴'), [])
+  assert.equal(empty.advice, '暂无适温衣物，请自行搭配')
   assert.deepEqual(empty.itemIds, [])
   assert.deepEqual(empty.items, [])
 })
@@ -157,7 +121,7 @@ test('命中降温发送一条，额度与模板字段正确', async () => {
   assert.equal(message.page, 'pages/weather-outfit/weather-outfit?date=2026-10-10')
   assert.equal(message.data.thing12.value, '阴')
   assert.equal(message.data.character_string41.value, '12~22℃')
-  assert.equal(message.data.thing2.value, '降温8度：羽绒服')
+  assert.equal(message.data.thing2.value, '暂无适温衣物，请自行搭配')
   assert.equal(message.data.date4.value, '2026年10月10日')
   const quotaRow = cloud.records.subscriptions.find(row => row.scene === 'weather-alert-quota')
   assert.equal(quotaRow.unused, 0)
@@ -173,7 +137,8 @@ test('发送成功后把每日推荐落库到 ai_cache，落地页可按日期�
     subscriptions: [sub('w1', 'u1'), quota('u1')],
     clothes: [
       item('down', 'u1', '羽绒服', { seasons: ['冬'], category: '羽绒服', imageFileID: 'cloud://x/down.jpg' }),
-      item('tee', 'u1', '短袖', { seasons: ['夏'], category: '短袖' })
+      item('tee', 'u1', '短袖', { seasons: ['夏'], category: '短袖' }),
+      item('shirt', 'u1', '衬衫', { seasons: ['春秋'], category: '衬衫' })
     ]
   })
   const summary = await run(cloud, stubWeather({ ['city=' + CITY]: DROP_FORECAST }))
@@ -183,11 +148,13 @@ test('发送成功后把每日推荐落库到 ai_cache，落地页可按日期�
   assert.ok(rec, '推荐文档已落库')
   assert.equal(rec._openid, 'u1')
   assert.equal(rec.date, '2026-10-10')
-  assert.equal(rec.advice, '降温8度：羽绒服')
-  assert.deepEqual(rec.itemIds, ['down'])
+  assert.equal(rec.advice, '降温8度，按明日温度搭配')
+  assert.deepEqual(rec.itemIds, ['shirt'])
   assert.equal(rec.items.length, 1)
-  assert.equal(rec.items[0]._id, 'down')
-  assert.equal(rec.items[0].imageFileID, 'cloud://x/down.jpg')
+  assert.equal(rec.items[0]._id, 'shirt')
+  assert.equal(rec.status, 'sent')
+  assert.match(rec.reason, /12～22℃/)
+  assert.ok(rec.missing.includes('下装'))
   assert.equal(rec.weather.textDay, '阴')
 })
 
@@ -315,14 +282,14 @@ test('连续两天普通天气各发一条，同日重跑不重复且每天只�
   const cloud = loadCloud({
     users: [cityUser('u1')],
     subscriptions: [sub('w1', 'u1'), sub('w2', 'u1'), quota('u1', { unused: 2 })],
-    clothes: [item('i1', 'u1', '卫衣', { seasons: ['春秋'] })]
+    clothes: [item('i1', 'u1', '卫衣', { seasons: ['春秋'], category: '长袖' })]
   })
   const request = stubWeather({ ['city=' + CITY]: NORMAL_FORECAST })
   assert.equal((await run(cloud, request)).sent, 1)
   const message = cloud.sentMessages[0]
   assert.equal(message.data.thing12.value, '多云')
   assert.equal(message.data.character_string41.value, '19~27℃')
-  assert.ok(message.data.thing2.value.includes('卫衣'))
+  assert.deepEqual(cloud.records.ai_cache.find(row => row.date === '2026-10-10').itemIds, ['i1'])
   assert.equal(message.data.date4.value, '2026年10月10日')
   assert.equal((await run(cloud, request)).sent, 0)
   assert.equal(cloud.sentMessages.length, 1)
@@ -580,22 +547,23 @@ test('setCityByLocation 解析区县写入、直辖市与普通城市显示名�
     /登录状态已失效/)
 })
 
-test('天气候选先排除一级其他：混合衣橱不含其他，只剩其他用通用建议，配饰子类其他仍参与', async () => {
+test('天气候选排除一级其他、家居服及挂件，配饰子类其他可作一件点缀', async () => {
   const mixed = loadCloud({
     users: [cityUser('u1')],
     subscriptions: [sub('w1', 'u1'), quota('u1')],
     clothes: [
       item('down', 'u1', '羽绒服', { seasons: ['冬'], category: '羽绒服' }),
+      item('dress', 'u1', '春秋裙', { seasons: ['春秋'], category: '连衣裙' }),
       item('misc', 'u1', '旧摆件', { seasons: ['冬'], category: '其他' }),
+      item('home', 'u1', '睡衣', { seasons: ['春秋'], category: '家居服' }),
+      item('charm', 'u1', '挂件', { category: '挂件' }),
       item('acc-other', 'u1', '杂件配饰', { seasons: ['冬'], category: '配饰', subcategory: '其他' })
     ]
   })
   const first = await run(mixed, stubWeather({ ['city=' + CITY]: DROP_FORECAST }))
   assert.equal(first.sent, 1)
-  const advice = mixed.sentMessages[0].data.thing2.value
-  assert.ok(advice.includes('羽绒服'), advice)
-  assert.ok(!advice.includes('旧摆件'), advice)
-  assert.ok(advice.includes('杂件配饰'), advice)
+  const ids = mixed.records.ai_cache.find(row => row.date === '2026-10-10').itemIds
+  assert.deepEqual(ids, ['dress', 'acc-other'])
 
   const onlyMisc = loadCloud({
     users: [cityUser('u1')],
@@ -604,7 +572,7 @@ test('天气候选先排除一级其他：混合衣橱不含其他，只剩其�
   })
   const second = await run(onlyMisc, stubWeather({ ['city=' + CITY]: DROP_FORECAST }))
   assert.equal(second.sent, 1)
-  assert.equal(onlyMisc.sentMessages[0].data.thing2.value, '降温8度，注意添衣')
+  assert.equal(onlyMisc.sentMessages[0].data.thing2.value, '暂无适温衣物，请自行搭配')
 })
 
 // ---------- weatherRecommendation（auth 动作，落地页读取） ----------
@@ -644,14 +612,15 @@ test('previewRecommendation 生成并落库推荐，不发送消息也不消耗�
     request: stubWeather({ ['city=' + CITY]: DROP_FORECAST }), env: ENV })
   assert.equal(result.success, true)
   assert.equal(result.date, '2026-10-10')
-  assert.equal(result.advice, '降温8度：羽绒服')
-  assert.deepEqual(result.itemIds, ['down'])
-  assert.equal(result.count, 1)
+  assert.equal(result.advice, '暂无适温衣物，请自行搭配')
+  assert.deepEqual(result.itemIds, [])
+  assert.equal(result.count, 0)
   assert.equal(cloud.sentMessages.length, 0)
-  const rec = cloud.records.ai_cache.find(row => row._id === alert.recommendationId('u1', '2026-10-10'))
+  const rec = cloud.records.ai_cache.find(row => row._id === alert.recommendationId('u1', '2026-10-10') + '-preview')
   assert.ok(rec, '推荐已写入 ai_cache')
-  assert.equal(rec.advice, '降温8度：羽绒服')
-  assert.deepEqual(rec.itemIds, ['down'])
+  assert.equal(rec.advice, '暂无适温衣物，请自行搭配')
+  assert.equal(rec.status, 'preview')
+  assert.deepEqual(rec.itemIds, [])
   // 幂等/额度不受影响
   assert.equal(cloud.records.subscriptions.find(row => row._id === 'w1').consumedAt, undefined)
   assert.equal(cloud.records.subscriptions.find(row => row.scene === 'weather-alert-quota').unused, 1)
@@ -662,4 +631,68 @@ test('previewRecommendation 未设城市时拒绝', async () => {
   await assert.rejects(
     alert.previewRecommendation({ db: cloud.db, openid: 'u1', now: NOW, request: stubWeather({}), env: ENV }),
     /请先在「我的」页设置城市/)
+})
+
+test('真实推送读取成功推荐及实穿记录轮换，失败和预览历史不参与，同一日预览不覆盖正式推荐', async () => {
+  const clothes = [item('a', 'u1', '衬衫A', { category: '衬衫', seasons: ['春秋'] }),
+    item('b', 'u1', '衬衫B', { category: '衬衫', seasons: ['春秋'] }),
+    item('c', 'u1', '衬衫C', { category: '衬衫', seasons: ['春秋'] }),
+    item('pants', 'u1', '长裤', { category: '长裤', seasons: ['春秋'] }),
+    item('shoes', 'u1', '鞋', { category: '鞋' })]
+  const first = alert.buildRecommendation(nday(19, 27, '多云'), clothes, { date: '2026-10-10', openid: 'u1' })
+  const other = clothes.find(row => row.category === '衬衫' && !first.itemIds.includes(row._id))
+  const cloud = loadCloud({ users: [cityUser('u1')], subscriptions: [sub('w1', 'u1'), quota('u1')], clothes,
+    ai_cache: [{ ...first, _id: alert.recommendationId('u1', '2026-10-09'), _openid: 'u1', date: '2026-10-09', status: 'sent' }],
+    wear_records: [ { _id: 'wear', _openid: 'u1', date: '2026-10-09', itemIds: [other._id] },
+      { _id: 'foreign', _openid: 'u2', date: '2026-10-09', itemIds: clothes.map(row => row._id) } ] })
+  assert.equal((await run(cloud, stubWeather({ ['city=' + CITY]: NORMAL_FORECAST }))).sent, 1)
+  const id = alert.recommendationId('u1', '2026-10-10')
+  const saved = structuredClone(cloud.records.ai_cache.find(row => row._id === id))
+  assert.notEqual(saved.bodyKey, first.bodyKey)
+  assert.ok(!saved.itemIds.includes(other._id))
+  const preview = await alert.previewRecommendation({ db: cloud.db, openid: 'u1', now: NOW,
+    request: stubWeather({ ['city=' + CITY]: NORMAL_FORECAST }), env: ENV })
+  assert.deepEqual(preview.itemIds, saved.itemIds)
+  assert.deepEqual(cloud.records.ai_cache.find(row => row._id === id), saved)
+  cloud.setOpenid('u1')
+  const response = await cloud.main({ action: 'weatherRecommendation', date: '2026-10-10' })
+  assert.equal(response.recommendation.reason, saved.reason)
+  assert.deepEqual(response.recommendation.missing, saved.missing)
+
+  for (const status of ['prepared', 'preview']) {
+    const isolated = loadCloud({ users: [cityUser('u1')], clothes, ai_cache: [
+      { ...first, _id: alert.recommendationId('u1', '2026-10-09'), _openid: 'u1', date: '2026-10-09', status }
+    ] })
+    const rec = await alert.previewRecommendation({ db: isolated.db, openid: 'u1', now: NOW,
+      request: stubWeather({ ['city=' + CITY]: NORMAL_FORECAST }), env: ENV })
+    assert.deepEqual(rec.itemIds, first.itemIds, status)
+    isolated.setOpenid('u1')
+    const read = await isolated.main({ action: 'weatherRecommendation', date: '2026-10-10' })
+    assert.deepEqual(read.recommendation.itemIds, rec.itemIds)
+  }
+})
+
+test('失败推送不进入轮换，发送成功后历史标记失败也保留额度和幂等', async () => {
+  const cloud = loadCloud({ users: [cityUser('u1')], subscriptions: [sub('w1', 'u1'), sub('w2', 'u1'), quota('u1', { unused: 2 })] })
+  const request = stubWeather({ ['city=' + CITY]: NORMAL_FORECAST })
+  cloud.faults.send = new Error('temporary')
+  assert.equal((await run(cloud, request)).failed, 1)
+  const id = alert.recommendationId('u1', '2026-10-10')
+  assert.equal(cloud.records.ai_cache.find(row => row._id === id).status, 'prepared')
+  assert.equal(cloud.records.subscriptions.find(row => row._id === alert.quotaId('u1')).unused, 2)
+  cloud.faults.send = null
+  cloud.faults.before = (name, operation) => { if (name === 'ai_cache' && operation === 'update') throw new Error('history unavailable') }
+  assert.equal((await run(cloud, request)).sent, 1)
+  assert.equal(cloud.records.subscriptions.find(row => row._id === alert.quotaId('u1')).unused, 1)
+  assert.equal((await run(cloud, request)).sent, 0)
+  assert.equal(cloud.sentMessages.length, 1)
+})
+
+test('推荐历史读取失败不消耗额度，预览拒绝把明日预报写到其他日期', async () => {
+  const cloud = loadCloud({ users: [cityUser('u1')], subscriptions: [sub('w1', 'u1'), quota('u1')] })
+  cloud.faults.before = (name, operation) => { if (name === 'ai_cache' && operation === 'doc.get') throw new Error('history unavailable') }
+  assert.equal((await run(cloud, stubWeather({ ['city=' + CITY]: NORMAL_FORECAST }))).failed, 1)
+  assert.equal(cloud.records.subscriptions.find(row => row._id === alert.quotaId('u1')).unused, 1)
+  assert.equal(cloud.sentMessages.length, 0)
+  await assert.rejects(alert.previewRecommendation({ db: cloud.db, openid: 'u1', now: NOW, date: '2026-10-12', env: ENV }), /只能预览明日/)
 })

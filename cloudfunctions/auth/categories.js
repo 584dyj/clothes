@@ -1,4 +1,4 @@
-const CATEGORIES = ['外套', '短袖', '长袖', '衬衫', '羽绒服', '保暖衣', '毛衣', '家居服', '连衣裙', '长裙', '短裙', '长裤', '短裤', '配饰', '挂件', '包袋', '鞋', '其他']
+const CATEGORIES = ['外套', '马甲', '短袖', '长袖', '衬衫', '羽绒服', '保暖衣', '毛衣', '家居服', '连衣裙', '长裙', '短裙', '长裤', '短裤', '配饰', '挂件', '包袋', '鞋', '其他']
 const ACCESSORY_TYPES = ['袜子', '帽子', '围巾', '首饰', '其他']
 // ponytail: 基础类别资格，挂件等场景限制由推荐调用方继续校验。
 const isRecommendable = item => !!item && CATEGORIES.includes(item.category) && item.category !== '其他'
@@ -8,6 +8,7 @@ const isRecommendable = item => !!item && CATEGORIES.includes(item.category) && 
 const ROLES = {
   短袖: 'top', 长袖: 'top', 衬衫: 'top', 保暖衣: 'top', 毛衣: 'top',
   外套: 'outer', 羽绒服: 'outer',
+  马甲: 'layer',
   长裙: 'bottom', 短裙: 'bottom', 长裤: 'bottom', 短裤: 'bottom',
   连衣裙: 'dress',
   家居服: 'homewear',

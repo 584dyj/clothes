@@ -1,6 +1,7 @@
 const db = require('../../utils/db')
 const auth = require('../../utils/auth')
 const { cleanScanFields } = require('../../utils/item-fields')
+const brandSuggestions = require('../../utils/brand-suggestions')
 const app = getApp()
 
 const SHOE_SIZES = Array.from({ length: 21 }, (_, index) => String(index + 30))
@@ -14,6 +15,8 @@ const DEFAULT_HINT = '最多选择 9 张衣物或鞋子照片'
 Component({
   data: {
     cards: [],
+    brandKey: '',
+    brandSuggestions: [],
     categories: [],
     seasons: [],
     accessoryTypes: [],
@@ -208,6 +211,26 @@ Component({
     onInput(e) {
       const { key, field } = e.currentTarget.dataset
       this.patchCard(key, { [field]: e.detail.value, error: '' })
+      if (field === 'brand') this.setData({ brandKey: key, brandSuggestions: brandSuggestions(this._brandNames, e.detail.value) })
+    },
+
+    async onBrandFocus(e) {
+      this.setData({ brandKey: e.currentTarget.dataset.key, brandSuggestions: [] })
+      try {
+        const brands = await db.listBrands()
+        if (this._unloaded) return
+        this._brandNames = brands
+        this.setData({ brandSuggestions: brandSuggestions(this._brandNames, this.card(this.data.brandKey)?.brand || '') })
+      } catch (error) {
+        if (!this._unloaded) wx.showToast({ title: '品牌建议加载失败，可手动填写', icon: 'none' })
+      }
+    },
+
+    onBrandPick(e) {
+      const brand = e.currentTarget.dataset.brand, card = this.card(this.data.brandKey)
+      if (this.data.saving || !card || card.status === 'saved' || !this.data.brandSuggestions.includes(brand)) return
+      this.patchCard(card.key, { brand, error: '' })
+      this.setData({ brandSuggestions: [] })
     },
 
     onCategoryTap(e) {
@@ -233,9 +256,7 @@ Component({
       const { key, value } = e.currentTarget.dataset
       const card = this.card(key)
       if (!card || !this.data.seasons.includes(value)) return
-      const seasons = card.seasons.includes(value)
-        ? card.seasons.filter(item => item !== value)
-        : card.seasons.concat(value)
+      const seasons = [value]
       this.patchCard(key, { seasons, seasonStates: this.seasonStates(seasons), error: '' })
     },
 

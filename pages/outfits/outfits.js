@@ -28,6 +28,7 @@ Page({
     loadError: '',
     left: [],        // 左列卡片
     right: [],       // 右列卡片
+    todayPlans: [],
     itemMap: {},     // 衣物 _id -> 衣物对象
     wearBusyId: '',  // 正在写入实穿的搭配 _id（按钮 busy 态，防连点）
     loading: true,
@@ -48,7 +49,16 @@ Page({
     // 仅首次加载显示「加载中」；之后切 tab 命中缓存，静默刷新
     if (!this._loaded) this.setData({ loading: true })
     try {
-      const [outfits, items, records] = await Promise.all([db.listOutfitsPage(0), db.listItems(force), db.listWearRecords(force)])
+      const [outfits, items, records, plans] = await Promise.all([
+        db.listOutfitsPage(0), db.listItems(force), db.listWearRecords(force), db.listPlans(force)
+      ])
+      const todayPlans = plans.filter(plan => plan.date === today())
+      const plannedOutfits = new Map(outfits.map(outfit => [outfit._id, outfit]))
+      await Promise.all([...new Set(todayPlans.map(plan => plan.outfitId))].filter(id => !plannedOutfits.has(id)).map(async id => {
+        try { plannedOutfits.set(id, await db.getOutfit(id)) } catch (e) {
+          if (!/不存在或无权访问/.test(e.message || '')) throw e
+        }
+      }))
       if (token !== this._loadToken) return
       this._loaded = true
       const itemMap = {}
@@ -57,6 +67,7 @@ Page({
       // 只保留当天实穿记录，用于判断卡片「今天穿了 / 已记录」。
       this._todayRecords = records.filter(record => record.date === today())
       this._all = outfits.map(outfit => this.withImages(outfit))
+      this._todayPlans = todayPlans.map(plan => ({ ...plan, outfit: plannedOutfits.get(plan.outfitId) }))
       this.setData({ loading: false, hasMore: outfits.length === PAGE_SIZE })
       this.renderPage()
     } catch (e) {
@@ -90,7 +101,11 @@ Page({
     this._all.forEach((item, i) => {
       ;(i % 2 === 0 ? left : right).push(item)
     })
-    this.setData({ left, right })
+    this.setData({ left, right, todayPlans: (this._todayPlans || []).map(plan => ({
+      _id: plan._id, date: plan.date, name: plan.outfit ? plan.outfit.name || '未命名穿搭' : '穿搭已删除',
+      available: !!plan.outfit?.itemIds?.length,
+      wornToday: !!plan.outfit && this.isWornToday(plan.outfit)
+    })) })
   },
 
   // 页面滚动到底：从服务端取下一页。
@@ -118,6 +133,18 @@ Page({
     wx.navigateTo({ url: '/pages/today-wear/today-wear' })
   },
 
+  onDailyTap() {
+    wx.navigateTo({ url: '/pages/weather-outfit/weather-outfit?daily=1' })
+  },
+
+  onPlanWearTap(e) {
+    const plan = (this._todayPlans || []).find(row => row._id === e.currentTarget.dataset.id)
+    if (!plan?.outfit?.itemIds?.length || plan.date !== today()) return
+    const record = (this._todayRecords || []).find(row => row.outfitId === plan.outfitId || sameItems(row.itemIds, plan.outfit.itemIds))
+    const query = record?._id ? `id=${encodeURIComponent(record._id)}` : `planId=${encodeURIComponent(plan._id)}`
+    wx.navigateTo({ url: `/pages/today-wear/today-wear?${query}` })
+  },
+
   // 「今天穿了」：一键把该搭配的单品快照写为当天实穿记录（可选的静默打卡）。
   async onWearTodayTap(e) {
     const id = e.currentTarget.dataset.id
@@ -131,8 +158,8 @@ Page({
     }
     this.setData({ wearBusyId: id })
     try {
-      await db.addWearRecord({ date: today(), itemIds, outfitId: outfit._id, note: '' })
-      this.markWornLocally(outfit)
+      const recordId = await db.addWearRecord({ date: today(), itemIds, outfitId: outfit._id, note: '' })
+      this.markWornLocally(outfit, recordId)
       wx.showToast({ title: '已记录今天穿着', icon: 'none' })
     } catch (error) {
       // WEAR-01 服务端判重是最终边界：重复被拒按「已记录」处理，不算失败。
@@ -149,9 +176,9 @@ Page({
   },
 
   // 本地补记当天实穿并重算所有卡片「已记录」态，避免依赖下一次整页刷新。
-  markWornLocally(outfit) {
+  markWornLocally(outfit, recordId) {
     this._todayRecords = [...(this._todayRecords || []),
-      { date: today(), itemIds: outfit.itemIds || [], outfitId: outfit._id }]
+      { _id: recordId, date: today(), itemIds: outfit.itemIds || [], outfitId: outfit._id }]
     this._all = (this._all || []).map(item => ({ ...item, wornToday: this.isWornToday(item) }))
     this.renderPage()
   },
