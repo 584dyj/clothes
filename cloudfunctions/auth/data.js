@@ -113,7 +113,7 @@ function cleanItemIds(value) {
   return [...new Set(value)]
 }
 
-function cleanData(collection, input, previous = null) {
+function cleanData(collection, input, previous = null, restoring = false) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('记录格式无效')
   const data = {}
   for (const key of FIELDS[collection]) {
@@ -133,7 +133,7 @@ function cleanData(collection, input, previous = null) {
     if (data.purchaseDate && !validDateString(data.purchaseDate)) throw new Error('购买日期无效')
   } else if (collection === 'outfits') {
     if (!data.name) throw new Error('名称不能为空')
-    data.itemIds = cleanItemIds(input.itemIds)
+    data.itemIds = restoring && Array.isArray(input.itemIds) && input.itemIds.length === 0 ? [] : cleanItemIds(input.itemIds)
   } else if (collection === 'expenses') {
     if (!EXPENSE_CATEGORIES.includes(data.category)) throw new Error('账本分类无效')
     if (typeof input.amount !== 'number' || !Number.isFinite(input.amount) || input.amount <= 0 || input.amount > 1e9) throw new Error('金额无效')
@@ -447,4 +447,5 @@ async function handle(context) {
   return { success: true, _id: targetId, cleanupFailed }
 }
 
-module.exports = { handle, saveAvatar, readDoc, listBrands }
+module.exports = { handle, saveAvatar, readDoc, listBrands, FIELDS, cleanData, claimImage,
+  bumpWardrobeVersion, wearKey, hasSameWearRecord, wardrobeMetaId }

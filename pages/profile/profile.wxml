@@ -113,11 +113,20 @@
       </block>
     </view>
 
+    <view class="section-title">数据备份</view>
+    <view class="account-card card backup-card">
+      <view class="reminder-hint">备份衣物、穿搭、实穿、计划、账本和贴纸，包含图片。恢复时保留已有记录。文件含私人数据，请妥善保管。</view>
+      <button class="btn-primary logout-btn" bindtap="onExportBackup" loading="{{backupBusy && backupOperation === 'export'}}" disabled="{{backupBusy || loggingOut}}">导出备份（含图片）</button>
+      <button wx:if="{{backupPath}}" class="logout-btn" bindtap="onShareBackup" disabled="{{backupBusy}}">发送备份文件</button>
+      <button class="logout-btn" bindtap="onRestoreBackup" loading="{{backupBusy && backupOperation === 'restore'}}" disabled="{{backupBusy || loggingOut}}">从备份恢复</button>
+      <view wx:if="{{backupStatus}}" class="reminder-hint" aria-live="polite">{{backupStatus}}</view>
+    </view>
+
     <block wx:if="{{pendingCleanup}}">
       <button class="btn-danger logout-btn" bindtap="onRetryCleanup" loading="{{cleaning}}" disabled="{{cleaning}}">重试清理</button>
       <view class="cleanup-hint">部分旧图片或穿搭引用尚未清理，不影响正常使用</view>
     </block>
-    <button class="btn-danger logout-btn" bindtap="onLogout" disabled="{{loggingOut}}">退出登录</button>
+    <button class="btn-danger logout-btn" bindtap="onLogout" disabled="{{loggingOut || backupBusy}}">退出登录</button>
   </block>
   </block>
 </view>

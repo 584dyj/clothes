@@ -23,6 +23,7 @@ const path = require('path')
 const revision = crypto.createHash('sha256')
   .update(fs.readFileSync(__filename)).update(fs.readFileSync(path.join(__dirname, 'data.js')))
   .update(fs.readFileSync(path.join(__dirname, 'categories.js')))
+  .update(fs.readFileSync(path.join(__dirname, 'backup.js')))
   .update(fs.readFileSync(path.join(__dirname, 'recommend.js')))
   .update(fs.readFileSync(path.join(__dirname, 'purchase.js')))
   .update(fs.readFileSync(path.join(__dirname, 'chat.js')))
@@ -35,6 +36,7 @@ const revision = crypto.createHash('sha256')
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV })
 const db = cloud.database()
 const dataApi = require('./data')
+const backupApi = require('./backup')
 const recommendation = require('./recommend')
 const purchase = require('./purchase')
 const chatApi = require('./chat')
@@ -315,6 +317,11 @@ async function main(event = {}) {
   if (action === 'listBrands') {
     await requireLoggedInUser(openid)
     return dataApi.listBrands({ db, openid })
+  }
+
+  if (['backupInfo', 'backupExport', 'backupValidate', 'backupRestore'].includes(action)) {
+    const user = await requireLoggedInUser(openid)
+    return backupApi.handle({ db, openid, user, event, env: cloud.getWXContext().ENV || '' })
   }
 
   if (action === 'chatList' || action === 'chatGet' || action === 'chatSend' || action === 'chatDelete' || action === 'chatRename' ||

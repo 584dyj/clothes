@@ -1,5 +1,6 @@
 const auth = require('../../utils/auth')
 const db = require('../../utils/db')
+const { createBackup } = require('../../utils/backup')
 const streak = require('../../utils/streak')
 
 const WEATHER_TEMPLATE_ID = 'gecbz6HZQxVtg7x5eMAY7ugCWXgeIQsuWK9ELJR4Xe0'
@@ -20,6 +21,10 @@ Page({
     loading: true,
     avatarSaving: false,
     loggingOut: false,
+    backupBusy: false,
+    backupOperation: '',
+    backupStatus: '',
+    backupPath: '',
     pendingCleanup: false,
     cleaning: false,
     username: '',
@@ -400,8 +405,64 @@ Page({
     } finally { this.setData({ cleaning: false }) }
   },
 
+  backupTools() {
+    return createBackup({ wx, db, progress: text => { if (!this._unloaded) this.setData({ backupStatus: text }) } })
+  },
+
+  async onExportBackup() {
+    if (this.data.backupBusy || this.data.loggingOut) return
+    this.setData({ backupBusy: true, backupOperation: 'export', backupStatus: '准备导出，请勿在其他设备编辑数据' })
+    const tools = this.backupTools()
+    try {
+      const result = await tools.exportBackup()
+      if (this._unloaded) { await tools.removeFile(result.path); return }
+      if (this.data.backupPath) await tools.removeFile(this.data.backupPath)
+      this.setData({ backupPath: result.path, backupStatus: `导出完成：${Object.values(result.counts).reduce((sum, n) => sum + n, 0)}条记录、${result.images}张图片，请发送文件并妥善保管` })
+    } catch (error) {
+      if (!this._unloaded) this.setData({ backupStatus: `导出失败：${error.message}` })
+    } finally { if (!this._unloaded) this.setData({ backupBusy: false }) }
+  },
+
+  onShareBackup() {
+    if (!this.data.backupPath || this.data.backupBusy) return
+    wx.shareFileMessage({ filePath: this.data.backupPath, fileName: '衣橱备份.jsonl',
+      fail: () => wx.showToast({ title: '未发送，可再次点击发送', icon: 'none' }) })
+  },
+
+  async onRestoreBackup() {
+    if (this.data.backupBusy || this.data.loggingOut) return
+    this.setData({ backupBusy: true, backupOperation: 'restore', backupStatus: '请选择完整的备份文件' })
+    const tools = this.backupTools()
+    let archive
+    try {
+      const selection = await new Promise((resolve, reject) => wx.chooseMessageFile({ count: 1, type: 'file', extension: ['jsonl'], success: resolve, fail: reject }))
+      archive = await tools.inspectBackup(selection.tempFiles[0].path)
+      if (this._unloaded) return
+      const existing = archive.records.filter(row => row.existing).length
+      const confirmed = await new Promise(resolve => wx.showModal({ title: '确认恢复备份',
+        content: `备份包含${archive.records.length}条记录、${archive.assets.size}张图片。已有${existing}条记录将保留，补充缺失记录。失败后可用同一备份重试。`,
+        success: result => resolve(result.confirm), fail: () => resolve(false) }))
+      if (!confirmed || this._unloaded) {
+        if (!this._unloaded) this.setData({ backupStatus: '已取消恢复，数据未修改' })
+        return
+      }
+      const result = await tools.restoreBackup(archive)
+      if (!this._unloaded) {
+        this.setData({ backupStatus: `恢复完成：新增${result.restored}条，保留已有${result.skipped}条` })
+        await this.loadData(true)
+      }
+    } catch (error) {
+      if (!this._unloaded) this.setData({ backupStatus: /cancel/.test(error.errMsg || '') ? '已取消选择' : error.message || error.errMsg || '恢复失败，请重试' })
+    } finally {
+      if (archive) await archive.cleanup()
+      if (!this._unloaded) this.setData({ backupBusy: false })
+    }
+  },
+
+  onUnload() { this._unloaded = true },
+
   onLogout() {
-    if (this.data.loggingOut) return
+    if (this.data.loggingOut || this.data.backupBusy) return
     wx.showModal({
       title: '退出登录',
       content: '退出后可使用账号和密码重新登录。',

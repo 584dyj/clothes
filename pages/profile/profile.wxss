@@ -269,6 +269,10 @@
   margin-top: 56rpx;
 }
 
+.backup-card .logout-btn {
+  margin: 16rpx 0;
+}
+
 .cleanup-hint {
   margin-top: 16rpx;
   color: #6b675f;

@@ -12,6 +12,40 @@ const ticket = (number, patch = {}) => ({ _id: number.toString(16).padStart(32, 
   cloudPath: `wardrobe/${number.toString(16).padStart(32, '0')}.jpg`, fileID: fileID(number), target: 'itemScan', ...patch })
 const visualResponse = value => ({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify(value) } }] })
 
+test('购买评估使用完整衣橱与超过500条账本，视觉复核同样不能绕过真实预算', async () => {
+  const month = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 7)
+  const clothes = Array.from({ length: 150 }, (_, n) => item('c' + n, { price: 100, purchaseDate: month + '-01' }))
+  const expenses = Array.from({ length: 501 }, (_, n) => ({ _id: 'e' + n, _openid: 'openid-1', date: month + '-01', amount: 0.1 }))
+  expenses.push({ _id: 'foreign', _openid: 'other', date: month + '-01', amount: 9999 })
+  const cloud = loadCloud({ clothes, expenses, upload_tickets: [ticket(1)] })
+  const value = candidate({ category: '鞋', price: 1000, monthlyBudget: 14000 })
+  const { assessment } = await purchase.handle({ db: cloud.db, openid: 'openid-1', event: { candidate: value } }, undefined, {})
+  assert.equal(assessment.considered, 150)
+  assert.equal(assessment.truncated, false)
+  assert.equal(assessment.spending.monthSpent, 15050.1)
+  assert.equal(assessment.spending.afterPurchase, 16050.1)
+  assert.equal(assessment.spending.budgetExceeded, true)
+  assert.equal(assessment.verdict.code, 'skip')
+  const visual = await purchase.visualHandle({ db: cloud.db, cloud: cloud.cloudService, openid: 'openid-1',
+    event: { candidate: value, imageFileID: fileID(1) } }, async () => visualResponse({ adjust: 1, reason: '搭配不错' }), { AI_API_KEY: 'test' })
+  assert.equal(visual.visualReview.finalVerdict.code, 'skip')
+})
+
+test('月预算按上海月份及整数分汇总，穿着数据不在500条处截断', async () => {
+  const value = purchase.validate(candidate({ price: 0.1, monthlyBudget: 0.3 }))
+  const assessment = purchase.evaluate(value, [item('top', { price: 0.1, purchaseDate: '2026-11-01' }),
+    item('old', { price: 100, purchaseDate: '2026-10-31' })], [], [{ date: '2026-11-01', amount: 0.1 }], new Date('2026-10-31T16:01:00Z'))
+  assert.equal(assessment.spending.monthSpent, 0.2)
+  assert.equal(assessment.spending.afterPurchase, 0.3)
+  assert.equal(assessment.spending.budgetExceeded, false)
+  const date = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10)
+  const cloud = loadCloud({ clothes: [item('top')], wear_records: Array.from({ length: 501 }, (_, n) => ({
+    _id: 'w' + n, _openid: 'openid-1', date, itemIds: [n === 500 ? 'top' : 'another-item'] })) })
+  const result = await purchase.handle({ db: cloud.db, openid: 'openid-1', event: { candidate: candidate({ color: '白色' }) } }, undefined, {})
+  assert.equal(result.assessment.similarItems[0].wearCount90, 1)
+  assert.equal(result.assessment.verdict.code, 'consider')
+})
+
 test('马甲购买评估只计内层上衣与连衣裙互补，不消除上衣缺口', () => {
   const vest = purchase.validate(candidate({ category: '马甲' }))
   const wardrobe = [item('top'), item('dress', { category: '连衣裙' }), item('pants', { category: '长裤' }),

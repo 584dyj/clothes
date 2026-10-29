@@ -1,5 +1,5 @@
 const crypto = require('crypto')
-const { loadItems, inventory, findGaps, GAP_ROLES } = require('./recommend')
+const { inventory, findGaps, GAP_ROLES } = require('./recommend')
 const { readDoc } = require('./data')
 const { claimImage } = require('./scan')
 const { requestChat } = require('./ai-http')
@@ -56,10 +56,10 @@ function validate(input = {}) {
 
 async function loadRecords(db, collection, openid) {
   const rows = []
-  for (let offset = 0; offset < 500; offset += 20) {
-    const res = await db.collection(collection).where({ _openid: openid }).skip(offset).limit(20).get()
+  for (let offset = 0; ; offset += 100) {
+    const res = await db.collection(collection).where({ _openid: openid }).orderBy('createdAt', 'desc').orderBy('_id', 'desc').skip(offset).limit(100).get()
     rows.push(...res.data)
-    if (res.data.length < 20) break
+    if (res.data.length < 100) break
   }
   return rows
 }
@@ -77,10 +77,7 @@ function roundMoney(value) {
 }
 
 function dateKey(date) {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
+  return new Date(date.getTime() + 8 * 3600000).toISOString().slice(0, 10)
 }
 
 function selectItems(candidate, rawItems) {
@@ -141,10 +138,8 @@ function evaluate(candidate, rawItems, wearRecords, expenses, now = new Date(), 
   const { items, eligible, similar: sameType, matches: matchItems } = selectItems(candidate, rawItems)
   const role = roleOf(candidate.category)
   const complements = COMPLEMENTS[role]
-  const since = new Date(now)
-  since.setDate(since.getDate() - 90)
-  const sinceDate = dateKey(since)
-  const today = new Date(now.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const sinceDate = dateKey(new Date(now.getTime() - 90 * 86400000))
+  const today = dateKey(now)
   const wearCounts = new Map()
   // 账号在近 90 天有过穿着记录，闲置判断才有意义；从不打卡的用户"次数为 0"是没记录而非没穿过
   let hasRecentWear = false
@@ -171,9 +166,10 @@ function evaluate(candidate, rawItems, wearRecords, expenses, now = new Date(), 
     .map(season => `${season}季缺少${gapLabel}`)
     .filter(gap => gaps.includes(gap)) : []
   const month = dateKey(now).slice(0, 7)
-  const wardrobeSpend = items.filter(item => item.purchaseDate.startsWith(month)).reduce((sum, item) => sum + item.price, 0)
-  const ledgerSpend = expenses.filter(item => text(item.date, 10).startsWith(month)).reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
-  const monthSpent = roundMoney(wardrobeSpend + ledgerSpend)
+  const wardrobeCents = items.filter(item => item.purchaseDate.startsWith(month)).reduce((sum, item) => sum + Math.round(item.price * 100), 0)
+  const ledgerCents = expenses.filter(item => text(item.date, 10).startsWith(month)).reduce((sum, item) => sum + Math.round((Number(item.amount) || 0) * 100), 0)
+  if (!Number.isSafeInteger(wardrobeCents + ledgerCents)) throw new Error('开销合计超出可精确计算范围')
+  const monthSpent = (wardrobeCents + ledgerCents) / 100
   const afterPurchase = roundMoney(monthSpent + candidate.price)
   const budgetExceeded = candidate.monthlyBudget !== null && afterPurchase > candidate.monthlyBudget
 
@@ -272,13 +268,13 @@ async function visualHandle({ db, cloud, openid, event }, request = requestChat,
 
   const lock = await reserveVisualBusy(db, openid)
   try {
-    const [{ items, truncated }, wearRecords, expenses, candidateImage] = await Promise.all([
-      loadItems(db, openid),
+    const [items, wearRecords, expenses, candidateImage] = await Promise.all([
+      loadRecords(db, 'clothes', openid),
       loadRecords(db, 'wear_records', openid),
       loadRecords(db, 'expenses', openid),
       claimImage({ db, cloud, openid, imageFileID, match })
     ])
-    const assessment = evaluate(candidate, items, wearRecords, expenses, new Date(), !truncated)
+    const assessment = evaluate(candidate, items, wearRecords, expenses)
     const selected = selectItems(candidate, items)
     const related = [
       ...selected.similar.slice(0, 5).filter(item => item.imageFileID).slice(0, 4).map(item => ({ item, kind: '相似款' })),
@@ -317,13 +313,13 @@ async function visualHandle({ db, cloud, openid, event }, request = requestChat,
 
 async function handle({ db, openid, event }, request = requestChat, env = process.env) {
   const candidate = validate(event.candidate)
-  const [{ items, truncated }, wearRecords, expenses] = await Promise.all([
-    loadItems(db, openid),
+  const [items, wearRecords, expenses] = await Promise.all([
+    loadRecords(db, 'clothes', openid),
     loadRecords(db, 'wear_records', openid),
     loadRecords(db, 'expenses', openid)
   ])
-  const assessment = evaluate(candidate, items, wearRecords, expenses, new Date(), !truncated)
-  const value = { ...assessment, considered: items.length, truncated }
+  const assessment = evaluate(candidate, items, wearRecords, expenses)
+  const value = { ...assessment, considered: items.length, truncated: false }
   value.modelAdvice = await modelAdvice(candidate, value, request, env)
   return { success: true, assessment: value }
 }

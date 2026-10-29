@@ -307,8 +307,16 @@ function callWeather(data) {
 const setCity = cityName => callWeather({ action: 'setCity', cityName })
 const setCityByLocation = (longitude, latitude) => callWeather({ action: 'setCityByLocation', longitude, latitude })
 const dailyRecommendation = (data = {}) => callWeather({ ...data, action: 'dailyRecommendation' })
+const backupInfo = () => call('backupInfo')
+const backupExport = (collection, offset) => call('backupExport', { collection, offset }).then(result => result.records)
+const backupValidate = (source, records) => call('backupValidate', { source, records })
+const prepareBackupImage = (directory, ext) => call('prepareUpload', { directory, ext })
+async function backupRestore(source, records, images) {
+  try { return await call('backupRestore', { source, records, images }) } finally { clearCache() }
+}
 
 module.exports = { chooseImage, uploadImage, uploadStickerImage, removeImage, retryCleanup, cleanupStatus, clearCache, getWardrobeVersion,
+  backupInfo, backupExport, backupValidate, backupRestore, prepareBackupImage,
   listItems, listBrands, getItem, addItem, updateItem, deleteItem, listOutfits, listOutfitsPage, getOutfit, addOutfit, updateOutfit, deleteOutfit,
   listExpenses, addExpense, updateExpense, deleteExpense,
   listWearRecords, getWearRecord, addWearRecord, updateWearRecord, deleteWearRecord, linkWearOutfit,
