@@ -73,7 +73,7 @@
           </view>
           <view class="field">
             <text class="label">品牌</text>
-            <input class="input" value="{{item.brand}}" placeholder="输入品牌，可搜索已有记录" data-key="{{item.key}}" data-field="brand" bindinput="onInput" bindfocus="onBrandFocus" />
+            <input class="input" value="{{item.brand}}" placeholder="衣服的品牌是……" data-key="{{item.key}}" data-field="brand" bindinput="onInput" bindfocus="onBrandFocus" />
           </view>
           <view wx:if="{{brandKey === item.key && brandSuggestions.length}}" class="brand-suggestions" aria-label="已有品牌建议">
             <button wx:for="{{brandSuggestions}}" wx:for-item="brand" wx:key="*this" size="mini" data-brand="{{brand}}" bindtap="onBrandPick">{{brand}}</button>
