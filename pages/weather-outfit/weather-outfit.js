@@ -57,7 +57,8 @@ Page({
       }
       const availableIds = this.data.daily ? null : new Set((await db.listItems()).map(item => item._id))
       this.applyRecommendation(recommendation, availableIds)
-      this.setData({ loading: false, ready: true, adjustError: false, adjustMessage: result?.message || '' })
+      this.setData({ loading: false, ready: true, adjustError: false, adjustMessage: '' })
+      if (result?.message) wx.showToast({ title: result.message, icon: 'none', duration: 2500 })
     } catch (e) {
       console.error(e)
       this.setData({ loading: false, loadError: this.data.daily ? (e.message || '推荐内容加载失败，请重试') : '推荐内容加载失败，请重试' })
@@ -88,9 +89,10 @@ Page({
     if (!this.data.daily || !this.data.ready || this.data.loading || this.data.adjusting || this.data.saving || this.data.saved || this.data.adjustError) return
     this.setData({ adjusting: true, adjustMessage: '', adjustError: false })
     try {
+      const category = this.data.items.find(item => item._id === replaceId)?.category || '衣物'
       const result = await db.dailyRecommendation({ operation, replaceId, date: this.data.date, revision: this.data.revision })
       this.applyRecommendation(result.recommendation, null, operation === 'replace' || result.recommendation.revision === this.data.revision)
-      this.setData({ adjustMessage: result.message || (operation === 'replace' ? '已替换这件衣物' : '已换一套搭配') })
+      wx.showToast({ title: result.message || (operation === 'replace' ? `已替换${category}` : '已换一套搭配'), icon: 'none', duration: 2500 })
     } catch (e) {
       this.setData({ adjustError: true, adjustMessage: e.message || '调整失败，请重试' })
     } finally {
@@ -112,6 +114,11 @@ Page({
   // 保存用衣物 ID：取「可保存且已勾选」的，避免把已删除或用户取消的衣物写入。
   selectedIds() {
     return this.data.items.filter(item => item.available && item.selected).map(item => item._id)
+  },
+
+  onPreviewImage(e) {
+    const item = this.data.items.find(item => item._id === e.currentTarget.dataset.id)
+    if (item?.imageFileID) wx.previewImage({ urls: [item.imageFileID] })
   },
 
   // 点击衣物卡片切换勾选（已删除的不可选）。

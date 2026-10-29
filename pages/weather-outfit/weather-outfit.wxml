@@ -20,9 +20,9 @@
 
       <view class="list-heading">
         <view class="list-title">推荐衣物</view>
-        <button wx:if="{{daily && !saved}}" class="adjust-btn change-btn" bindtap="onChangeTap" loading="{{adjusting}}" disabled="{{adjusting || saving || !count || adjustError}}">换一套</button>
+        <button wx:if="{{daily && !saved}}" class="adjust-btn change-btn" bindtap="onChangeTap" loading="{{adjusting}}" disabled="{{adjusting || saving || !count || adjustError}}">更改一套</button>
       </view>
-      <view wx:if="{{daily && !saved && adjustMessage}}" class="adjust-feedback">
+      <view wx:if="{{daily && !saved && adjustError}}" class="adjust-feedback">
         <view class="adjust-message" role="status">{{adjustMessage}}</view>
         <button wx:if="{{adjustError}}" class="adjust-btn" bindtap="onRetry">重新加载</button>
       </view>
@@ -36,7 +36,7 @@
           data-id="{{item._id}}"
           bindtap="onItemTap"
         >
-          <image wx:if="{{item.imageFileID}}" class="row-img" src="{{item.imageFileID}}" mode="aspectFill" />
+          <image wx:if="{{item.imageFileID}}" class="row-img" src="{{item.imageFileID}}" mode="aspectFill" data-id="{{item._id}}" catchtap="onPreviewImage" role="button" aria-label="查看{{item.name}}照片" />
           <view wx:else class="row-img row-img-placeholder">无图</view>
           <view class="row-info">
             <view class="row-name">{{item.name}}</view>
@@ -44,7 +44,7 @@
               <text class="tag">{{item.subcategory || item.category}}</text>
               <text wx:if="{{!item.available}}" class="tag tag-gone">已删除</text>
             </view>
-            <button wx:if="{{daily && item.available && !saved}}" class="adjust-btn replace-btn" data-id="{{item._id}}" catchtap="onReplaceTap" disabled="{{adjusting || saving || adjustError}}" aria-label="替换{{item.name}}">换这件</button>
+            <button wx:if="{{daily && item.available && !saved}}" class="adjust-btn replace-btn" data-id="{{item._id}}" catchtap="onReplaceTap" disabled="{{adjusting || saving || adjustError}}" aria-label="替换{{item.name}}">更改这件</button>
           </view>
           <view wx:if="{{item.available}}" class="row-check {{item.selected ? 'row-check-on' : ''}}">{{item.selected ? '✓' : ''}}</view>
         </view>

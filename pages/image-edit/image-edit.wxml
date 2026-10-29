@@ -1,0 +1,26 @@
+<view class="page">
+  <view class="title">调整衣物照片</view>
+  <view class="hint">框内即衣物照片的显示区域 · 3:4</view>
+  <view class="crop-frame" style="width: {{frameWidth}}px; height: {{frameHeight}}px;" catchtouchstart="onTouchStart" catchtouchmove="onTouchMove" catchtouchend="onTouchEnd" catchtouchcancel="onTouchEnd">
+    <canvas id="cropCanvas" type="2d" class="crop-canvas" style="width: {{frameWidth}}px; height: {{frameHeight}}px;" aria-label="衣物照片裁剪预览" />
+    <view wx:if="{{ready}}" class="crop-grid" aria-hidden="true">
+      <view class="grid-line vertical first"></view><view class="grid-line vertical second"></view>
+      <view class="grid-line horizontal first"></view><view class="grid-line horizontal second"></view>
+    </view>
+    <view wx:if="{{!ready}}" class="state-text">
+      <text>{{loadError || '照片加载中…'}}</text>
+      <button wx:if="{{loadError}}" class="tool retry" bindtap="onRetry">重新加载</button>
+    </view>
+  </view>
+  <view class="hint gesture-hint">拖动调整位置，双指缩放</view>
+  <view class="tools">
+    <button class="tool" bindtap="onZoomOut" disabled="{{!ready || exporting}}" aria-label="缩小照片">缩小</button>
+    <button class="tool" bindtap="onZoomIn" disabled="{{!ready || exporting}}" aria-label="放大照片">放大</button>
+    <button class="tool" bindtap="onRotate" disabled="{{!ready || exporting}}">旋转90°</button>
+    <button class="tool" bindtap="onReset" disabled="{{!ready || exporting}}">重置</button>
+  </view>
+  <view class="actions">
+    <button class="cancel" bindtap="onCancel" disabled="{{exporting}}">取消</button>
+    <button class="confirm" bindtap="onConfirm" loading="{{exporting}}" disabled="{{!ready || exporting}}">使用裁剪照片</button>
+  </view>
+</view>

@@ -24,18 +24,21 @@
       <view>拍照或从相册选择</view>
     </view>
   </view>
-  <button
-    wx:if="{{!id && (imagePath || scanFileID)}}"
-    class="scan-btn"
-    bindtap="onScanPhoto"
-    disabled="{{scanning || saving || !ready}}"
-  >{{scanning ? '识别中…' : 'AI 识别填充'}}</button>
+  <view wx:if="{{imagePath || imageFileID}}" class="image-actions">
+    <button class="scan-btn" bindtap="onEditImage" disabled="{{scanning || saving || editingImage || !ready}}">{{editingImage ? '编辑中…' : '裁剪 / 旋转'}}</button>
+    <button
+      wx:if="{{!id && (imagePath || scanFileID)}}"
+      class="scan-btn"
+      bindtap="onScanPhoto"
+      disabled="{{scanning || saving || editingImage || !ready}}"
+    >{{scanning ? '识别中…' : 'AI 识别填充'}}</button>
+  </view>
 
   <!-- 表单 -->
-  <view class="form card">
+  <view class="form card {{saving ? 'form-locked' : ''}}">
     <view class="field">
       <text class="label">名称</text>
-      <input class="input" placeholder="{{_focus.name ? '' : '衣服的名字是……'}}" value="{{name}}" data-field="name" bindinput="onNameInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+      <input class="input" placeholder="{{_focus.name ? '' : '衣服的名字是……'}}" value="{{name}}" disabled="{{saving}}" data-field="name" bindinput="onNameInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
     </view>
 
     <view class="field field-column">
@@ -96,12 +99,12 @@
 
     <view class="field" wx:if="{{colorCustom}}">
       <text class="label">自定义颜色</text>
-      <input class="input" placeholder="{{_focus.color ? '' : '输入颜色名称'}}" value="{{color}}" data-field="color" bindinput="onColorInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+      <input class="input" placeholder="{{_focus.color ? '' : '输入颜色名称'}}" value="{{color}}" disabled="{{saving}}" data-field="color" bindinput="onColorInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
     </view>
 
     <view class="field">
       <text class="label">品牌</text>
-      <input class="input" placeholder="{{_focus.brand ? '' : '衣服的品牌是……'}}" value="{{brand}}" data-field="brand" bindinput="onBrandInput" bindfocus="onBrandFocus" bindblur="onFieldBlur" />
+      <input class="input" placeholder="{{_focus.brand ? '' : '衣服的品牌是……'}}" value="{{brand}}" disabled="{{saving}}" data-field="brand" bindinput="onBrandInput" bindfocus="onBrandFocus" bindblur="onFieldBlur" />
     </view>
     <view wx:if="{{brandSuggestions.length}}" class="brand-suggestions" aria-label="已有品牌建议">
       <button wx:for="{{brandSuggestions}}" wx:key="*this" size="mini" data-brand="{{item}}" bindtap="onBrandPick">{{item}}</button>
@@ -109,7 +112,7 @@
 
     <view class="field">
       <text class="label">价格</text>
-      <input class="input" type="digit" placeholder="{{_focus.price ? '' : '衣服的价格是……'}}" value="{{price}}" data-field="price" bindinput="onPriceInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+      <input class="input" type="digit" placeholder="{{_focus.price ? '' : '衣服的价格是……'}}" value="{{price}}" disabled="{{saving}}" data-field="price" bindinput="onPriceInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
     </view>
 
     <view class="field" data-target="date" bindtap="openPicker">
@@ -121,13 +124,19 @@
 
     <view class="field field-column">
       <text class="label">备注</text>
-      <textarea class="textarea" placeholder="{{_focus.note ? '' : '还有要记录的内容是……'}}" value="{{note}}" data-field="note" bindinput="onNoteInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
+      <textarea class="textarea" placeholder="{{_focus.note ? '' : '还有要记录的内容是……'}}" value="{{note}}" disabled="{{saving}}" data-field="note" bindinput="onNoteInput" bindfocus="onFieldFocus" bindblur="onFieldBlur" />
     </view>
   </view>
 
+  <checkbox-group wx:if="{{!id}}" class="reuse-options" bindchange="onReuseFieldsChange">
+    <view class="reuse-hint">保存并继续时，仅本次连续添加沿用</view>
+    <label><checkbox value="brand" checked="{{reuseBrand}}" color="#3a3835" disabled="{{saving || scanning || editingImage}}" />品牌</label>
+    <label><checkbox value="season" checked="{{reuseSeason}}" color="#3a3835" disabled="{{saving || scanning || editingImage}}" />季节</label>
+  </checkbox-group>
   <view class="form-actions">
-    <button class="btn-primary" bindtap="onSave" disabled="{{saving || scanning || !ready}}">保存</button>
-    <button wx:if="{{id}}" class="btn-danger" bindtap="onDelete" disabled="{{saving || !ready}}">删除</button>
+    <button class="btn-primary" bindtap="onSave" disabled="{{saving || scanning || editingImage || !ready}}">保存</button>
+    <button wx:if="{{!id}}" class="btn-secondary" bindtap="onSaveAndContinue" disabled="{{saving || scanning || editingImage || !ready}}">保存并继续</button>
+    <button wx:if="{{id}}" class="btn-danger" bindtap="onDelete" disabled="{{saving || editingImage || !ready}}">删除</button>
   </view>
   </block>
 

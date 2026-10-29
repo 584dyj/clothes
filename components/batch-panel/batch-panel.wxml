@@ -5,15 +5,42 @@
       <view class="toolbar-text">
         <view class="toolbar-hint">{{toolbarHint}}</view>
       </view>
-      <button class="choose-btn" bindtap="onChooseImages" disabled="{{processing || saving || !ready}}">继续选图</button>
+      <view class="toolbar-actions">
+        <button class="secondary-btn" bindtap="onBulkToggle" disabled="{{processing || saving || !ready}}">{{bulkOpen ? '取消设置' : '批量设置'}}</button>
+        <button class="choose-btn" bindtap="onChooseImages" disabled="{{processing || saving || !ready || bulkOpen}}">继续选图</button>
+      </view>
+    </view>
+
+    <view wx:if="{{bulkOpen}}" class="bulk-editor card">
+      <view class="bulk-heading">
+        <text>已选 {{bulkSelectedCount}} 件</text>
+        <button class="secondary-btn" bindtap="onBulkSelectAll">{{bulkSelectedCount && bulkSelectedCount === 9 - remainingSlots ? '取消全选' : '全选'}}</button>
+      </view>
+      <view class="field">
+        <text class="label">品牌</text>
+        <input class="input" value="{{bulkBrand}}" maxlength="100" placeholder="留空不修改" data-key="bulk" bindinput="onBulkBrandInput" bindfocus="onBrandFocus" />
+      </view>
+      <view wx:if="{{brandKey === 'bulk' && brandSuggestions.length}}" class="brand-suggestions" aria-label="已有品牌建议">
+        <button wx:for="{{brandSuggestions}}" wx:key="*this" size="mini" data-brand="{{item}}" bindtap="onBrandPick">{{item}}</button>
+      </view>
+      <view class="field field-column">
+        <text class="label">季节</text>
+        <view class="chip-row">
+          <button class="chip {{bulkSeason === '' ? 'chip-active' : ''}}" data-value="" bindtap="onBulkSeasonTap" aria-pressed="{{bulkSeason === ''}}">不修改</button>
+          <button wx:for="{{seasons}}" wx:key="*this" class="chip {{bulkSeason === item ? 'chip-active' : ''}}" data-value="{{item}}" bindtap="onBulkSeasonTap" aria-pressed="{{bulkSeason === item}}">{{item}}</button>
+        </view>
+      </view>
+      <view class="bulk-hint">勾选下方衣物，只替换已设置的品牌或季节，应用后仍需保存。</view>
+      <button class="btn-primary bulk-apply" bindtap="onBulkApply" disabled="{{!bulkSelectedCount || (!bulkBrand && !bulkSeason) || processing || saving}}">应用到所选 {{bulkSelectedCount}} 件</button>
     </view>
 
     <view wx:if="{{cards.length === 0}}" class="empty-state">
       <view class="empty-text">{{toolbarHint}}</view>
-      <button class="btn-primary empty-choose" bindtap="onChooseImages" disabled="{{processing || saving || !ready}}">选择图片</button>
+      <button class="btn-primary empty-choose" bindtap="onChooseImages" disabled="{{processing || saving || !ready || bulkOpen}}">选择图片</button>
     </view>
     <view wx:else class="batch-grid">
       <view wx:for="{{cards}}" wx:key="key" class="batch-card card {{item.expanded ? 'card-expanded' : ''}} {{item.status === 'saved' ? 'card-saved' : ''}}">
+        <button wx:if="{{bulkOpen && item.status !== 'saved'}}" class="bulk-select {{item.bulkSelected ? 'bulk-select-on' : ''}}" data-key="{{item.key}}" catchtap="onBulkSelect" aria-pressed="{{!!item.bulkSelected}}" aria-label="选择{{item.name || '未命名衣物'}}">{{item.bulkSelected ? '✓ 已选' : '选择'}}</button>
         <view wx:if="{{item.status !== 'saved'}}" class="card-remove" data-key="{{item.key}}" catchtap="onRemoveCard">×</view>
         <view class="card-summary" data-key="{{item.key}}" bindtap="onToggleCard">
           <image class="card-image" src="{{item.imagePath || item.imageFileID}}" mode="aspectFill" />
@@ -24,10 +51,14 @@
           </view>
         </view>
 
+        <view wx:if="{{item.status !== 'saved'}}" class="image-edit-action">
+          <button class="secondary-btn" data-key="{{item.key}}" catchtap="onEditImage" disabled="{{processing || saving || bulkOpen || !ready}}">{{editingKey === item.key ? '编辑中…' : '裁剪 / 旋转'}}</button>
+        </view>
+
         <view wx:if="{{item.error}}" class="card-error">{{item.error}}</view>
         <view wx:if="{{item.status === 'failed'}}" class="card-actions">
-          <button wx:if="{{item.failStage === 'save'}}" size="mini" data-key="{{item.key}}" bindtap="onRetrySave" disabled="{{processing || saving}}">重试保存</button>
-          <button wx:else size="mini" data-key="{{item.key}}" bindtap="onRetryScan" disabled="{{processing || saving}}">重试识别</button>
+          <button wx:if="{{item.failStage === 'save'}}" size="mini" data-key="{{item.key}}" bindtap="onRetrySave" disabled="{{processing || saving || bulkOpen}}">重试保存</button>
+          <button wx:else size="mini" data-key="{{item.key}}" bindtap="onRetryScan" disabled="{{processing || saving || bulkOpen}}">重试识别</button>
         </view>
 
         <view wx:if="{{item.expanded}}" class="editor">
@@ -86,7 +117,7 @@
       </view>
     </view>
 
-    <button wx:if="{{cards.length}}" class="btn-primary save-btn" bindtap="onSaveAll" loading="{{saving}}" disabled="{{processing || saving}}">{{saveBtnText}}</button>
+    <button wx:if="{{cards.length}}" class="btn-primary save-btn" bindtap="onSaveAll" loading="{{saving}}" disabled="{{processing || saving || bulkOpen}}">{{saveBtnText}}</button>
   </block>
 
   <wheel-picker

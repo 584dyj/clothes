@@ -1,0 +1,22 @@
+page { background: #232220; color: #ffffff; }
+.page { padding: 24rpx 24rpx calc(24rpx + env(safe-area-inset-bottom)); text-align: center; }
+.title { font-size: 32rpx; font-weight: 600; }
+.hint { margin: 12rpx 0 24rpx; color: #c9c5bd; font-size: 24rpx; }
+.crop-frame { position: relative; margin: 0 auto; background: #151412; overflow: hidden; }
+.crop-canvas { display: block; }
+.crop-grid { position: absolute; inset: 0; box-sizing: border-box; border: 2rpx solid #ffffff; pointer-events: none; }
+.grid-line { position: absolute; background: rgba(255, 255, 255, 0.55); }
+.vertical { top: 0; bottom: 0; width: 1rpx; }
+.vertical.first { left: 33.333%; } .vertical.second { left: 66.667%; }
+.horizontal { left: 0; right: 0; height: 1rpx; }
+.horizontal.first { top: 33.333%; } .horizontal.second { top: 66.667%; }
+.state-text { position: absolute; inset: 0; padding: 24rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 26rpx; line-height: 1.6; overflow-wrap: anywhere; }
+.gesture-hint { margin: 16rpx 0; }
+.tools, .actions { display: flex; gap: 16rpx; }
+.actions { margin-top: 24rpx; }
+button { flex: 1; min-width: 0; margin: 0; padding: 0 12rpx; height: 76rpx; line-height: 74rpx; border-radius: 38rpx; font-size: 26rpx; box-sizing: border-box; }
+button::after { border: none; }
+.tool, .cancel { background: transparent; border: 1rpx solid #9a958c; color: #ffffff; }
+.confirm { background: #ffffff; color: #3a3835; }
+button[disabled] { color: #9a958c; background: #34322f; border-color: #59554f; }
+.retry { flex: none; width: 240rpx; margin-top: 24rpx; }

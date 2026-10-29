@@ -17,6 +17,10 @@ Component({
     cards: [],
     brandKey: '',
     brandSuggestions: [],
+    bulkOpen: false,
+    bulkBrand: '',
+    bulkSeason: '',
+    bulkSelectedCount: 0,
     categories: [],
     seasons: [],
     accessoryTypes: [],
@@ -25,6 +29,7 @@ Component({
     colors: [],
     ready: false,
     processing: false,
+    editingKey: '',
     saving: false,
     scanDone: 0,
     scanTotal: 0,
@@ -76,11 +81,13 @@ Component({
       const unsaved = this.unsavedCards()
       const saveable = unsaved.filter(card => !this.validate(card)).length
       let saveBtnText = '全部保存'
-      if (this.data.processing) saveBtnText = `识别中 ${this.data.scanDone}/${this.data.scanTotal}…`
+      if (this.data.editingKey) saveBtnText = '图片编辑中…'
+      else if (this.data.processing) saveBtnText = `识别中 ${this.data.scanDone}/${this.data.scanTotal}…`
       else if (this.data.saving) saveBtnText = '保存中…'
       else if (saveable) saveBtnText = `全部保存（${saveable} 件可入库）`
       this.setData({
         remainingSlots: MAX_CARDS - unsaved.length,
+        bulkSelectedCount: unsaved.filter(card => card.bulkSelected).length,
         saveBtnText,
         toolbarHint: unsaved.length ? `已选 ${unsaved.length}/${MAX_CARDS} 张 · 逐张识别` : DEFAULT_HINT
       })
@@ -90,8 +97,55 @@ Component({
       return this.data.seasons.map(value => ({ value, active: selected.includes(value) }))
     },
 
-    async onChooseImages() {
+    onBulkToggle() {
       if (!this.data.ready || this.data.processing || this.data.saving) return
+      this.setData({ bulkOpen: !this.data.bulkOpen, bulkBrand: '', bulkSeason: '', brandKey: '', brandSuggestions: [],
+        cards: this.data.cards.map(card => ({ ...card, bulkSelected: false, expanded: false })) })
+      this.refreshView()
+    },
+
+    onBulkSelect(e) {
+      if (!this.data.bulkOpen || this.data.processing || this.data.saving) return
+      const card = this.card(e.currentTarget.dataset.key)
+      if (card && card.status !== 'saved') this.patchCard(card.key, { bulkSelected: !card.bulkSelected })
+    },
+
+    onBulkSelectAll() {
+      if (!this.data.bulkOpen || this.data.processing || this.data.saving) return
+      const selected = !this.unsavedCards().every(card => card.bulkSelected)
+      this.setData({ cards: this.data.cards.map(card => ({ ...card, bulkSelected: card.status !== 'saved' && selected })) })
+      this.refreshView()
+    },
+
+    onBulkBrandInput(e) {
+      if (!this.data.bulkOpen || this.data.processing || this.data.saving) return
+      this.setData({ bulkBrand: e.detail.value, brandKey: 'bulk', brandSuggestions: brandSuggestions(this._brandNames, e.detail.value) })
+    },
+
+    onBulkSeasonTap(e) {
+      if (!this.data.bulkOpen || this.data.processing || this.data.saving) return
+      const value = e.currentTarget.dataset.value
+      if (value === '' || this.data.seasons.includes(value)) this.setData({ bulkSeason: value })
+    },
+
+    onBulkApply() {
+      if (!this.data.bulkOpen || this.data.processing || this.data.saving) return
+      const brand = this.data.bulkBrand.trim(), season = this.data.bulkSeason
+      if (!this.data.bulkSelectedCount) return
+      if (!brand && !season) { wx.showToast({ title: '请填写品牌或选择季节', icon: 'none' }); return }
+      if (brand.length > 100 || (season && !this.data.seasons.includes(season))) {
+        wx.showToast({ title: '请检查品牌和季节', icon: 'none' }); return
+      }
+      const count = this.data.bulkSelectedCount
+      this.setData({ cards: this.data.cards.map(card => card.bulkSelected && card.status !== 'saved'
+        ? { ...card, ...(brand ? { brand } : {}), ...(season ? { seasons: [season], seasonStates: this.seasonStates([season]) } : {}) }
+        : card) })
+      this.onBulkToggle()
+      wx.showToast({ title: `已应用到${count}件，待保存`, icon: 'none' })
+    },
+
+    async onChooseImages() {
+      if (!this.data.ready || this.data.processing || this.data.saving || this.data.bulkOpen) return
       const count = this.data.remainingSlots
       if (count <= 0) {
         wx.showToast({ title: '每批最多 9 张', icon: 'none' })
@@ -133,6 +187,29 @@ Component({
       } catch (e) {
         if (!String(e && (e.errMsg || e.message || '')).includes('cancel')) {
           wx.showToast({ title: '选择图片失败', icon: 'none' })
+        }
+      }
+    },
+
+    async onEditImage(e) {
+      if (!this.data.ready || this.data.processing || this.data.saving || this.data.bulkOpen) return
+      const card = this.card(e.currentTarget.dataset.key)
+      if (!card || card.status === 'saved' || (!card.imagePath && !card.imageFileID)) return
+      this.setData({ processing: true, editingKey: card.key })
+      this.refreshView()
+      try {
+        const path = await db.editImage(card.imagePath || card.imageFileID)
+        if (this._unloaded) return
+        this.patchCard(card.key, { imagePath: path, imageFileID: '', status: 'queued', statusText: STATUS_TEXT.queued, error: '', failStage: '' })
+        if (card.imageFileID) db.removeImage(card.imageFileID)
+        this.setData({ processing: false, editingKey: '' })
+        await this.scanCards([card.key])
+      } catch (error) {
+        if (!this._unloaded && !/cancel/i.test(error.errMsg || error.message || '')) wx.showToast({ title: error.errMsg || error.message || '无法打开照片裁剪，请重试', icon: 'none' })
+      } finally {
+        if (!this._unloaded) {
+          this.setData({ processing: false, editingKey: '' })
+          this.refreshView()
         }
       }
     },
@@ -196,11 +273,12 @@ Component({
     },
 
     async onRetryScan(e) {
-      if (this.data.processing || this.data.saving) return
+      if (this.data.processing || this.data.saving || this.data.bulkOpen) return
       await this.scanCards([e.currentTarget.dataset.key])
     },
 
     onToggleCard(e) {
+      if (this.data.bulkOpen) return this.onBulkSelect(e)
       const key = e.currentTarget.dataset.key
       const card = this.card(key)
       // 已入库卡片的编辑不会再生效，禁止展开避免误导
@@ -220,7 +298,8 @@ Component({
         const brands = await db.listBrands()
         if (this._unloaded) return
         this._brandNames = brands
-        this.setData({ brandSuggestions: brandSuggestions(this._brandNames, this.card(this.data.brandKey)?.brand || '') })
+        const value = this.data.brandKey === 'bulk' ? this.data.bulkBrand : this.card(this.data.brandKey)?.brand || ''
+        this.setData({ brandSuggestions: brandSuggestions(this._brandNames, value) })
       } catch (error) {
         if (!this._unloaded) wx.showToast({ title: '品牌建议加载失败，可手动填写', icon: 'none' })
       }
@@ -228,6 +307,12 @@ Component({
 
     onBrandPick(e) {
       const brand = e.currentTarget.dataset.brand, card = this.card(this.data.brandKey)
+      if (this.data.brandKey === 'bulk') {
+        if (this.data.bulkOpen && !this.data.processing && !this.data.saving && this.data.brandSuggestions.includes(brand)) {
+          this.setData({ bulkBrand: brand, brandSuggestions: [] })
+        }
+        return
+      }
       if (this.data.saving || !card || card.status === 'saved' || !this.data.brandSuggestions.includes(brand)) return
       this.patchCard(card.key, { brand, error: '' })
       this.setData({ brandSuggestions: [] })
@@ -329,9 +414,10 @@ Component({
 
     // 保存单张卡片，成功/失败都会写回卡片状态；返回是否成功
     async saveCard(card) {
-      this.patchCard(card.key, { status: 'saving', statusText: STATUS_TEXT.saving, error: '', failStage: '' })
+      const requestId = card.requestId || `item-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      this.patchCard(card.key, { requestId, status: 'saving', statusText: STATUS_TEXT.saving, error: '', failStage: '' })
       try {
-        await db.addItem(this.buildPayload(card))
+        await db.addItem(this.buildPayload(card), requestId)
         this.patchCard(card.key, { status: 'saved', statusText: STATUS_TEXT.saved, error: '', expanded: false })
         return true
       } catch (e) {
@@ -362,7 +448,7 @@ Component({
     },
 
     async onSaveAll() {
-      if (this.data.processing || this.data.saving || !this.data.ready) return
+      if (this.data.processing || this.data.saving || !this.data.ready || this.data.bulkOpen) return
       const candidates = this.unsavedCards()
       if (!candidates.length) {
         wx.showToast({ title: '请先选择图片', icon: 'none' })
@@ -390,7 +476,7 @@ Component({
     },
 
     async onRetrySave(e) {
-      if (this.data.processing || this.data.saving) return
+      if (this.data.processing || this.data.saving || this.data.bulkOpen) return
       const card = this.card(e.currentTarget.dataset.key)
       if (!card || card.status === 'saved') return
       const error = this.validate(card)
@@ -411,6 +497,7 @@ Component({
       if (!card) return
       this.setData({ cards: this.data.cards.filter(item => item.key !== key) })
       this.refreshView()
+      if (!this.data.cards.length && this.data.bulkOpen) this.onBulkToggle()
       if (card.status !== 'saved' && card.imageFileID) return db.removeImage(card.imageFileID)
     }
   }

@@ -8,7 +8,7 @@ const { ROLES } = require('../cloudfunctions/weather-alert/outfit')
 const now = new Date('2026-10-09T13:30:00Z')
 const date = '2026-10-10'
 const item = (_id, category, seasons = ['春秋']) => ({ _id, _openid: 'u', name: _id, category, seasons })
-const wardrobe = () => [item('a', '长袖'), item('b', '衬衫'), item('c', '长袖'), item('pants', '长裤'),
+const wardrobe = () => [item('a', '长袖'), item('b', '长袖'), item('c', '长袖'), item('pants', '长裤'),
   item('shoes', '鞋', []), item('outer', '外套'), item('down', '羽绒服', ['春秋'])]
 function setup(clothes = wardrobe()) {
   const cloud = loadCloud({ users: [{ _id: 'user', openid: 'u', autoLoginEnabled: true, cityId: '500156', cityName: '武隆' }], clothes })
@@ -67,7 +67,7 @@ test('换一套遍历适温主体，耗尽后保留完整搭配；不选20℃羽
   assert.equal(exhausted.recommendation.revision, rec.revision)
 })
 
-test('替换只改变指定角色，保留其余衣物；无适温替代时解释并保留', async () => {
+test('替换只改变同类别衣物，保留其余衣物；当前类别仅一件时解释并保留', async () => {
   const { run } = setup()
   const first = (await run()).recommendation
   const target = first.items.find(row => ROLES[row.category] === 'top')._id
@@ -78,7 +78,7 @@ test('替换只改变指定角色，保留其余衣物；无适温替代时解�
   assert.ok(first.itemIds.filter(id => id !== target).every(id => rec.itemIds.includes(id)))
   assert.deepEqual((await run()).recommendation.itemIds, rec.itemIds)
   const unchanged = await run({ operation: 'replace', date, revision: rec.revision, replaceId: 'outer' })
-  assert.match(unchanged.message, /暂无同位置/)
+  assert.equal(unchanged.message, '当前类别只有此衣物')
   assert.deepEqual(unchanged.recommendation.itemIds, rec.itemIds)
   await assert.rejects(run({ operation: 'replace', date, revision: rec.revision, replaceId: 'someone-elses-item' }), /衣物已变化/)
 })
@@ -95,6 +95,81 @@ test('连衣裙替换不改成上下装；整套更换允许两种完整主体�
   const second = (await mixed.run(change(first))).recommendation
   assert.notEqual(first.bodyKey, second.bodyKey)
   assert.deepEqual(new Set([first.bodyKey, second.bodyKey]), new Set(['dress', 'pants|top']))
+})
+
+test('换这件仅允许同类别：类别只有一件时准确提示，其他类别仍可由换一套选择', async () => {
+  const { cloud, run } = setup([item('short', '短袖', ['夏']), item('long', '长袖', ['夏'])])
+  cloud.records.wear_records.push({ _id: 'wear', _openid: 'u', date: '2026-10-09', itemIds: ['long'] })
+  const first = (await run()).recommendation
+  assert.deepEqual(first.itemIds, ['short'])
+  const unchanged = await run({ operation: 'replace', date, revision: first.revision, replaceId: 'short' })
+  assert.equal(unchanged.message, '当前类别只有此衣物')
+  assert.equal(unchanged.recommendation.revision, first.revision)
+  assert.deepEqual(unchanged.recommendation.itemIds, ['short'])
+  const changed = await run(change(first))
+  assert.deepEqual(changed.recommendation.itemIds, ['long'])
+  const toasts = []
+  const page = loadPage('weather-outfit', { dailyRecommendation: args => run(args) }, { showToast: value => toasts.push(value) })
+  await page.onLoad({ daily: '1' })
+  page.onItemTap({ currentTarget: { dataset: { id: 'long' } } })
+  await page.onReplaceTap({ currentTarget: { dataset: { id: 'long' } } })
+  assert.equal(toasts.at(-1).title, '当前类别只有此衣物')
+  assert.equal(page.data.adjustMessage, '')
+  assert.equal(page.data.selectedCount, 0)
+})
+
+test('同类存在但季节不适合时提示无适温候选，有适温同类时只替换该件', async () => {
+  for (const otherSeasons of [['冬'], ['夏']]) {
+    const { cloud, run } = setup([item('short-a', '短袖', ['夏']), item('short-b', '短袖', otherSeasons),
+      item('long', '长袖', ['夏']), item('pants', '长裤'), item('shoes', '鞋', [])])
+    cloud.records.wear_records.push({ _id: 'wear', _openid: 'u', date: '2026-10-09', itemIds: ['long'] })
+    const first = (await run()).recommendation
+    const target = first.items.find(row => row.category === '短袖')._id
+    const result = await run({ operation: 'replace', date, revision: first.revision, replaceId: target })
+    if (otherSeasons[0] === '冬') {
+      assert.equal(result.message, '暂无同类适温衣物，已保留当前搭配')
+      assert.deepEqual(result.recommendation.itemIds, first.itemIds)
+    } else {
+      assert.ok(!result.recommendation.itemIds.includes(target))
+      assert.equal(result.recommendation.items.find(row => ROLES[row.category] === 'top').category, '短袖')
+      assert.ok(first.itemIds.filter(id => id !== target).every(id => result.recommendation.itemIds.includes(id)))
+    }
+  }
+})
+
+test('仅有上衣的方案可以遍历轮换，耗尽后保留当前衣物和缺项，重新进入保持方案', async () => {
+  const { run } = setup([item('a', '短袖', ['夏']), item('b', '短袖', ['夏']), item('c', '长袖', ['夏'])])
+  let rec = (await run()).recommendation
+  const ids = new Set(rec.itemIds)
+  assert.equal(rec.bodyKey, '')
+  for (let n = 0; n < 2; n++) {
+    rec = (await run(change(rec))).recommendation
+    assert.equal(rec.itemIds.length, 1)
+    assert.ok(!ids.has(rec.itemIds[0]))
+    ids.add(rec.itemIds[0])
+    assert.ok(rec.missing.includes('下装'))
+  }
+  const exhausted = await run(change(rec))
+  assert.match(exhausted.message, /已看过/)
+  assert.deepEqual(exhausted.recommendation.itemIds, rec.itemIds)
+  assert.equal((await run()).recommendation.revision, rec.revision)
+})
+
+test('实穿增删重新匹配，衣物顺序和备注变化不重算，未来记录不影响当日缓存', async () => {
+  const { cloud, run } = setup()
+  const first = (await run()).recommendation
+  const top = first.items.find(row => ROLES[row.category] === 'top')._id
+  cloud.records.wear_records.push({ _id: 'wear', _openid: 'u', date: '2026-10-09', itemIds: [top, 'pants'] })
+  const refreshed = await run()
+  assert.match(refreshed.message, /实穿记录已更新/)
+  assert.ok(refreshed.recommendation.revision > first.revision)
+  assert.ok(!refreshed.recommendation.itemIds.includes(top))
+  cloud.records.wear_records[0].itemIds.reverse()
+  cloud.records.wear_records[0].note = '补充备注'
+  cloud.records.wear_records.push({ _id: 'future', _openid: 'u', date: '2026-10-11', itemIds: ['a'] })
+  assert.equal((await run()).recommendation.revision, refreshed.recommendation.revision)
+  cloud.records.wear_records = []
+  assert.match((await run()).message, /实穿记录已更新/)
 })
 
 test('站内历史参与次日轮换，调试预览及推送文档不被调整覆盖', async () => {
@@ -155,20 +230,28 @@ test('空衣橱、缺城市、天气失败及非法参数有明确结果，不�
 
 test('穿搭页入口与推荐页支持调整、保留其他勾选状态，并保存最终选择', async () => {
   let url, saved
+  const toasts = []
   const outfits = loadPage('outfits', {}, { navigateTo: value => { url = value.url } })
   outfits.onDailyTap()
   assert.equal(url, '/pages/weather-outfit/weather-outfit?daily=1')
   const { run } = setup()
   const page = loadPage('weather-outfit', { dailyRecommendation: args => run(args),
-    addOutfit: async value => { saved = value; return 'outfit' } })
+    addOutfit: async value => { saved = value; return 'outfit' } }, { showToast: value => toasts.push(value) })
   await page.onLoad({ daily: '1' })
   assert.equal(page.data.date, date)
   assert.equal(page.data.ready, true)
   const top = page.data.items.find(row => ROLES[row.category] === 'top')._id
+  const category = page.data.items.find(row => row._id === top).category
   page.onItemTap({ currentTarget: { dataset: { id: 'shoes' } } })
   await page.onReplaceTap({ currentTarget: { dataset: { id: top } } })
+  assert.equal(toasts.at(-1).title, `已替换${category}`)
+  assert.equal(toasts.at(-1).icon, 'none')
+  assert.equal(page.data.adjustMessage, '')
   assert.ok(!page.data.items.some(row => row._id === top))
   assert.equal(page.data.items.find(row => row._id === 'shoes').selected, false)
+  await page.onChangeTap()
+  assert.equal(toasts.at(-1).title, '已换一套搭配')
+  assert.equal(page.data.adjustMessage, '')
   const ids = Array.from(page.selectedIds())
   await page.onSaveOutfit()
   assert.deepEqual(Array.from(saved.itemIds), ids)

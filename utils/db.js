@@ -29,6 +29,15 @@ function chooseImage(sourceType = ['album', 'camera']) {
   })
 }
 
+async function editImage(path) {
+  return new Promise((resolve, reject) => wx.navigateTo({ url: '/pages/image-edit/image-edit',
+    events: {
+      imageEdited: result => result?.path ? resolve(result.path) : reject(new Error('未生成裁剪照片，请重试')),
+      imageEditCancelled: () => reject(new Error('cancel'))
+    },
+    success: result => result.eventChannel.emit('imageSource', { path }), fail: reject }))
+}
+
 // 上传前再压一轮（仅对 jpg 生效），减小云存储与 CDN 流量占用；
 // 压缩失败（如 png）静默回退原图
 function compressImage(tempFilePath) {
@@ -156,7 +165,7 @@ async function write(collection, operation, id, data, extra = {}) {
   }
 }
 
-const addItem = data => write('clothes', 'add', undefined, data).then(res => res._id)
+const addItem = (data, requestId) => write('clothes', 'add', undefined, data, requestId === undefined ? {} : { requestId }).then(res => res._id)
 const updateItem = (id, data) => write('clothes', 'update', id, data)
 const deleteItem = id => write('clothes', 'delete', id)
 const addOutfit = (data, requestId) => write('outfits', 'add', undefined, data, requestId === undefined ? {} : { requestId }).then(res => res._id)
@@ -315,7 +324,7 @@ async function backupRestore(source, records, images) {
   try { return await call('backupRestore', { source, records, images }) } finally { clearCache() }
 }
 
-module.exports = { chooseImage, uploadImage, uploadStickerImage, removeImage, retryCleanup, cleanupStatus, clearCache, getWardrobeVersion,
+module.exports = { chooseImage, editImage, uploadImage, uploadStickerImage, removeImage, retryCleanup, cleanupStatus, clearCache, getWardrobeVersion,
   backupInfo, backupExport, backupValidate, backupRestore, prepareBackupImage,
   listItems, listBrands, getItem, addItem, updateItem, deleteItem, listOutfits, listOutfitsPage, getOutfit, addOutfit, updateOutfit, deleteOutfit,
   listExpenses, addExpense, updateExpense, deleteExpense,

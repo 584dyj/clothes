@@ -2,7 +2,7 @@
   <view class="wear-entry card" bindtap="onDailyTap" role="button" aria-label="查看明日穿搭推荐">
     <view>
       <view class="wear-entry-title">明日穿什么</view>
-      <view class="wear-entry-hint">按天气搭配，可换一套或替换单件</view>
+      <view class="wear-entry-hint">按天气搭配，可更换一套或更换一件</view>
     </view>
     <text class="wear-entry-arrow">›</text>
   </view>

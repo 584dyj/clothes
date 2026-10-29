@@ -32,6 +32,8 @@ Page({
     colorCustom: false, // 选了「其他」时显示手动输入框
     brand: '',
     brandSuggestions: [],
+    reuseBrand: false,
+    reuseSeason: false,
     seasons: [],
     selectedSeasons: [],
     seasonStates: [],     // [{value, active}]，WXML 不支持方法调用，选中态在此预计算
@@ -42,6 +44,7 @@ Page({
     imageFileID: '',      // 已上传的云端 fileID
     scanFileID: '',       // 新增页为识别提前上传的图片
     scanning: false,
+    editingImage: false,
     saving: false,
     ready: false,
     loading: true,
@@ -124,7 +127,7 @@ Page({
   },
 
   async onChooseImage() {
-    if (this.data.scanning || this.data.saving) return
+    if (this.data.scanning || this.data.saving || this.data.editingImage) return
     try {
       const path = await db.chooseImage()
       const previousScan = this.data.scanFileID
@@ -134,6 +137,22 @@ Page({
       if (previousScan) db.removeImage(previousScan)
     } catch (e) {
       // 用户取消选择
+    }
+  },
+
+  async onEditImage() {
+    const { imagePath, imageFileID, scanFileID, scanning, saving, editingImage, ready, id } = this.data
+    if (!ready || scanning || saving || editingImage || (!imagePath && !imageFileID)) return
+    this.setData({ editingImage: true })
+    try {
+      const path = await db.editImage(imagePath || imageFileID)
+      if (this._unloaded) return
+      this.setData({ imagePath: path, scanFileID: '', ...(!id ? { imageFileID: '' } : {}) })
+      if (scanFileID) db.removeImage(scanFileID)
+    } catch (error) {
+      if (!this._unloaded && !/cancel/i.test(error.errMsg || error.message || '')) wx.showToast({ title: error.errMsg || error.message || '无法打开照片裁剪，请重试', icon: 'none' })
+    } finally {
+      if (!this._unloaded) this.setData({ editingImage: false })
     }
   },
 
@@ -153,7 +172,7 @@ Page({
 
   async onScanPhoto() {
     const { id, imagePath, scanFileID, scanning, saving, ready } = this.data
-    if (id || scanning || saving || !ready || (!imagePath && !scanFileID)) return
+    if (id || scanning || saving || this.data.editingImage || !ready || (!imagePath && !scanFileID)) return
     this.setData({ scanning: true })
     wx.showLoading({ title: '识别中…' })
     let message = '已自动填充，请核对'
@@ -204,7 +223,7 @@ Page({
 
   onModeTap(e) {
     const mode = e.currentTarget.dataset.mode
-    if (this.data.id || !['single', 'batch'].includes(mode) || mode === this.data.mode) return
+    if (this.data.id || this.data.saving || this.data.editingImage || !['single', 'batch'].includes(mode) || mode === this.data.mode) return
     this.setData({ mode })
     wx.setNavigationBarTitle({ title: mode === 'batch' ? '批量添加' : '添加衣物' })
   },
@@ -306,9 +325,33 @@ Page({
     this.syncSeasonStates()
   },
 
-  async onSave() {
+  onSave() { return this.saveItem(false) },
+
+  onSaveAndContinue() {
+    if (!this.data.id) return this.saveItem(true)
+  },
+
+  onReuseFieldsChange(e) {
+    if (this.data.id || this.data.saving || this.data.scanning || this.data.editingImage) return
+    this.setData({ reuseBrand: e.detail.value.includes('brand'), reuseSeason: e.detail.value.includes('season') })
+  },
+
+  resetForNext() {
+    this._createRequestId = ''
+    this._scanCommitted = false
+    this.setData({ name: '', category: '', subcategory: '', subcategoryIndex: -1,
+      size: this.data.sizes.includes(this.data.size) ? this.data.size : '',
+      color: '', colorIndex: -1, colorCustom: false, brand: this.data.reuseBrand ? this.data.brand : '', brandSuggestions: [],
+      selectedSeasons: this.data.reuseSeason ? this.data.selectedSeasons.slice(0, 1) : [],
+      price: '', purchaseDate: '', note: '', imagePath: '', imageFileID: '', scanFileID: '',
+      saving: false, _focus: {}, 'picker.show': false })
+    this.syncSeasonStates()
+    wx.pageScrollTo({ scrollTop: 0, duration: 0 })
+  },
+
+  async saveItem(keepAdding) {
     const { id, name, category, subcategory, size, color, brand, selectedSeasons, price, purchaseDate, note, imagePath, imageFileID, saving } = this.data
-    if (saving || this.data.scanning || !this.data.ready) return
+    if (saving || this.data.scanning || this.data.editingImage || !this.data.ready) return
     if (!name.trim()) {
       wx.showToast({ title: '请填写名称', icon: 'none' })
       return
@@ -341,6 +384,9 @@ Page({
       if (imagePath) {
         uploadedFileID = await db.uploadImage(imagePath)
         fileID = uploadedFileID
+        if (this._unloaded) { await db.removeImage(fileID); wx.hideLoading(); return }
+        // 新增失败后保留同一图片供重试；离开页面或换图时回收未提交票据。
+        if (!id) this.setData({ imagePath: '', imageFileID: fileID, scanFileID: fileID })
       }
       const data = {
         name: name.trim(),
@@ -358,27 +404,29 @@ Page({
       if (id) {
         result = await db.updateItem(id, data)
       } else {
-        await db.addItem(data)
+        this._createRequestId ||= `item-${Date.now()}-${Math.random().toString(36).slice(2)}`
+        await db.addItem(data, this._createRequestId)
       }
       committed = true
       this._scanCommitted = true
       // 只记尺码，供下次新增时带出
       try { if (size) wx.setStorageSync('lastSize', size) } catch (e) { console.error('尺码记忆失败', e) }
       wx.hideLoading()
-      wx.showToast({ title: result.cleanupFailed ? '已保存，清理待重试' : '已保存', icon: 'none' })
-      this.scheduleReturn()
+      wx.showToast({ title: result.cleanupFailed ? '已保存，清理待重试' : keepAdding ? '已保存，请继续添加' : '已保存', icon: 'none' })
+      if (!this._unloaded && keepAdding) this.resetForNext()
+      else this.scheduleReturn()
     } catch (e) {
       console.error(e)
-      // 上传成功但数据库写入失败时回收新图，避免产生孤立文件。
-      if (uploadedFileID && !committed) db.removeImage(uploadedFileID)
+      // 编辑失败回收新图；新增失败保留至重试、换图或退出时处理。
+      if (uploadedFileID && !committed && (id || this._unloaded)) db.removeImage(uploadedFileID)
       wx.hideLoading()
       this.setData({ saving: false })
-      wx.showToast({ title: '保存失败', icon: 'none' })
+      wx.showToast({ title: e.message || '保存失败，请重试', icon: 'none' })
     }
   },
 
   onDelete() {
-    if (!this.data.ready || this.data.saving) return
+    if (!this.data.ready || this.data.saving || this.data.editingImage) return
     wx.showModal({
       title: '删除衣物',
       content: '确定要删除这件衣物吗？',

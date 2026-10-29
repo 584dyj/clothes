@@ -9,6 +9,30 @@ const wardrobe = () => [item('top1', '长袖'), item('top2', '衬衫'), item('to
   item('pants', '长裤'), item('shoe', '鞋', []), item('outer', '外套')]
 const options = { date: '2026-10-10', openid: 'u1' }
 
+test('推荐照片点击全屏预览且不改勾选，卡片其他区域仍可切换选择', () => {
+  const previews = []
+  const page = loadPage('weather-outfit', {}, { previewImage: options => previews.push(options) })
+  page.setData({ loading: false, selectedCount: 1, items: [
+    { _id: 'photo', imageFileID: 'cloud://photo', available: true, selected: true },
+    { _id: 'empty', imageFileID: '', available: true, selected: false }
+  ] })
+  const tap = id => ({ currentTarget: { dataset: { id } } })
+  page.onPreviewImage(tap('photo'))
+  assert.equal(previews[0].urls[0], 'cloud://photo')
+  assert.equal(page.data.items[0].selected, true)
+  assert.equal(page.data.selectedCount, 1)
+  page.onPreviewImage(tap('empty')); page.onPreviewImage(tap('missing'))
+  assert.equal(previews.length, 1)
+  page.onItemTap(tap('photo'))
+  assert.equal(page.data.items[0].selected, false)
+  assert.equal(page.data.selectedCount, 0)
+  page.setData({ saved: true })
+  page.onPreviewImage(tap('photo'))
+  assert.equal(previews.length, 2)
+  const markup = require('node:fs').readFileSync(require.resolve('../pages/weather-outfit/weather-outfit.wxml'), 'utf8')
+  assert.match(markup, /<image[^>]*catchtap="onPreviewImage"/)
+})
+
 test('独立部署的搭配角色与已有分类一致，保暖衣只作内搭', () => {
   const expected = { top: 'top', bottom: 'bottom', outer: 'outer', layer: 'layer', dress: 'dress', shoes: 'shoes', accessory: 'extra', bag: 'extra' }
   for (const [category, role] of Object.entries(authRoles)) {
@@ -58,6 +82,19 @@ test('更换马甲只替换叠穿层，保留内层及保暖外套，季节不�
   assert.ok(['top', 'pants', 'coat'].every(id => changed.itemIds.includes(id)))
   const unavailable = items.map(row => row.category === '马甲' && row._id !== vestId ? { ...row, seasons: ['夏'] } : row)
   assert.equal(replaceItem(weather(2, 7), unavailable, current, vestId, options), null)
+})
+
+test('配饰换这件保持子类别，袜子不会自动换成围巾或包袋', () => {
+  const items = [item('top', '毛衣', ['冬']), item('pants', '长裤', ['冬']), item('shoe', '鞋', []),
+    { ...item('sock-a', '配饰', []), subcategory: '袜子' }]
+  const current = buildRecommendation(weather(2, 7), items, options)
+  const scarf = { ...item('scarf', '配饰', []), subcategory: '围巾' }
+  const bag = item('bag', '包袋', [])
+  assert.equal(replaceItem(weather(2, 7), [...items, scarf, bag], current, 'sock-a', options), null)
+  const changed = replaceItem(weather(2, 7), [...items, scarf, bag, { ...item('sock-b', '配饰', []), subcategory: '袜子' }], current, 'sock-a', options)
+  assert.ok(changed.itemIds.includes('sock-b'))
+  assert.ok(!changed.itemIds.includes('scarf'))
+  assert.ok(!changed.itemIds.includes('bag'))
 })
 
 test('20℃即使降温8℃也排除羽绒服，错误季节标签不能绕过类别限制', () => {

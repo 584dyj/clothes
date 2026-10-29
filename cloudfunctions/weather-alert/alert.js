@@ -3,7 +3,7 @@
 // scene 完全独立。本文件不 require wx-server-sdk，db/cloud/天气请求均由入口或测试注入。
 const crypto = require('crypto')
 const https = require('https')
-const { buildRecommendation, replaceItem, RULE_VERSION } = require('./outfit')
+const { buildRecommendation, replaceItem, sameReplacementCategory, RULE_VERSION } = require('./outfit')
 
 const PAGE_SIZE = 100
 const SCENE = 'weather-alert'
@@ -449,6 +449,8 @@ async function dailyRecommendation({ db, openid, operation = 'get', date, revisi
   const options = { ...context, date: tomorrow, openid, trigger: evaluate(forecast.today, weather) || {} }
   const signature = JSON.stringify([RULE_VERSION, user.cityId, weather])
   const inventoryHash = sha256(JSON.stringify(context.items.slice().sort((a, b) => a._id.localeCompare(b._id))))
+  const wearHash = sha256(JSON.stringify(context.wearRecords.filter(row => row.date < tomorrow)
+    .map(row => JSON.stringify([row.date, [...new Set(row.itemIds || [])].sort()])).sort()))
   return db.runTransaction(async tx => {
     const active = await readDoc(tx.collection('users').doc(user._id))
     if (!active || active.openid !== openid || active.autoLoginEnabled === false) throw new Error('登录状态已失效')
@@ -457,25 +459,29 @@ async function dailyRecommendation({ db, openid, operation = 'get', date, revisi
     const current = await readDoc(ref)
     if (current && current._openid !== openid) throw new Error('无权访问推荐')
     if (operation !== 'get' && (!current || current.revision !== revision)) throw new Error('推荐已更新，请刷新后再调整')
-    const valid = current && current.signature === signature && current.inventoryHash === inventoryHash
+    const valid = current && current.signature === signature && current.inventoryHash === inventoryHash && current.wearHash === wearHash
     if (valid && operation === 'get') return { success: true, recommendation: current, message: '' }
     let next, message = '', seenBodyKeys = valid ? current.seenBodyKeys : []
     if (!valid) {
       next = buildRecommendation(weather, context.items, options)
-      if (current) message = '推荐规则、天气或衣橱已更新，已重新匹配搭配'
+      if (current) message = current.signature === signature && current.inventoryHash === inventoryHash && current.wearHash !== wearHash
+        ? '实穿记录已更新，已重新匹配搭配' : '推荐规则、天气或衣橱已更新，已重新匹配搭配'
     } else if (operation === 'change') {
       // ponytail: 每日最多记住 100 组已看主体，避免缓存随连点无限增长。
-      next = current.bodyKey && seenBodyKeys.length < 100
+      next = (current.rotationKey || current.bodyKey) && seenBodyKeys.length < 100
         ? buildRecommendation(weather, context.items, { ...options, excludeBodyKeys: seenBodyKeys }) : null
-      if (!next) message = current.bodyKey ? '当前可换的适温主体已看过，已保留这套；也可替换单件' : '当前缺少完整主体，请先补齐适温衣物'
+      if (!next) message = current.rotationKey || current.bodyKey ? '当前可换的适温方案已看过，已保留这套；也可替换单件' : '当前缺少可轮换的主体衣物，请先补齐适温衣物'
     } else {
+      const target = current.items.find(item => item._id === replaceId)
+      if (!target) throw new Error('要替换的衣物已变化，请刷新')
+      const hasSameCategory = context.items.some(item => item._id !== replaceId && sameReplacementCategory(item, target))
       next = replaceItem(weather, context.items, current, replaceId, options)
-      if (!next) message = '暂无同位置的适温替代衣物，已保留当前搭配'
+      if (!next) message = hasSameCategory ? '暂无同类适温衣物，已保留当前搭配' : '当前类别只有此衣物'
     }
     if (!next) return { success: true, recommendation: current, message }
-    seenBodyKeys = [...new Set([...seenBodyKeys, next.bodyKey].filter(Boolean))].slice(-100)
+    seenBodyKeys = [...new Set([...seenBodyKeys, next.rotationKey || next.bodyKey].filter(Boolean))].slice(-100)
     const recommendation = { ...next, _openid: openid, date: tomorrow, weather, cityName: user.cityName || '',
-      status: 'daily', signature, inventoryHash, seenBodyKeys,
+      status: 'daily', signature, inventoryHash, wearHash, seenBodyKeys,
       revision: (current?.revision || 0) + 1, updatedAt: now }
     await ref.set({ data: recommendation })
     return { success: true, recommendation, message }

@@ -338,7 +338,7 @@ async function handle(context) {
     }
   }
   const requested = operation === 'add' && event.requestId !== undefined
-  if (requested && (!['outfits', 'outfit_plans'].includes(collection) ||
+  if (requested && (!['clothes', 'outfits', 'outfit_plans'].includes(collection) ||
       typeof event.requestId !== 'string' || !event.requestId || event.requestId.length > 16384)) throw new Error('保存请求标识无效')
   const requestData = requested ? cleanData(collection, event.data) : null
   const hashData = data => crypto.createHash('sha256').update(JSON.stringify(
@@ -366,7 +366,7 @@ async function handle(context) {
             if (receipt._openid !== openid || receipt.requestHash !== requestHash) throw new Error('保存内容已变化，请发起新的保存')
             const saved = await readDoc(ref)
             if (!saved || saved._openid !== openid) throw new Error('已保存的记录已删除，请重新选择后保存')
-            if (hashData(cleanData(collection, saved)) !== requestHash) throw new Error('已保存的记录已修改，请到穿搭或月历查看')
+            if (hashData(cleanData(collection, saved)) !== requestHash) throw new Error(collection === 'clothes' ? '已保存的衣物已修改，请到衣橱查看' : '已保存的记录已修改，请到穿搭或月历查看')
             return
           }
         }

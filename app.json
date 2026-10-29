@@ -9,6 +9,7 @@
     "pages/calendar/calendar",
     "pages/category/category",
     "pages/item-edit/item-edit",
+    "pages/image-edit/image-edit",
     "pages/item-detail/item-detail",
     "pages/stickers/stickers",
     "pages/sticker-edit/sticker-edit",

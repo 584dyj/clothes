@@ -59,7 +59,7 @@
 .adjust-btn::after { border: none; }
 .adjust-btn[disabled] { color: #9a958c; background: #f6f4f0; border-color: #efede8; }
 .change-btn { color: #3a3835; border-color: #9a958c; }
-.replace-btn { height: 56rpx; margin-top: 12rpx; padding: 0 20rpx; font-size: 24rpx; }
+.replace-btn { height: 56rpx; margin-top: 12rpx; padding: 0 20rpx; font-size: 24rpx; position: relative; left: 50%; transform: translateX(-50%); }
 
 .adjust-feedback {
   display: flex;

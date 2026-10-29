@@ -1,5 +1,5 @@
 const crypto = require('crypto')
-const RULE_VERSION = 2
+const RULE_VERSION = 3
 
 // 独立云函数自包含；基础角色与 auth/categories.js 保持一致，保暖衣只作内搭。
 const ROLES = {
@@ -13,6 +13,8 @@ const bodyKey = items => items.map(item => item._id).sort().join('|')
 const hash = value => crypto.createHash('sha256').update(value).digest('hex')
 const daysBetween = (date, previous) => (Date.parse(date) - Date.parse(previous)) / 86400000
 const neutral = color => /^(白色?|黑色?|灰色?|米色?|卡其|棕色?|驼色?|藏青|藏蓝)$/.test(color || '')
+const sameReplacementCategory = (item, target) => item.category === target.category &&
+  (target.category !== '配饰' || (item.subcategory || '') === (target.subcategory || ''))
 
 // ponytail: 温度是初始经验阈值，集中在此校准；缺少厚薄属性时只使用明确类别及季节。
 function temperatureRank(item, weather) {
@@ -89,6 +91,7 @@ function buildRecommendation(weather, items, { date = '', openid = '', trigger =
   if (!completeBody) {
     const partial = groups.top?.length ? groups.top : groups.bottom || []
     for (const item of partial) consider([item])
+    if (!body.length && partial.length) return null
   }
   const picked = body.slice()
   const choose = role => {
@@ -127,20 +130,19 @@ function buildRecommendation(weather, items, { date = '', openid = '', trigger =
   if (completeBody) reasons.push(repeated ? '当前适温组合较少，沿用近期组合' : '这组主体近7天未推荐')
   if (missing.length) reasons.push(`当前缺少适合的${missing.join('、')}，请自行补齐`)
   return { advice: Array.from(advice).slice(0, 20).join(''), reason: reasons.join('；') + '。', missing,
-    bodyKey: key, repeated, itemIds: picked.map(item => item._id), items: picked.map(itemSnapshot) }
+    bodyKey: key, rotationKey: bodyKey(body), repeated, itemIds: picked.map(item => item._id), items: picked.map(itemSnapshot) }
 }
 
 function replaceItem(weather, items, current, replaceId, options) {
   const target = current.items.find(item => item._id === replaceId)
   if (!target) throw new Error('要替换的衣物已变化，请刷新')
-  const role = ROLES[target.category]
   const retained = current.itemIds.filter(id => id !== replaceId)
   const candidates = items.filter(item => retained.includes(item._id) ||
-    (item._id !== replaceId && ROLES[item.category] === role && temperatureRank(item, weather) !== null))
+    (item._id !== replaceId && sameReplacementCategory(item, target) && temperatureRank(item, weather) !== null))
   if (!candidates.some(item => !retained.includes(item._id))) return null
   const result = buildRecommendation(weather, candidates, options)
   return result && result.itemIds.length === current.itemIds.length && retained.every(id => result.itemIds.includes(id))
     ? result : null
 }
 
-module.exports = { buildRecommendation, replaceItem, temperatureRank, ROLES, RULE_VERSION }
+module.exports = { buildRecommendation, replaceItem, sameReplacementCategory, temperatureRank, ROLES, RULE_VERSION }
