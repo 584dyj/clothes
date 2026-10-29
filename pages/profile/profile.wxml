@@ -118,7 +118,7 @@
       <view class="reminder-hint">备份衣物、穿搭、实穿、计划、账本和贴纸，包含图片。恢复时保留已有记录。文件含私人数据，请妥善保管。</view>
       <button class="btn-primary logout-btn" bindtap="onExportBackup" loading="{{backupBusy && backupOperation === 'export'}}" disabled="{{backupBusy || loggingOut}}">导出备份（含图片）</button>
       <button wx:if="{{backupPath}}" class="btn-primary logout-btn" bindtap="onShareBackup" disabled="{{backupBusy}}">发送备份文件</button>
-      <button class="btn-primary logout-btn" bindtap="onRestoreBackup" loading="{{backupBusy && backupOperation === 'restore'}}" disabled="{{backupBusy || loggingOut}}">从备份恢复</button>
+      <button class="btn-secondary logout-btn" bindtap="onRestoreBackup" loading="{{backupBusy && backupOperation === 'restore'}}" disabled="{{backupBusy || loggingOut}}">从备份恢复</button>
       <view wx:if="{{backupStatus}}" class="reminder-hint" aria-live="polite">{{backupStatus}}</view>
     </view>
 

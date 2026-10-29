@@ -18,11 +18,13 @@
         <view class="head-count">已选 {{selectedCount}} / 共 {{count}} 件</view>
       </view>
 
-      <view wx:if="{{daily && !saved}}" class="adjust-panel card">
-        <button bindtap="onChangeTap" loading="{{adjusting}}" disabled="{{adjusting || saving || !count || adjustError}}">换一套</button>
-        <view class="head-count">仅替换一件时，点击衣物旁的“换这件”</view>
-        <view wx:if="{{adjustMessage}}" class="head-advice">{{adjustMessage}}</view>
-        <button wx:if="{{adjustError}}" bindtap="onRetry">重新加载</button>
+      <view class="list-heading">
+        <view class="list-title">推荐衣物</view>
+        <button wx:if="{{daily && !saved}}" class="adjust-btn change-btn" bindtap="onChangeTap" loading="{{adjusting}}" disabled="{{adjusting || saving || !count || adjustError}}">换一套</button>
+      </view>
+      <view wx:if="{{daily && !saved && adjustMessage}}" class="adjust-feedback">
+        <view class="adjust-message" role="status">{{adjustMessage}}</view>
+        <button wx:if="{{adjustError}}" class="adjust-btn" bindtap="onRetry">重新加载</button>
       </view>
 
       <!-- 推荐衣物列表：点击卡片勾选/取消勾选 -->
@@ -42,8 +44,8 @@
               <text class="tag">{{item.subcategory || item.category}}</text>
               <text wx:if="{{!item.available}}" class="tag tag-gone">已删除</text>
             </view>
+            <button wx:if="{{daily && item.available && !saved}}" class="adjust-btn replace-btn" data-id="{{item._id}}" catchtap="onReplaceTap" disabled="{{adjusting || saving || adjustError}}" aria-label="替换{{item.name}}">换这件</button>
           </view>
-          <button wx:if="{{daily && item.available && !saved}}" class="replace-btn" data-id="{{item._id}}" catchtap="onReplaceTap" disabled="{{adjusting || saving || adjustError}}" aria-label="替换{{item.name}}">换这件</button>
           <view wx:if="{{item.available}}" class="row-check {{item.selected ? 'row-check-on' : ''}}">{{item.selected ? '✓' : ''}}</view>
         </view>
       </view>
@@ -53,7 +55,6 @@
 
   <!-- 底部操作 -->
   <view wx:if="{{!loading && !loadError && !saved && count > 0}}" class="footer">
-    <view class="head-count">保存所选衣物；计划日期：{{date}}。安排计划不会增加实穿次数。</view>
     <view wx:if="{{saveError}}" class="head-advice">{{saveError}}</view>
     <button class="btn-primary" bindtap="onSaveOutfit" disabled="{{saving || adjusting || adjustError || !ready || selectedCount === 0}}">保存为一套穿搭</button>
     <button wx:if="{{canPlan}}" class="btn-secondary" bindtap="onSaveAndPlan" disabled="{{saving || adjusting || adjustError || !ready || selectedCount === 0}}">保存并安排穿着</button>

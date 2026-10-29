@@ -273,6 +273,18 @@
   margin: 16rpx 0;
 }
 
+.btn-secondary {
+  background: #ffffff;
+  color: #3a3835;
+  border: 1rpx solid #3a3835;
+  border-radius: 44rpx;
+  font-size: 30rpx;
+}
+
+.btn-secondary::after {
+  border: none;
+}
+
 .cleanup-hint {
   margin-top: 16rpx;
   color: #6b675f;
