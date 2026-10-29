@@ -28,10 +28,12 @@
       </view>
       <view class="spent-summary">
         <view class="spent-summary-main">
-          <text class="spent-label">衣物购置</text>
-          <text class="spent-num">¥{{itemSpent}}</text>
+          <text class="spent-label">当前衣物已填金额</text>
+          <text class="spent-num">{{totalItems > 0 && unpricedCount === totalItems ? '暂无已填金额' : '¥' + itemSpent}}</text>
         </view>
-        <view class="spent-breakdown" wx:if="{{expenseTotal > 0}}">含账本后总花费 ¥{{totalSpent}}</view>
+        <view class="spent-breakdown" wx:if="{{expenseTotal > 0}}">与账本合计 ¥{{totalSpent}}</view>
+        <view wx:if="{{unpricedCount > 0}}" class="spent-breakdown">{{unpricedCount}}件衣物未填价格，未计入金额</view>
+        <view class="spent-breakdown">按现存记录汇总，编辑或删除会改变金额，不代表完整历史消费。</view>
       </view>
       <block wx:for="{{categoryStats}}" wx:key="name">
         <view wx:if="{{item.count > 0 || item.spent > 0}}" class="spent-row">
@@ -39,7 +41,7 @@
             <text class="spent-name">{{item.name}}</text>
             <text class="spent-meta">{{item.count}}件 · {{item.percent}}%</text>
           </view>
-          <text class="spent-value {{item.spent ? '' : 'spent-zero'}}">¥{{item.spent}}</text>
+          <text class="spent-value {{item.spent ? '' : 'spent-zero'}}">{{item.pricedCount ? '¥' + item.spent : '未填价格'}}</text>
         </view>
       </block>
       <view wx:if="{{totalItems === 0}}" class="category-empty">还没有衣物记录</view>

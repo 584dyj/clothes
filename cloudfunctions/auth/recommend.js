@@ -7,7 +7,7 @@ const MAX_ITEMS = 120
 const RECENT_ITEMS = 60
 const SCAN_LIMIT = 500
 const MAX_WEAR_RECORDS = 500
-const INVENTORY_CACHE_VERSION = 4
+const INVENTORY_CACHE_VERSION = 5
 const CACHE_MS = 10 * 60 * 1000
 const COOLDOWN_MS = 60 * 1000
 const BUSY_MS = 25 * 1000
@@ -136,7 +136,7 @@ function inventory(items) {
     color: String(item.color || '').slice(0, 30),
     brand: String(item.brand || '').slice(0, 30),
     seasons: Array.isArray(item.seasons) ? [...new Set(item.seasons.map(season => seasons.get(season) || season))].slice(0, 3) : [],
-    price: Number(item.price) || 0
+    price: item.price != null && item.price !== '' && Number.isFinite(Number(item.price)) ? Number(item.price) : null
   }))
 }
 

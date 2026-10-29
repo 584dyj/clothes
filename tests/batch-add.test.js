@@ -53,7 +53,7 @@ test('F5 串行识别、逐卡校验保存并清理未入库图片', async () =>
   assert.equal(savedPayloads.length, 2)
   assert.equal(savedPayloads[0].imageFileID, first.imageFileID)
   assert.equal(savedPayloads[1].imageFileID, third.imageFileID)
-  assert.equal(savedPayloads[1].price, 0)
+  assert.equal(savedPayloads[1].price, null)
   assert.equal(savedPayloads[1].size, 'M')
   assert.equal(page.card(first.key).status, 'failed')
   assert.equal(page.card(first.key).failStage, 'save')

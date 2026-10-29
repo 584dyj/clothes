@@ -4,24 +4,27 @@
   <view wx:if="{{loading}}" class="empty">加载中…</view>
 
   <block wx:else>
+    <view class="calendar-note">按现存记录的日期和已填金额汇总，编辑或删除会改变结果。</view>
+    <view wx:if="{{monthUnpricedCount > 0}}" class="calendar-note">本月{{monthUnpricedCount}}件衣物未填价格，未计入金额。</view>
+    <view wx:if="{{monthUnpricedStickerCount > 0}}" class="calendar-note">本月{{monthUnpricedStickerCount}}款贴纸未填单价，未计入金额。</view>
     <view wx:if="{{undatedTotal > 0}}" class="calendar-note">未填有效日期的 ¥{{undatedTotal}} 未计入月历。</view>
 
     <!-- 汇总区 -->
     <view class="summary card">
       <view class="summary-item">
         <view class="summary-num">¥{{monthTotal}}</view>
-        <view class="summary-label">{{title}}开销</view>
+        <view class="summary-label">{{title}}已填开销</view>
       </view>
       <view class="summary-divider"></view>
       <view class="summary-item">
         <view class="summary-num">¥{{yearTotal}}</view>
-        <view class="summary-label">{{year}}年开销</view>
+        <view class="summary-label">{{year}}年已填开销</view>
       </view>
     </view>
 
     <!-- 今日消费 -->
     <view class="today-row">
-      <text class="today-label">{{todayLabel}}消费</text>
+      <text class="today-label">{{todayLabel}}已填开销</text>
       <text class="today-amount">¥{{todayTotal}}</text>
     </view>
 
@@ -69,11 +72,11 @@
     <!-- 开销明细 -->
     <view wx:if="{{dayItems.length > 0}}" class="details-section">
       <view class="details-subtitle">衣物</view>
-      <button wx:for="{{dayItems}}" wx:key="_id" class="day-item" data-id="{{item._id}}" bindtap="onItemTap">{{item.name}} · ¥{{item.price}} ›</button>
+      <button wx:for="{{dayItems}}" wx:key="_id" class="day-item" data-id="{{item._id}}" bindtap="onItemTap">{{item.name}} · {{item.priceText}} ›</button>
     </view>
     <view wx:if="{{dayStickers.length > 0}}" class="details-section">
       <view class="details-subtitle">造景贴纸</view>
-      <button wx:for="{{dayStickers}}" wx:key="_id" class="day-item" data-id="{{item._id}}" bindtap="onStickerTap">{{item.name}} · ¥{{item.amount}} ›</button>
+      <button wx:for="{{dayStickers}}" wx:key="_id" class="day-item" data-id="{{item._id}}" bindtap="onStickerTap">{{item.name}} · {{item.amountText}} ›</button>
     </view>
     <view wx:if="{{dayExpenses.length > 0}}" class="details-section">
       <view class="details-subtitle">账本</view>

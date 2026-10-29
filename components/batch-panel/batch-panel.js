@@ -306,8 +306,8 @@ Component({
       if (!(card.name || '').trim()) return '请填写名称'
       if (!this.data.categories.includes(card.category)) return '请选择类别'
       if (card.category === '配饰' && !this.data.accessoryTypes.includes(card.subcategory)) return '请选择配饰类型'
-      const price = card.price === '' || card.price === undefined ? 0 : Number(card.price)
-      if (!Number.isFinite(price) || price < 0) return '请输入有效价格'
+      const price = card.price === '' || card.price == null ? null : Number(card.price)
+      if (price !== null && (!Number.isFinite(price) || price < 0)) return '请输入有效价格'
       return ''
     },
 
@@ -320,7 +320,7 @@ Component({
         color: (card.color || '').trim(),
         brand: (card.brand || '').trim(),
         seasons: card.seasons,
-        price: card.price === '' || card.price === undefined ? 0 : Number(card.price),
+        price: card.price === '' || card.price == null ? null : Number(card.price),
         purchaseDate: '',
         note: '',
         imageFileID: card.imageFileID

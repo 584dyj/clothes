@@ -3,6 +3,7 @@
 const db = require('../../utils/db')
 const auth = require('../../utils/auth')
 const swipeBack = require('../../utils/swipe-back')
+const { priceOf } = require('../../utils/money')
 
 // 关联穿搭每批渲染套数（全量已在本地，触底仅追加视图批次，不再发请求）
 const BATCH_SIZE = 10
@@ -89,8 +90,8 @@ Page({
   },
 
   buildItemView(item) {
-    // 历史空值不展示价格行；数字 0 显示 ¥0.00（沿用现有数据值，不迁移历史数据）
-    const hasPrice = typeof item.price === 'number' && Number.isFinite(item.price)
+    const price = priceOf(item.price)
+    const hasPrice = price !== null
     return {
       name: item.name || '未命名',
       imageFileID: item.imageFileID || '',
@@ -101,7 +102,7 @@ Page({
       size: item.size || '',
       brand: item.brand || '',
       hasPrice,
-      priceText: hasPrice ? `¥${item.price.toFixed(2)}` : '',
+      priceText: hasPrice ? `¥${price.toFixed(2)}` : '',
       purchaseDate: item.purchaseDate || '',
       note: item.note || ''
     }

@@ -6,6 +6,7 @@ const swipeBack = require('../../utils/swipe-back')
 
 const { validDate, MIN_YEAR, MAX_YEAR } = require('../../utils/date')
 const { isStocked, lineTotal } = require('../../utils/stickers')
+const { priceOf, centsOf } = require('../../utils/money')
 const WEEK_LABELS = ['日', '一', '二', '三', '四', '五', '六']
 
 Page({
@@ -41,6 +42,8 @@ Page({
     canNext: true,
     cells: [],               // [{ day, date, total, isToday, hasPlan }]，day 为 0 表示补位空格
     monthTotal: 0,
+    monthUnpricedCount: 0,
+    monthUnpricedStickerCount: 0,
     yearTotal: 0,
     todayTotal: 0,           // 今日消费
     todayLabel: '',          // 如「8月24日」
@@ -96,10 +99,13 @@ Page({
     let monthTotal = 0
     let yearTotal = 0
     let undatedTotal = 0
+    let monthUnpricedCount = 0
+    let monthUnpricedStickerCount = 0
     const pad = n => String(n).padStart(2, '0')
     _items.forEach(item => {
       const date = item.purchaseDate || ''
-      const price = Math.round(Number(item.price) * 100)
+      if (validDate(date) && date.startsWith(`${year}-${String(month).padStart(2, '0')}-`) && priceOf(item.price) === null) monthUnpricedCount++
+      const price = centsOf(item.price)
       if (!Number.isFinite(price) || price <= 0) return
       if (!validDate(date)) { undatedTotal += price; return }
       const [y, m] = date.split('-').map(Number)
@@ -119,6 +125,7 @@ Page({
     // 贴纸购买（owned + done，单价 × 数量）：心愿单不计；购入日期缺失不计（SPEC 3.4）
     ;(this._stickers || []).forEach(row => {
       if (!isStocked(row)) return
+      if (validDate(row.purchasedAt || '') && row.purchasedAt.startsWith(`${year}-${String(month).padStart(2, '0')}-`) && priceOf(row.price) === null) monthUnpricedStickerCount++
       const cents = Math.round(lineTotal(row) * 100)
       if (cents <= 0 || !validDate(row.purchasedAt || '')) return
       const [y, m] = row.purchasedAt.split('-').map(Number)
@@ -154,6 +161,8 @@ Page({
       title: `${year}年${month}月`,
       cells,
       monthTotal: monthTotal / 100,
+      monthUnpricedCount,
+      monthUnpricedStickerCount,
       undatedTotal: undatedTotal / 100,
       canPrev: year > MIN_YEAR || month > 1,
       canNext: year < MAX_YEAR || month < 12,
@@ -168,17 +177,18 @@ Page({
 
   selectDate(date) {
     if (!validDate(date)) return
-    const dayItems = (this._items || []).filter(item => item.purchaseDate === date && Number.isFinite(Number(item.price)) && Number(item.price) > 0)
-      .map(item => ({ ...item, price: Math.round(Number(item.price) * 100) / 100 }))
+    const dayItems = (this._items || []).filter(item => item.purchaseDate === date)
+      .map(item => ({ ...item, priceText: priceOf(item.price) === null ? '未填价格' : `¥${(centsOf(item.price) / 100).toFixed(2)}` }))
     const dayExpenses = (this._expenses || []).filter(expense => expense.date === date && Number(expense.amount) > 0)
       .map(expense => ({ ...expense, amount: Math.round(Number(expense.amount) * 100) / 100 }))
     const dayPlans = (this._plans || []).filter(plan => plan.date === date)
       .map(plan => ({ ...plan, outfitName: this.outfitNameOf(plan.outfitId) }))
     const dayStickers = (this._stickers || [])
       .filter(row => isStocked(row) && row.purchasedAt === date)
-      .map(row => ({ ...row, amount: Math.round(lineTotal(row) * 100) / 100 }))
+      .map(row => ({ ...row, amount: Math.round(lineTotal(row) * 100) / 100,
+        amountText: priceOf(row.price) === null ? '未填单价' : `¥${(Math.round(lineTotal(row) * 100) / 100).toFixed(2)}` }))
     const stickerCents = dayStickers.reduce((total, row) => total + Math.round(row.amount * 100), 0)
-    const cents = dayItems.reduce((total, item) => total + Math.round(item.price * 100), 0) +
+    const cents = dayItems.reduce((total, item) => total + centsOf(item.price), 0) +
       dayExpenses.reduce((total, expense) => total + Math.round(expense.amount * 100), 0) +
       stickerCents
     this.setData({ selectedDate: date, dayItems, dayExpenses, dayStickers, dayPlans, selectedTotal: cents / 100,

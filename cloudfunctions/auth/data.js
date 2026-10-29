@@ -128,8 +128,9 @@ function cleanData(collection, input, previous = null, restoring = false) {
     if (data.category !== '配饰') data.subcategory = ''
     if (!Array.isArray(input.seasons) || input.seasons.some(s => !['春秋', '夏', '冬'].includes(s))) throw new Error('季节无效')
     data.seasons = [...new Set(input.seasons)]
-    if (typeof input.price !== 'number' || !Number.isFinite(input.price) || input.price < 0 || input.price > 1e9) throw new Error('价格无效')
-    data.price = Math.round(input.price * 100) / 100
+    if (input.price === undefined || input.price === null || input.price === '') data.price = null
+    else if (typeof input.price !== 'number' || !Number.isFinite(input.price) || input.price < 0 || input.price > 1e9) throw new Error('价格无效')
+    else data.price = Math.round(input.price * 100) / 100
     if (data.purchaseDate && !validDateString(data.purchaseDate)) throw new Error('购买日期无效')
   } else if (collection === 'outfits') {
     if (!data.name) throw new Error('名称不能为空')

@@ -106,6 +106,7 @@ function modelPrompt(candidate, assessment) {
   return [
     '你是购买前评估助手。只能基于输入事实给建议，不得编造衣物、穿着次数或金额。',
     '规则引擎的 verdict、重复风险、缺口、搭配数量和开销是事实，必须保持一致。',
+    '开销仅来自当前保留的已填记录；缺价或缺日期时不得宣称实际预算充足。',
     '只输出 JSON：{"summary":"一句结论","advice":"两句以内的行动建议"}。',
     JSON.stringify({ candidate, facts: assessment })
   ].join('\n')
@@ -166,6 +167,8 @@ function evaluate(candidate, rawItems, wearRecords, expenses, now = new Date(), 
     .map(season => `${season}季缺少${gapLabel}`)
     .filter(gap => gaps.includes(gap)) : []
   const month = dateKey(now).slice(0, 7)
+  const monthUnpricedCount = items.filter(item => item.purchaseDate.startsWith(month) && item.price === null).length
+  const undatedCount = items.filter(item => !item.purchaseDate && item.price !== 0).length
   const wardrobeCents = items.filter(item => item.purchaseDate.startsWith(month)).reduce((sum, item) => sum + Math.round(item.price * 100), 0)
   const ledgerCents = expenses.filter(item => text(item.date, 10).startsWith(month)).reduce((sum, item) => sum + Math.round((Number(item.amount) || 0) * 100), 0)
   if (!Number.isSafeInteger(wardrobeCents + ledgerCents)) throw new Error('开销合计超出可精确计算范围')
@@ -185,6 +188,7 @@ function evaluate(candidate, rawItems, wearRecords, expenses, now = new Date(), 
   if (allSimilarIdle) reasons.push('相似衣物近 90 天均无穿着记录')
   if (complements) reasons.push(`可与 ${matchItems.length} 件现有衣物搭配`)
   if (budgetExceeded) reasons.push(`购买后将超过月预算 ${roundMoney(afterPurchase - candidate.monthlyBudget)} 元`)
+  if (monthUnpricedCount || undatedCount) reasons.push('部分衣物缺少价格或购买日期，本月开销可能低估')
 
   return {
     verdict: { code, label: labels[code] },
@@ -193,7 +197,7 @@ function evaluate(candidate, rawItems, wearRecords, expenses, now = new Date(), 
     similarItems,
     filledGaps,
     matchCount: complements ? matchItems.length : null,
-    spending: { monthSpent, candidatePrice: candidate.price, afterPurchase, budget: candidate.monthlyBudget, budgetExceeded }
+    spending: { monthSpent, candidatePrice: candidate.price, afterPurchase, budget: candidate.monthlyBudget, budgetExceeded, monthUnpricedCount, undatedCount }
   }
 }
 

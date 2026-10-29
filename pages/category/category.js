@@ -1,6 +1,7 @@
 const db = require('../../utils/db')
 const auth = require('../../utils/auth')
 const swipeBack = require('../../utils/swipe-back')
+const { priceOf } = require('../../utils/money')
 
 const app = getApp()
 
@@ -148,7 +149,10 @@ Page({
     const sorted = list.slice().sort((a, b) => {
       let va, vb
       if (sortKey === 'price') {
-        va = Number(a.price) || 0   // 兼容旧数据 price 为 null
+        // 未填价格始终排在已填金额之后，0 元参与正常排序。
+        const missingA = priceOf(a.price) === null, missingB = priceOf(b.price) === null
+        if (missingA !== missingB) return missingA ? 1 : -1
+        va = Number(a.price) || 0
         vb = Number(b.price) || 0
       } else {
         va = a.createdAt ? new Date(a.createdAt).getTime() : 0

@@ -2,6 +2,7 @@ const auth = require('../../utils/auth')
 const db = require('../../utils/db')
 const { createBackup } = require('../../utils/backup')
 const streak = require('../../utils/streak')
+const { priceOf } = require('../../utils/money')
 
 const WEATHER_TEMPLATE_ID = 'gecbz6HZQxVtg7x5eMAY7ugCWXgeIQsuWK9ELJR4Xe0'
 const REPORT_TEMPLATE_ID = 'CeSjEXCpR71PZvGbIoqCDgO0H0CSHSwGbo_7o7ZgLIE'
@@ -102,6 +103,7 @@ Page({
   },
 
   findMostExpensive(items) {
+    items = items.filter(item => priceOf(item.price) !== null)
     if (!items.length) return null
     const item = items.reduce((highest, current) => {
       return (Number(current.price) || 0) > (Number(highest.price) || 0) ? current : highest

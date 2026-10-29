@@ -133,7 +133,7 @@ test('衣橱画像命中缓存，衣物写入后按版本重建', async () => {
   const first = await recommendation.getInventory(cloud.db, 'openid-1')
   assert.equal(first.items.length, 1)
   assert.equal(cloud.records.ai_cache.length, 1)
-  assert.equal(cloud.records.ai_cache[0].strategyVersion, 4)
+  assert.equal(cloud.records.ai_cache[0].strategyVersion, 5)
   const reads = () => cloud.calls.filter(call => call.collection === 'clothes' && call.operation === 'get').length
   const count = reads()
   assert.deepEqual((await recommendation.getInventory(cloud.db, 'openid-1')).items, first.items)
@@ -309,7 +309,7 @@ test('策略升级使旧画像和旧推荐失效，马甲按叠穿规则进入�
   }, env)
   assert.equal(result.cached, false)
   assert.equal(requests, 1)
-  assert.equal(cloud.records.ai_cache[0].strategyVersion, 4)
+  assert.equal(cloud.records.ai_cache[0].strategyVersion, 5)
   assert.deepEqual(cloud.records.ai_cache[0].items.map(row => row.id), ['dress', 'pendant', 'vest'])
   assert.deepEqual(result.outfits[0].itemIds, ['dress', 'vest'])
 })

@@ -325,8 +325,8 @@ Page({
       wx.showToast({ title: '请选择有效购买日期', icon: 'none' })
       return
     }
-    const numericPrice = price ? Number(price) : 0
-    if (!Number.isFinite(numericPrice) || numericPrice < 0) {
+    const numericPrice = price === '' || price == null ? null : Number(price)
+    if (numericPrice !== null && (!Number.isFinite(numericPrice) || numericPrice < 0)) {
       wx.showToast({ title: '请输入有效价格', icon: 'none' })
       return
     }

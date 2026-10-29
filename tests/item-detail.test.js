@@ -75,7 +75,7 @@ test('非法 id 直接进入不可用态，不发任何数据请求', async () =
   assert.equal(calls, 0)
 })
 
-test('主记录字段渲染：0 价格显示、空价格隐藏、配饰子类与季节拼接', async () => {
+test('主记录字段渲染：0 价格显示、空价格标记未填写、配饰子类与季节拼接', async () => {
   const zero = await openDetail(detailDb({ getItem: async () => item({ price: 0 }) }))
   assert.equal(zero.data.item.hasPrice, true)
   assert.equal(zero.data.item.priceText, '¥0.00')

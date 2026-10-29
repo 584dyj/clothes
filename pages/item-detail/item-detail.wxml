@@ -37,7 +37,7 @@
         <view wx:if="{{item.color}}" class="info-row"><text class="info-label">颜色</text><text class="info-value">{{item.color}}</text></view>
         <view wx:if="{{item.size}}" class="info-row"><text class="info-label">尺码</text><text class="info-value">{{item.size}}</text></view>
         <view wx:if="{{item.brand}}" class="info-row"><text class="info-label">品牌</text><text class="info-value">{{item.brand}}</text></view>
-        <view wx:if="{{item.hasPrice}}" class="info-row"><text class="info-label">价格</text><text class="info-value">{{item.priceText}}</text></view>
+        <view class="info-row"><text class="info-label">价格</text><text class="info-value">{{item.hasPrice ? item.priceText : '未填写'}}</text></view>
         <view wx:if="{{item.purchaseDate}}" class="info-row"><text class="info-label">购买日期</text><text class="info-value">{{item.purchaseDate}}</text></view>
         <view wx:if="{{item.note}}" class="info-row"><text class="info-label">备注</text><text class="info-value note-value">{{item.note}}</text></view>
       </view>

@@ -1,6 +1,7 @@
 const db = require('../../utils/db')
 const auth = require('../../utils/auth')
 const swipeBack = require('../../utils/swipe-back')
+const { priceOf } = require('../../utils/money')
 
 Page({
   ...swipeBack,
@@ -11,6 +12,7 @@ Page({
     emptyText: '还没有贴纸，点 + 记一款吧',
     loading: true,
     loadError: '',
+    unpricedCount: 0,
     // 统计区常驻展开：拥有（含已拼贴）、已贴、未贴、已购贴纸开销
     statsView: { owned: 0, done: 0, undone: 0, spent: 0 }
   },
@@ -80,7 +82,8 @@ Page({
     const emptyText = activeTab === 'wishlist'
       ? '心愿单还是空的，记下想买的贴纸吧'
       : '还没有贴纸，点 + 记一款吧'
-    this.setData({ items, emptyText })
+    const unpricedCount = (this._all || []).filter(item => (item.status === 'owned' || item.status === 'done') && priceOf(item.price) === null).length
+    this.setData({ items, emptyText, unpricedCount })
   },
 
   onTabTap(e) {

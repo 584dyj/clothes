@@ -1,6 +1,7 @@
 const db = require('../../utils/db')
 const auth = require('../../utils/auth')
 const { validDate } = require('../../utils/date')
+const { priceOf, centsOf } = require('../../utils/money')
 
 const app = getApp()
 
@@ -40,6 +41,7 @@ Page({
     totalBrands: 0,
     totalSpent: 0,
     itemSpent: 0,
+    unpricedCount: 0,
     categoryStats: [],   // [{ name, count, spent, percent }]
     emptyCategoryCount: 0,
     brandStats: [],      // [{ name, count, percent }]
@@ -73,20 +75,24 @@ Page({
       const totalItems = items.length
       const totalOutfits = outfits.length
       const totalBrands = new Set(items.map(item => (item.brand || '').trim()).filter(Boolean)).size
-      // 衣橱总花费仅包含衣物与账本，贴纸开销在贴纸主页独立展示。
-      const expenseTotal = expenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0)
-      const itemSpent = items.reduce((sum, item) => sum + (Number(item.price) || 0), 0)
-      const totalSpent = itemSpent + expenseTotal
+      // 现存记录中的已填金额；编辑或删除衣物会改变汇总，不作为历史消费流水。
+      const expenseCents = expenses.reduce((sum, expense) => sum + centsOf(expense.amount), 0)
+      const itemCents = items.reduce((sum, item) => sum + centsOf(item.price), 0)
+      const expenseTotal = expenseCents / 100, itemSpent = itemCents / 100
+      const totalSpent = (itemCents + expenseCents) / 100
+      const unpricedCount = items.filter(item => priceOf(item.price) === null).length
 
       // 类别分布 + 分类花费（金额降序，同价保留全局类别顺序）
       const categoryStats = app.globalData.categories
         .map(name => {
           const inCategory = items.filter(item => item.category === name)
           const count = inCategory.length
-          const spent = inCategory.reduce((sum, item) => sum + (Number(item.price) || 0), 0)
+          const pricedCount = inCategory.filter(item => priceOf(item.price) !== null).length
+          const spent = inCategory.reduce((sum, item) => sum + centsOf(item.price), 0) / 100
           return {
             name,
             count,
+            pricedCount,
             spent: Math.round(spent * 100) / 100,
             percent: totalItems ? Math.round((count / totalItems) * 100) : 0
           }
@@ -116,7 +122,7 @@ Page({
       const expenseStats = app.globalData.expenseCategories
         .map(name => {
           const amount = expenses.filter(expense => expense.category === name)
-            .reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0)
+            .reduce((sum, expense) => sum + centsOf(expense.amount), 0) / 100
           return {
             name,
             amount: Math.round(amount * 100) / 100,
@@ -215,6 +221,7 @@ Page({
         totalItems,
         totalOutfits,
         totalBrands,
+        unpricedCount,
         totalSpent: Math.round(totalSpent * 100) / 100,
         itemSpent: Math.round(itemSpent * 100) / 100,
       

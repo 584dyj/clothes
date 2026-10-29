@@ -112,9 +112,10 @@
           <view class="result-metrics">
             <view><text>重复风险</text><text>{{purchaseResult.duplicateRisk.label}}</text></view>
             <view wx:if="{{purchaseResult.matchCount !== null}}"><text>可搭配衣物</text><text>{{purchaseResult.matchCount}} 件</text></view>
-            <view><text>本月已开销</text><text>¥{{purchaseResult.spending.monthSpent}}</text></view>
-            <view><text>购买后开销</text><text>¥{{purchaseResult.spending.afterPurchase}}</text></view>
+            <view><text>本月已填开销</text><text>¥{{purchaseResult.spending.monthSpent}}</text></view>
+            <view><text>加入候选后</text><text>¥{{purchaseResult.spending.afterPurchase}}</text></view>
           </view>
+          <view wx:if="{{purchaseResult.spending.monthUnpricedCount || purchaseResult.spending.undatedCount}}" class="purchase-note">本月{{purchaseResult.spending.monthUnpricedCount}}件衣物未填价格，另有{{purchaseResult.spending.undatedCount}}件未填购买日期；实际开销可能更高。</view>
           <view wx:if="{{purchaseResult.similarItems.length}}" class="similar-block">
             <view class="field-label">相似衣物</view>
             <view class="similar-item" wx:for="{{purchaseResult.similarItems}}" wx:key="id">

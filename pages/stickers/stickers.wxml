@@ -10,8 +10,9 @@
       <view class="stat"><text class="stat-value">{{statsView.owned}}</text><text class="stat-label">拥有</text></view>
       <view class="stat"><text class="stat-value">{{statsView.done}}</text><text class="stat-label">已贴</text></view>
       <view class="stat"><text class="stat-value">{{statsView.undone}}</text><text class="stat-label">未贴</text></view>
-      <view class="stat"><text class="stat-value">¥{{statsView.spent}}</text><text class="stat-label">开销</text></view>
+      <view class="stat"><text class="stat-value">¥{{statsView.spent}}</text><text class="stat-label">已填开销</text></view>
     </view>
+    <view wx:if="{{unpricedCount > 0}}" class="meta">{{unpricedCount}}款已购贴纸未填单价，未计入金额</view>
   </view>
 
   <view wx:if="{{loadError}}" class="empty">{{loadError}}<button bindtap="onRetry">重新加载</button></view>

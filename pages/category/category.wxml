@@ -58,7 +58,7 @@
           <text class="tag" wx:if="{{item.subcategory}}">{{item.subcategory}}</text>
           <text class="tag" wx:if="{{item.size}}">{{item.size}}</text>
           <text class="tag" wx:if="{{item.color}}">{{item.color}}</text>
-          <text class="tag price-tag" wx:if="{{item.price > 0}}">¥{{item.price}}</text>
+          <text class="tag price-tag" wx:if="{{item.price !== null && item.price !== undefined && item.price !== ''}}">¥{{item.price}}</text>
         </view>
       </view>
     </view>

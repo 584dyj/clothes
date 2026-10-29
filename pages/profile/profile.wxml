@@ -50,7 +50,7 @@
           <view wx:else class="insight-image insight-placeholder">¥</view>
           <view class="insight-body">
             <view class="insight-label">最贵的衣服</view>
-            <view class="insight-name">{{mostExpensive ? mostExpensive.name : '暂无衣物'}}</view>
+            <view class="insight-name">{{mostExpensive ? mostExpensive.name : '暂无已填价格'}}</view>
             <view wx:if="{{mostExpensive}}" class="insight-meta">¥{{mostExpensive.price}}</view>
           </view>
         </view>

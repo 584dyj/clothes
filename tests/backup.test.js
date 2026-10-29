@@ -89,6 +89,16 @@ test('完整备份含原图与六类业务数据，跨账号恢复映射引用�
   await archive.cleanup()
 })
 
+test('备份恢复保留未填价格与明确0元', async () => {
+  const { cloud, tools } = setup({ clothes: [clothes('unknown', { price: null }), clothes('free', { price: 0 })] })
+  const exported = await tools.exportBackup()
+  cloud.setOpenid('b')
+  const archive = await tools.inspectBackup(exported.path)
+  await tools.restoreBackup(archive)
+  assert.deepEqual(cloud.records.clothes.filter(row => row._openid === 'b').map(row => row.price).sort(), [0, null])
+  await archive.cleanup()
+})
+
 test('本账号备份补回被删除的记录，保留现有内容，允许恢复已清空的搭配及历史失效引用', async () => {
   const { cloud, tools } = setup({ outfits: [{ _id: 'empty', _openid: 'a', name: '空搭配', itemIds: [], createdAt }] })
   const exported = await tools.exportBackup()
